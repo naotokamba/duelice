@@ -28,12 +28,14 @@ pnpm dev
 
 ## 構成
 
-- `src/game/rules.ts`：ルール本体。状態と双方の行動を受け取って次の状態を返す純粋関数。乱数は外から渡す。オンライン対戦では、この関数をそのままサーバ側で動かす想定
+- `src/game/cards.ts`：カードの定義表。カードの知識はここに集める
+- `src/game/rules.ts`：ルール本体。定義表に書かれた性質だけを見て処理する。状態と双方の行動を受け取って次の状態を返す純粋関数。乱数は外から渡す。オンライン対戦では、この関数をそのままサーバ側で動かす想定
 - `src/game/matrixGame.ts`：二人零和の行列ゲームを単体法で解く
 - `src/game/cpu.ts`：CPUの思考。二ステップの同時手番を最適戦略で解き、難易度に応じて最適から外れた手を混ぜる
   - つよい：最適戦略そのまま
   - ふつう：最適戦略と、期待値の高い手ほど選びやすい選び方を半々
   - やさしい：期待値に沿ってゆるく選ぶ
+- `src/game/compose.ts`：画面の操作から行動を組み立てる処理
 - `src/components/`：画面
 - `tools/analysis/solve9.py`：設計検討に使った検証スクリプト。出目の全組み合わせで最適戦略を解き、各カードの頻度や一択になる局面の割合を出す
 
@@ -42,6 +44,15 @@ pnpm dev
 | コマンド | 内容 |
 | --- | --- |
 | `pnpm dev` | 開発サーバ |
-| `pnpm test` | ゲームロジックとCPUのテスト |
-| `pnpm typecheck` | 型チェック |
+| `pnpm check` | 型チェック、lint、全テスト、カバレッジ閾値をまとめて確認 |
+| `pnpm test` | テストだけ |
+| `pnpm test:watch` | 変更を見張ってテスト |
+| `pnpm test:coverage` | カバレッジつきでテスト。`coverage/index.html` に結果 |
+| `pnpm test:balance` | バランスの記録と比べる。ルールやカードを変えたとき |
+| `pnpm test:mutation` | 変異テスト。`reports/mutation/index.html` に結果 |
+| `pnpm format` | 整形と lint の自動修正 |
 | `pnpm build` | Cloudflare Workers向けのビルド |
+
+## 開発
+
+開発の約束とテストの構成は `AGENTS.md`、カードを足す手順は `docs/adding-a-card.md` にあります。

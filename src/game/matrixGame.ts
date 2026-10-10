@@ -37,6 +37,7 @@ export function solveMatrixGame(payoff: number[][]): MatrixSolution {
   T.push(obj)
   const basis = Array.from({ length: m }, (_, i) => n + i)
 
+  let solved = false
   for (let iter = 0; iter < 10000; iter++) {
     // ブランドの規則: 目的行で負の係数を持つ最小の列を選ぶ
     let enter = -1
@@ -46,7 +47,10 @@ export function solveMatrixGame(payoff: number[][]): MatrixSolution {
         break
       }
     }
-    if (enter === -1) break
+    if (enter === -1) {
+      solved = true
+      break
+    }
     let leave = -1
     let best = Infinity
     for (let i = 0; i < m; i++) {
@@ -69,6 +73,9 @@ export function solveMatrixGame(payoff: number[][]): MatrixSolution {
     }
     basis[leave] = enter
   }
+
+  // ブランドの規則で循環はしないので、ここに来るのは想定外の不具合
+  if (!solved) throw new Error('反復の上限に達した')
 
   const w = new Array(n).fill(0)
   for (let i = 0; i < m; i++) if (basis[i] < n) w[basis[i]] = T[i][width - 1]

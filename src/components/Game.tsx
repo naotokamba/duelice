@@ -1,69 +1,33 @@
 import { useMemo, useRef, useState } from 'react'
-import { Die } from './Die'
+import { CARD_DEFS, CARD_ORDER } from '../game/cards'
+import { availableCards, composeAction, maxDice, previewText } from '../game/compose'
 import { LEVEL_NAMES, type Level, Thinker } from '../game/cpu'
 import {
   type Action,
-  type CardId,
-  CARD_NAMES,
-  type GameState,
-  type PlayerState,
-  type StepReport,
   actionLabel,
+  type CardId,
   freeDice,
-  isLegal,
-  legalActions,
+  type GameState,
   newGame,
   nextTurn,
+  type PlayerState,
+  type Rng,
   resolveStep,
+  type StepReport,
   turnOver,
 } from '../game/rules'
+import { Die } from './Die'
 
-const CARDS: CardId[] = ['fireball', 'barrier', 'bullet', 'spear', 'reflect']
+/** 相手の手を決める関数。既定はCPU。テストやオンライン対戦で差し替える */
+export type Opponent = (state: GameState, level: Level, rng: Rng) => Action
 
-const CARD_TEXT: Record<CardId, string> = {
-  fireball: '2個置く。高い方の目のダメージ',
-  barrier: '1個置く。このステップに受ける攻撃を、置いた目だけ減らす。魔弾は防げない',
-  bullet: '1個で2点、2個で3点。目は問わず、障壁をすり抜ける',
-  spear: '一ステップ目に1個で詠唱。置いた目以上のダメージを受けると崩れる。二ステップ目に2個で発動し、合計のダメージ',
-  reflect: '同じ目を2個置く。このステップに受ける攻撃を無効化し、相手に返す',
+interface GameProps {
+  /** テストでは固定の乱数を渡す */
+  rng?: Rng
+  opponent?: Opponent
 }
 
-/** カードと選んだダイスから行動を組み立てる */
-function buildAction(card: CardId, dice: number[], step: 1 | 2): Action | null {
-  switch (card) {
-    case 'fireball':
-      return dice.length === 2 ? { kind: 'fireball', dice: [dice[0], dice[1]] } : null
-    case 'barrier':
-      return dice.length === 1 ? { kind: 'barrier', dice: [dice[0]] } : null
-    case 'bullet':
-      if (dice.length === 1) return { kind: 'bullet', dice: [dice[0]] }
-      if (dice.length === 2) return { kind: 'bullet', dice: [dice[0], dice[1]] }
-      return null
-    case 'spear':
-      if (step === 1) return dice.length === 1 ? { kind: 'spearChant', dice: [dice[0]] } : null
-      return dice.length === 2 ? { kind: 'spearCast', dice: [dice[0], dice[1]] } : null
-    case 'reflect':
-      return dice.length === 2 ? { kind: 'reflect', dice: [dice[0], dice[1]] } : null
-  }
-}
-
-function maxDice(card: CardId, step: 1 | 2): number {
-  if (card === 'barrier') return 1
-  if (card === 'spear') return step === 1 ? 1 : 2
-  return 2
-}
-
-/** そのプレイヤーが今のステップで使えるカード */
-function availableCards(state: GameState, who: 0 | 1): Set<CardId> {
-  const set = new Set<CardId>()
-  for (const a of legalActions(state, who)) {
-    if (a.kind === 'pass') continue
-    set.add(a.kind === 'spearChant' || a.kind === 'spearCast' ? 'spear' : a.kind)
-  }
-  return set
-}
-
-export function Game() {
+export function Game({ rng = Math.random, opponent }: GameProps) {
   const [level, setLevel] = useState<Level>('normal')
   const [game, setGame] = useState<GameState | null>(null)
   const [revealed, setRevealed] = useState(false)
@@ -73,7 +37,7 @@ export function Game() {
 
   const start = () => {
     thinker.current = new Thinker()
-    setGame(newGame(Math.random))
+    setGame(newGame(rng))
     setRevealed(false)
     setCard(null)
     setPicked([])
@@ -87,11 +51,11 @@ export function Game() {
   const choosing = !revealed && game.winner === null
   const myCards = availableCards(game, 0)
   const cpuCards = availableCards(game, 1)
-  const action = card ? buildAction(card, picked, game.step) : null
-  const ready = action !== null && isLegal(game, 0, action)
+  const action = card ? composeAction(game, 0, card, picked) : null
+  const ready = action !== null
 
   const commit = (mine: Action) => {
-    const theirs = thinker.current.decide(game, 1, level, Math.random)
+    const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)
     setGame(resolveStep(game, [mine, theirs]))
     setRevealed(true)
     setCard(null)
@@ -100,7 +64,7 @@ export function Game() {
 
   const proceed = () => {
     if (game.winner !== null) return
-    setGame(turnOver(game) ? nextTurn(game, Math.random) : game)
+    setGame(turnOver(game) ? nextTurn(game, rng) : game)
     setRevealed(false)
   }
 
@@ -112,7 +76,7 @@ export function Game() {
   const toggleDie = (i: number) => {
     if (!card) return
     if (picked.includes(i)) setPicked(picked.filter((x) => x !== i))
-    else if (picked.length < maxDice(card, game.step)) setPicked([...picked, i])
+    else if (picked.length < maxDice(game, 0, card)) setPicked([...picked, i])
   }
 
   return (
@@ -153,6 +117,8 @@ export function Game() {
           </div>
         ) : (
           revealed && (
+            // 公開後は Enter だけで先へ進めるように、進むボタンへフォーカスを移す
+            // biome-ignore lint/a11y/noAutofocus: 操作の流れに沿ったフォーカス移動で、ページ読み込み時の自動フォーカスではない
             <button type="button" className="btn btn-primary" onClick={proceed} autoFocus>
               {turnOver(game) ? '次のターンへ' : '二ステップ目へ'}
             </button>
@@ -175,12 +141,17 @@ export function Game() {
 
       {choosing && (
         <div className="command">
-          <p className="command-preview">{card ? previewText(card, picked, me, game.step) : 'カードを選んでください'}</p>
+          <p className="command-preview">{card ? previewText(game, 0, card, picked) : 'カードを選んでください'}</p>
           <div className="command-buttons">
             <button type="button" className="btn" onClick={() => commit({ kind: 'pass' })}>
               何もしない
             </button>
-            <button type="button" className="btn btn-primary" disabled={!ready} onClick={() => action && commit(action)}>
+            <button
+              type="button"
+              className="btn btn-primary"
+              disabled={!ready}
+              onClick={() => action && commit(action)}
+            >
               決定して公開
             </button>
           </div>
@@ -191,27 +162,6 @@ export function Game() {
       <Rules />
     </main>
   )
-}
-
-function previewText(card: CardId, picked: number[], me: PlayerState, step: 1 | 2): string {
-  const need = card === 'bullet' ? '1個か2個' : `${maxDice(card, step)}個`
-  if (picked.length === 0) return `${CARD_NAMES[card]}：ダイスを${need}選んでください`
-  const vals = picked.map((i) => me.roll[i])
-  const v = vals.join('と')
-  switch (card) {
-    case 'fireball':
-      return picked.length === 2 ? `火球：${v}、${Math.max(...vals)}点` : `火球：あと1個選んでください`
-    case 'barrier':
-      return `障壁：${v}、受ける攻撃を${vals[0]}減らす`
-    case 'bullet':
-      return `魔弾：${picked.length === 1 ? '2点' : '3点'}、障壁をすり抜ける`
-    case 'spear':
-      if (step === 1) return `雷槍の詠唱：${v}。${vals[0]}以上のダメージを受けると崩れる`
-      return picked.length === 2 ? `雷槍の発動：${v}、${vals[0] + vals[1]}点` : '雷槍の発動：あと1個選んでください'
-    case 'reflect':
-      if (picked.length < 2) return '反射：同じ目をもう1個選んでください'
-      return vals[0] === vals[1] ? `反射：${v}、受ける攻撃を返す` : '反射：同じ目を2個選んでください'
-  }
 }
 
 function Title({ level, setLevel, onStart }: { level: Level; setLevel: (l: Level) => void; onStart: () => void }) {
@@ -256,7 +206,7 @@ function Seat({ side, name, player, maxHp, cards, selectedCard, onCard, picked =
     <section className={`seat seat-${side}`} aria-label={name}>
       <div className="seat-top">
         <h2 className="seat-name">{name}</h2>
-        <div className="hp" aria-label={`体力 ${hp} / ${maxHp}`}>
+        <div className="hp" role="img" aria-label={`体力 ${hp} / ${maxHp}`}>
           <div className="hp-bar">
             <div className="hp-fill" style={{ width: `${(hp / maxHp) * 100}%` }} />
           </div>
@@ -281,21 +231,33 @@ function Seat({ side, name, player, maxHp, cards, selectedCard, onCard, picked =
         ))}
       </div>
       <ul className="cards">
-        {CARDS.map((c) => {
-          const used = player.usedCards.includes(c) && !(c === 'spear' && player.chant === 'charged')
+        {CARD_ORDER.map((c) => {
+          const used = player.usedCards.includes(c) && !cards.has(c)
           const usable = cards.has(c)
           const cls = ['card', `card-${c}`, selectedCard === c && 'is-selected', used && 'is-used', !usable && 'is-off']
             .filter(Boolean)
             .join(' ')
-          const label = `${CARD_NAMES[c]}${used ? '、このターンは使用済み' : usable ? '' : '、今は使えない'}`
+          const label = `${CARD_DEFS[c].name}${used ? '、このターンは使用済み' : usable ? '' : '、今は使えない'}`
           return (
             <li key={c}>
               {onCard ? (
-                <button type="button" className={cls} disabled={!usable} onClick={() => onCard(c)} aria-pressed={selectedCard === c} aria-label={label}>
+                <button
+                  type="button"
+                  className={cls}
+                  disabled={!usable}
+                  onClick={() => onCard(c)}
+                  aria-pressed={selectedCard === c}
+                  aria-label={label}
+                >
                   <CardFace c={c} used={used} />
                 </button>
               ) : (
-                <div className={cls} aria-label={label} title={side === 'cpu' && usable && !hideUsed ? '今の出目で使える' : undefined}>
+                <div
+                  className={cls}
+                  role="img"
+                  aria-label={label}
+                  title={side === 'cpu' && usable && !hideUsed ? '今の出目で使える' : undefined}
+                >
                   <CardFace c={c} used={used} />
                 </div>
               )}
@@ -311,10 +273,10 @@ function CardFace({ c, used }: { c: CardId; used: boolean }) {
   return (
     <>
       <span className="card-name">
-        {CARD_NAMES[c]}
+        {CARD_DEFS[c].name}
         {used && <span className="card-used">使用済み</span>}
       </span>
-      <span className="card-text">{CARD_TEXT[c]}</span>
+      <span className="card-text">{CARD_DEFS[c].text}</span>
     </>
   )
 }
@@ -376,9 +338,9 @@ function Rules({ open = false }: { open?: boolean }) {
         <li>1ターンは二ステップ。各ステップでカードを1枚選んでダイスを置き、同時に公開して解決する</li>
         <li>一ステップ目に使わなかったダイスは二ステップ目に使える。同じカードは1ターンに1回まで</li>
         <li>体力が先に0になった方の負け。同時なら引き分け</li>
-        {CARDS.map((c) => (
+        {CARD_ORDER.map((c) => (
           <li key={c}>
-            <strong>{CARD_NAMES[c]}</strong>：{CARD_TEXT[c]}
+            <strong>{CARD_DEFS[c].name}</strong>：{CARD_DEFS[c].text}
           </li>
         ))}
       </ul>
