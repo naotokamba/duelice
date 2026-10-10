@@ -1,0 +1,540 @@
+:root {
+  --table: #e6e8f0;
+  --table-deep: #d6d9e5;
+  --ink: #1d2233;
+  --ink-soft: #545b73;
+  --line: rgba(29, 34, 51, 0.16);
+  --me: #2b4c8c;
+  --cpu: #7b2d5b;
+  --ivory: #fbf7ec;
+  --pip: #1d2233;
+  --fireball: #c8371e;
+  --barrier: #2f7f86;
+  --bullet: #6a4bc4;
+  --spear: #a87c00;
+  --reflect: #5f6b7d;
+  --surface: #f4f5fa;
+  --font-ui: 'Zen Kaku Gothic New', system-ui, sans-serif;
+  --font-spell: 'Shippori Mincho', 'Hiragino Mincho ProN', serif;
+  color-scheme: light dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --table: #1a1e2b;
+    --table-deep: #232838;
+    --ink: #e6e8f2;
+    --ink-soft: #a7adc2;
+    --line: rgba(230, 232, 242, 0.16);
+    --me: #7b9be0;
+    --cpu: #d07aac;
+    --surface: #212636;
+    --fireball: #f06a4f;
+    --barrier: #5fb8bf;
+    --bullet: #a690f0;
+    --spear: #e0b43a;
+    --reflect: #9aa6b8;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--table);
+  color: var(--ink);
+  font-family: var(--font-ui);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+}
+
+:focus-visible {
+  outline: 3px solid var(--me);
+  outline-offset: 2px;
+}
+
+/* ボタン */
+.btn {
+  border: 1px solid var(--line);
+  background: var(--surface);
+  border-radius: 10px;
+  padding: 0.6rem 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+}
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.btn-primary {
+  background: var(--me);
+  border-color: var(--me);
+  color: #fff;
+}
+.btn-large {
+  padding: 0.9rem 2rem;
+  font-size: 1.1rem;
+}
+
+/* タイトル */
+.title {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 3rem 1rem;
+}
+.title-logo,
+.logo {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+.title-logo {
+  font-size: clamp(3rem, 12vw, 5rem);
+  line-height: 1;
+}
+.title-lead {
+  color: var(--ink-soft);
+  margin: 0.75rem 0 2rem;
+}
+.level-pick {
+  border: 0;
+  padding: 0;
+  margin: 0 0 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.level-pick legend {
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+.level-option {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  background: var(--surface);
+}
+.level-option input {
+  margin-right: 0.4rem;
+}
+.level-option.is-on {
+  border-color: var(--me);
+  box-shadow: inset 0 0 0 1px var(--me);
+}
+
+/* 卓 */
+.table {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1rem 1rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+.table-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.25rem 1.25rem;
+}
+.logo {
+  font-size: 1.6rem;
+}
+.turn-label {
+  margin: 0;
+  font-weight: 700;
+}
+.level-label {
+  margin: 0 0 0 auto;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+/* 席 */
+.seat {
+  border-radius: 16px;
+  padding: 1rem;
+  background: var(--surface);
+  border-top: 4px solid var(--accent);
+}
+.seat-me {
+  --accent: var(--me);
+}
+.seat-cpu {
+  --accent: var(--cpu);
+}
+.seat-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  margin-bottom: 0.75rem;
+}
+.seat-name {
+  margin: 0;
+  font-size: 1.1rem;
+  color: var(--accent);
+}
+.hp {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex: 1 1 180px;
+}
+.hp-bar {
+  flex: 1;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--table-deep);
+  overflow: hidden;
+}
+.hp-fill {
+  height: 100%;
+  background: var(--accent);
+  transition: width 400ms ease;
+}
+.hp-num {
+  font-weight: 700;
+  font-size: 1.3rem;
+  font-variant-numeric: tabular-nums;
+}
+.hp-num small {
+  font-size: 0.8rem;
+  color: var(--ink-soft);
+  font-weight: 500;
+}
+.badge {
+  font-size: 0.8rem;
+  border-radius: 999px;
+  padding: 0.1rem 0.6rem;
+  border: 1px solid var(--line);
+}
+.badge-chant {
+  border-color: var(--spear);
+  color: var(--spear);
+  font-weight: 700;
+}
+
+/* ダイス。この試作で一番手をかけるところ */
+.dice-row {
+  display: flex;
+  gap: 0.9rem;
+  margin-bottom: 0.9rem;
+}
+.die {
+  display: inline-grid;
+  place-items: center;
+  border: 0;
+  padding: 0;
+  background: var(--ivory);
+  border-radius: 18%;
+  box-shadow:
+    inset 0 -4px 0 rgba(29, 34, 51, 0.12),
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 3px 8px rgba(29, 34, 51, 0.18);
+  transition: transform 150ms ease, box-shadow 150ms ease, opacity 150ms ease;
+}
+button.die {
+  cursor: pointer;
+}
+.die-large {
+  width: 64px;
+  height: 64px;
+}
+.die-small {
+  width: 28px;
+  height: 28px;
+  box-shadow: inset 0 -2px 0 rgba(29, 34, 51, 0.12), 0 1px 3px rgba(29, 34, 51, 0.2);
+}
+.die-face {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 72%;
+  height: 72%;
+}
+.pip {
+  width: 70%;
+  height: 70%;
+  margin: auto;
+  border-radius: 50%;
+  background: var(--pip);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+.pip-empty {
+  visibility: hidden;
+}
+.die-selected {
+  transform: translateY(-6px);
+  box-shadow:
+    0 0 0 3px var(--me),
+    0 8px 14px rgba(29, 34, 51, 0.25);
+}
+.die-used {
+  opacity: 0.3;
+  transform: rotate(-8deg) scale(0.9);
+}
+button.die:disabled {
+  cursor: default;
+}
+
+/* カード */
+.cards {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 0.5rem;
+}
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  width: 100%;
+  height: 100%;
+  text-align: left;
+  border: 1px solid var(--line);
+  border-left: 6px solid var(--spell);
+  border-radius: 10px;
+  padding: 0.5rem 0.65rem;
+  background: var(--table);
+}
+button.card {
+  cursor: pointer;
+}
+button.card:hover:not(:disabled) {
+  border-color: var(--spell);
+}
+.card-fireball {
+  --spell: var(--fireball);
+}
+.card-barrier {
+  --spell: var(--barrier);
+}
+.card-bullet {
+  --spell: var(--bullet);
+}
+.card-spear {
+  --spell: var(--spear);
+}
+.card-reflect {
+  --spell: var(--reflect);
+}
+.card-name {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--spell);
+}
+.card-text {
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: var(--ink-soft);
+}
+.card.is-selected {
+  box-shadow: 0 0 0 2px var(--me);
+  background: var(--surface);
+}
+.card.is-off {
+  opacity: 0.4;
+}
+.card-used {
+  font-family: var(--font-ui);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  margin-left: 0.4rem;
+}
+/* 相手のカードは名前だけ。説明は自分の側で読む */
+.seat-cpu .cards {
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+}
+.seat-cpu .card-text {
+  display: none;
+}
+
+/* 中央 */
+.arena {
+  min-height: 9rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9rem;
+  padding: 0.5rem 0;
+  text-align: center;
+}
+.arena-hint {
+  margin: 0;
+  color: var(--ink-soft);
+  max-width: 34em;
+}
+.reveal {
+  width: 100%;
+}
+.reveal-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+.reveal-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.75rem;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 2px solid var(--who);
+  animation: flip-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.reveal-me {
+  --who: var(--me);
+  animation-delay: 60ms;
+}
+.reveal-cpu {
+  --who: var(--cpu);
+}
+.reveal-who {
+  font-size: 0.8rem;
+  color: var(--who);
+  font-weight: 700;
+}
+.reveal-action {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.3rem;
+}
+.reveal-dice {
+  display: flex;
+  gap: 0.3rem;
+  min-height: 28px;
+}
+.reveal-damage {
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.reveal-lines {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 0.95rem;
+}
+@keyframes flip-in {
+  from {
+    transform: rotateX(80deg);
+    opacity: 0;
+  }
+  to {
+    transform: rotateX(0);
+    opacity: 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reveal-side,
+  .hp-fill,
+  .die {
+    animation: none;
+    transition: none;
+  }
+}
+.result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+.result-text {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 2rem;
+  margin: 0;
+}
+.result-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* 操作 */
+.command {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  padding: 0.75rem 1rem;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 -6px 18px rgba(29, 34, 51, 0.08);
+}
+.command-preview {
+  margin: 0;
+  font-weight: 700;
+}
+.command-buttons {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* 経過とルール */
+.log,
+.rules {
+  border-top: 1px solid var(--line);
+  padding-top: 0.5rem;
+}
+.log summary,
+.rules summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+.log-list,
+.rules-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  color: var(--ink-soft);
+}
+.log-when {
+  display: block;
+  font-weight: 700;
+  color: var(--ink);
+}
+.rules-list strong {
+  font-family: var(--font-spell);
+  color: var(--ink);
+}
+
+@media (max-width: 520px) {
+  .die-large {
+    width: 54px;
+    height: 54px;
+  }
+  .level-label {
+    margin-left: 0;
+  }
+  .command-buttons {
+    width: 100%;
+  }
+  .command-buttons .btn {
+    flex: 1;
+  }
+}
