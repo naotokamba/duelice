@@ -369,7 +369,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             ))}
           </ul>
         )}
-        {!revealed && <History history={game.history} />}
+        {!revealed && game.winner === null && (
+          <History history={game.history} turn={game.turn} step={game.step} choosing={choosing} />
+        )}
         {banner && !revealed && (
           <p key={banner.text} className="banner">
             <span>{banner.text}</span>

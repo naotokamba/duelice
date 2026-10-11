@@ -57,6 +57,14 @@ const myCard = (name: string) => cardIn(mySeat(), name)
 
 type User = ReturnType<typeof userEvent.setup>
 
+/** 中央の戦いの流れ */
+const flow = () => within(screen.getByRole('region', { name: '戦いの流れ' }))
+/** ターンの牌の、ステップの半分 */
+const half = (turn: number, step: number) =>
+  flow()
+    .getByRole('listitem', { name: `Turn ${turn}` })
+    .querySelector(`[aria-label="ステップ${step}"]`) as HTMLElement
+
 /** 手元から value の目のダイスを一つ選び、カードの置き場に置く */
 async function place(user: User, value: number, card: string) {
   await user.click(
@@ -114,6 +122,9 @@ describe('一ターンの流れ', () => {
     })
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     expect(myCard('火球').getByRole('button', { name: 'Xダメージを与える' })).toBeTruthy()
+    // 対局の始めから、2つに割った空の牌が出て、ステップ1の半分が光る
+    expect(half(1, 1).getAttribute('aria-current')).toBe('step')
+    expect(half(1, 2).getAttribute('aria-current')).toBeNull()
 
     await place(user, 6, '火球')
     // 一個では火球にならないので、まだ決定できない
@@ -138,10 +149,10 @@ describe('一ターンの流れ', () => {
     expect(screen.getByText('Step 2')).toBeTruthy()
     await advance(BANNER_MS)
     expect(screen.queryByText('Step 2')).toBeNull()
-    // 一つ前の結果は中央に出る
-    const latest = () => within(screen.getByRole('region', { name: '一つ前の結果' }))
-    expect(latest().getByText('火球')).toBeTruthy()
-    expect(latest().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    // 牌の左半分にステップ1の結果が入り、右半分が今のステップとして光る
+    expect(within(half(1, 1)).getByText('火球')).toBeTruthy()
+    expect(within(half(1, 1)).getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    expect(half(1, 2).getAttribute('aria-current')).toBe('step')
     // 使ったカードには置けず、使ったダイスは手元で薄くなる
     expect(myCard('火球').getByText('使用済み')).toBeTruthy()
     expect(myCard('火球').queryByRole('button', { name: '火球に置く' })).toBeNull()
@@ -150,13 +161,15 @@ describe('一ターンの流れ', () => {
     await user.click(button('パス'))
     await advance(2000)
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
-    expect(screen.getByText('Turn 2')).toBeTruthy()
+    expect(screen.getByText('Turn 2', { selector: '.banner span' })).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '火球に置く' })).toHaveLength(2)
 
     // 中央には一つ前だけを出し、全ての履歴は履歴の印からモーダルで見る
     await advance(BANNER_MS)
-    expect(latest().getAllByRole('img', { name: 'パス' })).toHaveLength(2)
-    await user.click(latest().getByRole('button', { name: '戦闘履歴' }))
+    // 次のターンの牌が右に増え、前の牌は残る
+    expect(within(half(1, 2)).getAllByRole('img', { name: 'パス' })).toHaveLength(2)
+    expect(half(2, 1).getAttribute('aria-current')).toBe('step')
+    await user.click(flow().getByRole('button', { name: '戦闘履歴' }))
     const dialog = screen.getByRole('dialog', { name: '戦闘履歴' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     const entries = within(dialog).getAllByRole('listitem')
@@ -274,9 +287,8 @@ describe('一ターンの流れ', () => {
     expect(theirs.getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
     await settle()
     expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
-    const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))
-    expect(latest.getByRole('img', { name: 'パス' })).toBeTruthy()
-    expect(latest.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    expect(within(half(1, 1)).getByRole('img', { name: 'パス' })).toBeTruthy()
+    expect(within(half(1, 1)).getByRole('img', { name: '6ダメージ' })).toBeTruthy()
   })
 })
 

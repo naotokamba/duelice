@@ -1106,11 +1106,109 @@ button.tab {
 /* 戦闘履歴。上下の並びは卓と同じ */
 .history {
   width: 100%;
-  max-width: 600px;
+  max-width: 820px;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: var(--tap-gap);
   text-align: left;
+}
+/* 戦いの流れ。1ターンを左右2つに割った牌にして、右へ並べる */
+.tiles-scroll {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  padding: 2px 2px 6px;
+}
+.tiles {
+  list-style: none;
+  margin: 0 auto;
+  padding: 0;
+  display: flex;
+  gap: 12px;
+  width: max-content;
+}
+.tile {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  animation: tile-in 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+.tile-turn {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+  text-align: center;
+}
+.tile-halves {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  width: 268px;
+  border: 2px solid color-mix(in srgb, var(--ink) 22%, transparent);
+  border-radius: 12px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.half {
+  position: relative;
+  min-width: 0;
+  min-height: 78px;
+  padding: 6px 8px 6px 22px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.half + .half {
+  border-left: 2px dashed color-mix(in srgb, var(--ink) 22%, transparent);
+}
+.half-step {
+  position: absolute;
+  top: 4px;
+  left: 7px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: var(--ink-soft);
+}
+/* 今のステップの半分は、色と枠で強調する。押せるものではないので、明滅はさせない */
+.half.is-now {
+  background: color-mix(in srgb, var(--me) 10%, var(--surface));
+  box-shadow: inset 0 0 0 2px var(--me);
+}
+.half.is-now .half-step {
+  color: var(--me);
+}
+/* 結果が入った半分は、埋まる瞬間に一度だけ色が差す */
+.half.is-done {
+  animation: half-fill 500ms ease both;
+}
+@keyframes half-fill {
+  from {
+    background: color-mix(in srgb, var(--me) 20%, var(--surface));
+  }
+}
+@keyframes tile-in {
+  from {
+    opacity: 0;
+    transform: translateX(16px);
+  }
+}
+.mini {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 26px;
+  padding-left: 6px;
+  border-left: 3px solid var(--who);
+}
+.mini-act {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.85rem;
+  white-space: nowrap;
+  color: var(--spell-ink, var(--ink));
 }
 .history-list {
   list-style: none;
@@ -1119,10 +1217,6 @@ button.tab {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-}
-.history > .history-list {
-  flex: 1;
-  min-width: 0;
 }
 .history-entry {
   display: grid;
@@ -1239,6 +1333,8 @@ button.tab {
   .stance svg,
   .banner,
   .tray.is-rolling .die,
+  .tile,
+  .half.is-done,
   .card.is-hint .face-row.is-on .slot:not(.is-filled) {
     animation: none;
     transition: none;
