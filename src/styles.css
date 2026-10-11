@@ -456,7 +456,7 @@ button.die:disabled {
   --spell-ink: var(--ink);
   /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い雷槍に合わせ、どのカードも同じ大きさにする */
   width: calc(var(--die) * 2 + 5.25rem);
-  height: calc(var(--die) * 2 + 10.5rem);
+  height: calc(var(--die) * 2 + 11rem);
   flex: none;
   position: relative;
   display: flex;
@@ -476,22 +476,27 @@ button.die:disabled {
 .card-fireball {
   --spell: var(--fireball);
   --spell-ink: var(--fireball-ink);
+  --card-ink: var(--fireball-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
   --spell-ink: var(--barrier-ink);
+  --card-ink: var(--barrier-ink);
 }
 .card-bullet {
   --spell: var(--bullet);
   --spell-ink: var(--bullet-ink);
+  --card-ink: var(--bullet-ink);
 }
 .card-spear {
   --spell: var(--spear);
   --spell-ink: var(--spear-ink);
+  --card-ink: var(--spear-ink);
 }
 .card-reflect {
   --spell: var(--reflect);
   --spell-ink: var(--reflect-ink);
+  --card-ink: var(--reflect-ink);
 }
 .card-head {
   display: flex;
@@ -560,8 +565,6 @@ button.die:disabled {
 .face-row:not(.is-on) {
   --spell: var(--ink-soft);
   --spell-ink: var(--ink-soft);
-  --star: var(--ink-soft);
-  --star-ink: var(--table);
 }
 /* 置き場の行は折り返さない */
 .slots,
@@ -635,43 +638,65 @@ button.slot:disabled {
   line-height: 1.35;
   color: var(--ink-soft);
 }
+/* 効果の印は、使えない行でもカードの色のまま描く。灰色になるのは置き場と記号だけ */
 .fx {
-  position: relative;
   display: inline-grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  color: var(--spell-ink);
+  width: 40px;
+  height: 40px;
+  color: var(--card-ink, var(--ink));
 }
 .fx > svg {
-  grid-area: 1 / 1;
-  width: 26px;
-  height: 26px;
+  width: 100%;
+  height: 100%;
 }
-.fx-value {
-  grid-area: 1 / 1;
-  position: relative;
-  font-weight: 800;
-  font-size: 0.9rem;
-  font-variant-numeric: tabular-nums;
+.fx-then {
+  width: 20px;
+  color: var(--ink-soft);
 }
-.fx-damage > svg {
-  width: 34px;
-  height: 34px;
-  fill: var(--star, var(--hit));
-}
-.fx-damage .fx-value {
-  color: var(--star-ink, #fff);
-}
-.fx-guard > svg {
-  width: 34px;
-  height: 34px;
-}
-.fx-guard .fx-value {
-  color: var(--spell-ink);
-  font-size: 0.85rem;
+.fx-then > svg {
+  width: 20px;
+  height: 20px;
 }
 
+/* 印の形。glyphs.tsx で描く */
+.glyph-line {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.glyph-fill {
+  fill: currentColor;
+  stroke: none;
+}
+/* 貫通の矢印が盾の線を断ち切る。印の下の面の色で塗る */
+.glyph-cut {
+  stroke: var(--glyph-bg, var(--table));
+  stroke-width: 5;
+}
+.glyph-value {
+  fill: currentColor;
+  stroke: none;
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.glyph-star polygon {
+  fill: var(--hit);
+}
+.glyph-star .glyph-value {
+  fill: #fff;
+}
+.glyph-badge circle {
+  fill: var(--spell-ink, var(--ink));
+  stroke: var(--table);
+  stroke-width: 2;
+}
+.glyph-badge .glyph-value {
+  fill: var(--on-accent);
+}
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
   margin-left: auto;
@@ -830,18 +855,13 @@ button.tab {
   position: absolute;
   left: 50%;
   top: 50%;
+  width: 36px;
+  height: 36px;
   transform: translate(-50%, -50%);
-  min-width: 32px;
-  height: 32px;
-  padding: 0 5px;
-  border-radius: 16px;
-  background: var(--spell-ink, var(--ink));
-  border: 2px solid var(--table);
-  color: var(--on-accent);
-  font-weight: 800;
-  font-size: 1rem;
-  line-height: 28px;
-  font-variant-numeric: tabular-nums;
+}
+.arrow-value svg {
+  width: 100%;
+  height: 100%;
 }
 /* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
@@ -882,8 +902,8 @@ button.tab {
 }
 /* 受けたダメージ。当たった側の端で弾ける */
 .burst {
-  width: 56px;
-  height: 56px;
+  width: 60px;
+  height: 60px;
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
@@ -895,15 +915,7 @@ button.tab {
   inset: 0;
   width: 100%;
   height: 100%;
-  fill: var(--hit);
   filter: drop-shadow(0 2px 4px rgba(29, 34, 51, 0.3));
-}
-.burst span {
-  position: relative;
-  color: #fff;
-  font-weight: 800;
-  font-size: 1.15rem;
-  font-variant-numeric: tabular-nums;
 }
 @keyframes burst {
   from {
@@ -917,6 +929,7 @@ button.tab {
 }
 /* 構え。障壁、反射、詠唱は受ける側の端に置く。大きさは Exchange.tsx の STANCE_R と合わせる */
 .stance {
+  --glyph-bg: var(--surface);
   width: 56px;
   height: 56px;
   display: grid;
@@ -928,24 +941,24 @@ button.tab {
   transform: translate(-50%, -50%);
   animation: stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
 }
-.stance svg {
+/* 印を重ねて置き、切り替わる時は透明度で入れ替える */
+.stance > :not(.stance-value) {
   grid-area: 1 / 1;
-  width: 30px;
-  height: 30px;
+  display: grid;
+  width: 36px;
+  height: 36px;
 }
+.stance svg {
+  width: 100%;
+  height: 100%;
+}
+/* 詠唱が崩れるダメージの境目。印の右下に小さな星で添える */
 .stance-value {
   position: absolute;
-  right: -12px;
-  bottom: -8px;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 5px;
-  border-radius: 13px;
-  background: var(--spell-ink, var(--ink-soft));
-  color: var(--on-accent);
-  font-size: 0.9rem;
-  font-weight: 800;
-  line-height: 26px;
+  right: -14px;
+  bottom: -12px;
+  width: 32px;
+  height: 32px;
 }
 .stance-pass {
   width: 44px;
@@ -954,7 +967,7 @@ button.tab {
   border-color: var(--line);
   color: var(--ink-soft);
 }
-.stance-pass svg {
+.stance-pass > :not(.stance-value) {
   width: 24px;
   height: 24px;
 }

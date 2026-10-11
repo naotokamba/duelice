@@ -2,12 +2,12 @@
 // 上が相手、下が自分。攻撃は矢印、障壁や反射や詠唱は受ける側の端に置く印、受けたダメージは星で描く。
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
-import { FlipVertical2, Shield, ShieldOff, SkipForward, Zap, ZapOff } from 'lucide-react'
+import { SkipForward } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { breaksChant, type PlayerIndex, type StepReport, type Strike, strikes } from '../game/rules'
 import type { CardId } from '../game/types'
-import { Star } from './glyphs'
+import { ChantGlyph, NumberBadge, PierceGlyph, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
 
 /** 舞台の高さ。styles.css の .stage と合わせる */
 const H = 190
@@ -127,8 +127,7 @@ export function Exchange({ report }: { report: StepReport }) {
                 s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
               )}
             >
-              <Star />
-              <span>−{s.dealt}</span>
+              <Star value={`−${s.dealt}`} />
             </div>
           ),
         ]
@@ -159,7 +158,9 @@ function Arrow({ x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProps) {
   const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent'].filter(Boolean).join(' ')
   return (
     <div className={cls} style={style}>
-      <span className="arrow-value">{value}</span>
+      <span className="arrow-value">
+        <NumberBadge value={value} />
+      </span>
     </div>
   )
 }
@@ -202,16 +203,17 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
     return (
       <div className={cls + state} style={at(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
-        <Shield className="guard-on" />
-        {pierced && <ShieldOff className="guard-off" />}
-        <span className="stance-value">{def.guard(vals)}</span>
+        <span className="guard-on">
+          <ShieldGlyph value={def.guard(vals)} />
+        </span>
+        {pierced && <PierceGlyph className="guard-off" />}
       </div>
     )
   }
   if (def.reflects) {
     return (
       <div className={cls} style={at(x, y)}>
-        <FlipVertical2 />
+        <ReflectGlyph />
       </div>
     )
   }
@@ -220,9 +222,11 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     const broken = breaksChant(vals, report.damage[who])
     return (
       <div className={`${cls}${broken ? ' is-broken' : ''}`} style={at(x, y, IMPACT_MS, aside ? -ASIDE : 0)}>
-        <Zap className="chant-on" />
-        {broken && <ZapOff className="chant-off" />}
-        <span className="stance-value">{vals[0]}</span>
+        <ChantGlyph className="chant-on" />
+        {broken && <ChantGlyph broken className="chant-off" />}
+        <span className="stance-value">
+          <Star value={`${vals[0]}+`} />
+        </span>
       </div>
     )
   }

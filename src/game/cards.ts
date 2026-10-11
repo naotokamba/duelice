@@ -9,8 +9,11 @@ export interface CardDef {
   name: string
 }
 
-/** 効果を描く印。damage はダメージ、guard は受けるダメージを減らす、reflect は受けた攻撃を返す、chant は詠唱、pierce は障壁を無視 */
-export type EffectIcon = 'damage' | 'guard' | 'reflect' | 'chant' | 'pierce'
+/**
+ * 効果を描く印。damage はダメージ、guard は受けるダメージを減らす、pierce は障壁を貫通する、
+ * reflect は受けた攻撃を返す、chant は詠唱、chantBroken は詠唱が崩れる、then は「そうなると」の矢印
+ */
+export type EffectIcon = 'damage' | 'guard' | 'pierce' | 'reflect' | 'chant' | 'chantBroken' | 'then'
 
 /** カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる */
 export interface EffectPart {
@@ -112,7 +115,11 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 1,
     chant: true,
     done: '雷槍を詠唱',
-    face: { mark: 'X', effect: [{ icon: 'chant' }, { icon: 'damage', value: 'X' }, { text: '以上で崩れる' }] },
+    // X 以上のダメージを受けると崩れる
+    face: {
+      mark: 'X',
+      effect: [{ icon: 'chant' }, { icon: 'damage', value: 'X+' }, { icon: 'then' }, { icon: 'chantBroken' }],
+    },
   },
   spearCast: {
     card: 'spear',
@@ -130,7 +137,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     sameValues: true,
     reflects: true,
     done: '反射を構えた',
-    face: { join: '=', effect: [{ icon: 'reflect' }, { text: 'はね返す' }] },
+    face: { join: '=', effect: [{ icon: 'reflect' }] },
   },
 }
 

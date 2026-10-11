@@ -206,16 +206,16 @@ describe('カード面', () => {
   it.each([
     ['fireball', [6, 2], 'damage:6'],
     ['barrier', [4], 'guard:4'],
-    ['spearChant', [5], 'chant damage:5 以上で崩れる'],
+    ['spearChant', [5], 'chant damage:5+ then chantBroken'],
     ['spearCast', [6, 5], 'damage:11'],
-    ['reflect', [2, 2], 'reflect はね返す'],
+    ['reflect', [2, 2], 'reflect'],
     ['bullet', [3], '1個 damage:2 2個 damage:3 pierce'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
   it('目が決まるまでは記号のまま', () => {
     expect(flat(effectParts('fireball'))).toBe('damage:X')
-    expect(flat(effectParts('spearChant'))).toBe('chant damage:X 以上で崩れる')
+    expect(flat(effectParts('spearChant'))).toBe('chant damage:X+ then chantBroken')
     expect(flat(effectParts('spearCast'))).toBe('damage:Y')
   })
   it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
