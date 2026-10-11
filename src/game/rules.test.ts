@@ -2,7 +2,18 @@
 
 import { describe, expect, it } from 'vitest'
 import { makeState } from '../test/helpers'
-import { type Action, actionLabel, isLegal, legalActions, newGame, nextTurn, resolveStep, turnOver } from './rules'
+import {
+  type Action,
+  actionLabel,
+  breaksChant,
+  isLegal,
+  legalActions,
+  newGame,
+  nextTurn,
+  resolveStep,
+  strikes,
+  turnOver,
+} from './rules'
 
 const pass: Action = { kind: 'pass' }
 
@@ -112,6 +123,61 @@ describe('ターンの進行', () => {
     for (const p of s.players) {
       expect(p).toEqual({ hp: 7, roll: [6, 6, 6, 6], usedDice: [], usedCards: [], chant: 'none' })
     }
+  })
+})
+
+describe('攻撃の行方', () => {
+  const fire: Action = { kind: 'fireball', dice: [0, 1] }
+  it.each([
+    ['何もしない相手には当たる', [6, 2], fire, [], pass, { outcome: 'hit', to: 1, dealt: 6 }],
+    ['障壁に削られる', [6, 2], fire, [4], { kind: 'barrier', dice: [0] }, { outcome: 'guarded', to: 1, dealt: 2 }],
+    [
+      '障壁が上回ると0になる',
+      [3, 2],
+      fire,
+      [5],
+      { kind: 'barrier', dice: [0] },
+      { outcome: 'guarded', to: 1, dealt: 0 },
+    ],
+    [
+      '魔弾は障壁をすり抜ける',
+      [1],
+      { kind: 'bullet', dice: [0] },
+      [6],
+      { kind: 'barrier', dice: [0] },
+      { outcome: 'pierced', to: 1, dealt: 2 },
+    ],
+    [
+      '反射で攻撃した側に返る',
+      [6, 2],
+      fire,
+      [3, 3],
+      { kind: 'reflect', dice: [0, 1] },
+      { outcome: 'reflected', to: 0, dealt: 6 },
+    ],
+  ] as const)('%s', (_, mine, a, theirs, b, want) => {
+    const [x, ...rest] = strikes([[...mine], [...theirs]], [a as Action, b as Action])
+    expect(rest).toEqual([])
+    expect(x).toMatchObject({ from: 0, ...want })
+  })
+  it('撃ち合いは二つの攻撃になり、攻撃しない側からは何も飛ばない', () => {
+    expect(strikes([[6, 2], [5]], [fire, { kind: 'bullet', dice: [0] }]).map((x) => [x.from, x.to])).toEqual([
+      [0, 1],
+      [1, 0],
+    ])
+    expect(
+      strikes(
+        [[4], [3, 3]],
+        [
+          { kind: 'barrier', dice: [0] },
+          { kind: 'reflect', dice: [0, 1] },
+        ],
+      ),
+    ).toEqual([])
+  })
+  it('詠唱は置いた目と同じか多いダメージで崩れる', () => {
+    expect(breaksChant([5], 4)).toBe(false)
+    expect(breaksChant([5], 5)).toBe(true)
   })
 })
 

@@ -65,11 +65,6 @@ export function Card({ card, roll, active, used, shown, play }: Props) {
       <div className="card-head">
         <span className="card-name">{name}</span>
         {used && !shown && <span className="card-used">使用済み</span>}
-        {play?.onConfirm && (
-          <button type="button" className="confirm" aria-label="決定" title="決定" onClick={play.onConfirm}>
-            <Check aria-hidden="true" strokeWidth={3} />
-          </button>
-        )}
       </div>
       {kindsOfCard(card).map((kind) => (
         <Row
@@ -82,7 +77,66 @@ export function Card({ card, roll, active, used, shown, play }: Props) {
           play={play}
         />
       ))}
+      {/* 置き場、効果と読んだ流れの先に、カードの下端に重ねて出す */}
+      {play?.onConfirm && (
+        <button type="button" className="confirm" aria-label="決定" title="決定" onClick={play.onConfirm}>
+          <Check aria-hidden="true" strokeWidth={3} />
+        </button>
+      )}
     </li>
+  )
+}
+
+/** 狭い画面で並べるカードの名前 */
+export interface Tab {
+  card: CardId
+  /** 今は使えない */
+  off: boolean
+  /** 大きく出しているカード */
+  current: boolean
+  /** 持っているダイスを置ける */
+  target: boolean
+  /** 何も持っていないとき、使えることを薄く光らせて知らせる */
+  hint: boolean
+  /** ダイスが置いてある */
+  placed: boolean
+}
+
+export function CardTabs({ tabs, onPick }: { tabs: Tab[]; onPick?: (c: CardId) => void }) {
+  return (
+    <ul className="tabs">
+      {tabs.map((t) => {
+        const cls = [
+          'tab',
+          `card-${t.card}`,
+          t.off && 'is-off',
+          t.current && 'is-current',
+          t.target && 'is-target',
+          t.hint && 'is-hint',
+          t.placed && 'is-placed',
+        ]
+          .filter(Boolean)
+          .join(' ')
+        const name = CARD_DEFS[t.card].name
+        return (
+          <li key={t.card}>
+            {onPick ? (
+              <button
+                type="button"
+                className={cls}
+                aria-pressed={t.current}
+                data-drop={t.card}
+                onClick={() => onPick(t.card)}
+              >
+                {name}
+              </button>
+            ) : (
+              <span className={cls}>{name}</span>
+            )}
+          </li>
+        )
+      })}
+    </ul>
   )
 }
 

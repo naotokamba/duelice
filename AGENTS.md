@@ -32,7 +32,8 @@ pnpm check
 | `src/game/compose.test.ts` | 画面の操作から行動を組み立てる処理 |
 | `src/game/matrixGame.test.ts` | 行列ゲームの解が均衡になっているか |
 | `src/game/cpu.test.ts` | CPU の戦略が均衡で、強さの順序が保たれているか |
-| `src/components/Game.test.tsx` | 画面の操作の流れ。乱数と相手の手を差し替えて固定する |
+| `src/components/Game.test.tsx` | 画面の操作の流れ。乱数と相手の手を差し替えて固定し、公開の動きと自動の進行は偽の時計で進める |
+| `src/components/Exchange.test.tsx` | 公開の舞台の描き分け。場面ごとに矢印、構えの印、受けたダメージの星が出るか |
 | `src/game/balance.slow.test.ts` | バランスの記録。`pnpm test:balance` で別に走らせる |
 | `pnpm test:mutation` | 変異テスト。ルール本体にわざと小さなバグを入れ、テストが検出できる割合を測る。85%を下回ると失敗する。数分かかる |
 

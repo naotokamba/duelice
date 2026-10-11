@@ -163,6 +163,8 @@ describe('ダイスを置く', () => {
     expect(canPlace(s, 0, 'reflect', [0], 1)).toBe(false)
     // ゾロ目の無い目は、最初の一個から置けない
     expect(canPlace(s, 0, 'reflect', [], 1)).toBe(false)
+    expect(composeAction(s, 0, 'reflect', [0, 1])).toBeNull()
+    expect(composeAction(s, 0, 'reflect', [0, 2])).toEqual({ kind: 'reflect', dice: [0, 2] })
   })
   it('使えないカードには置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedCards: ['fireball'] }, { roll: [1, 2, 3] }, 2)

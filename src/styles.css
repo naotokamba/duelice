@@ -15,6 +15,7 @@
   --reflect: #5f6b7d;
   --surface: #f4f5fa;
   --go: #2e9d57;
+  --hit: #d8392b;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
   --font-spell: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
@@ -31,6 +32,7 @@
     --cpu: #d07aac;
     --surface: #212636;
     --go: #3cb36a;
+    --hit: #e8513f;
     --fireball: #f06a4f;
     --barrier: #5fb8bf;
     --bullet: #a690f0;
@@ -138,7 +140,10 @@ button {
 
 /* 卓 */
 .table {
-  max-width: 900px;
+  /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
+  --die-me: 52px;
+  --die-cpu: 52px;
+  max-width: 1040px;
   margin: 0 auto;
   padding: 1rem 1rem 6rem;
   display: flex;
@@ -175,10 +180,12 @@ button {
 }
 .seat-me {
   --accent: var(--me);
+  --die: var(--die-me);
   border-top: 4px solid var(--accent);
 }
 .seat-cpu {
   --accent: var(--cpu);
+  --die: var(--die-cpu);
   border-bottom: 4px solid var(--accent);
 }
 .seat-status {
@@ -234,7 +241,6 @@ button {
 
 /* ダイス。この試作で一番手をかけるところ */
 .tray {
-  --die: 64px;
   margin: 0;
   padding: 0;
   border: 0;
@@ -269,8 +275,8 @@ button.die {
   cursor: pointer;
 }
 .die-large {
-  width: var(--die, 64px);
-  height: var(--die, 64px);
+  width: var(--die);
+  height: var(--die);
 }
 .die-small {
   width: 28px;
@@ -335,6 +341,7 @@ button.die:disabled {
   opacity: 0.25;
 }
 .drag-ghost {
+  --die: var(--die-me);
   position: fixed;
   z-index: 10;
   pointer-events: none;
@@ -343,18 +350,29 @@ button.die:disabled {
 }
 
 /* カード */
+/* カードの幅は置き場の大きさから決めて固定する。入りきらなければ折り返して次の段に並べる */
 .cards {
   list-style: none;
   margin: 0;
   padding: 0;
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+}
+/* 決定のボタンはカードの下端に半分重ねるので、内側と外側の両方に空きを取る */
+.seat-me .cards {
+  row-gap: 1.75rem;
+  padding-bottom: 1.1rem;
+}
+.cards-one {
+  justify-content: center;
 }
 .card {
   /* 色を決めていない新しいカードでも表示が崩れないように、既定の色を持たせる */
   --spell: var(--ink);
-  --slot: 40px;
+  /* 一番幅を取る「Y = □ + □」が一行に収まる幅 */
+  width: calc(var(--die) * 2 + 5.25rem);
+  flex: none;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -368,6 +386,10 @@ button.die:disabled {
   transition:
     box-shadow 150ms ease,
     opacity 150ms ease;
+}
+/* 決定のボタンが効果の文に重ならないように、下に空きを取る */
+.seat-me .card {
+  padding-bottom: 1.6rem;
 }
 .card-fireball {
   --spell: var(--fireball);
@@ -411,29 +433,32 @@ button.die:disabled {
 .card.is-ready {
   box-shadow: 0 0 0 2px var(--go);
 }
+/* 決定は、置き場、効果と読み下ろした先のカードの下端に重ねる */
 .confirm {
-  margin-left: auto;
-  width: 30px;
-  height: 30px;
-  flex: none;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translate(-50%, 50%);
+  width: 44px;
+  height: 44px;
   display: grid;
   place-items: center;
   padding: 0;
-  border: 0;
+  border: 3px solid var(--surface);
   border-radius: 50%;
   background: var(--go);
   color: #fff;
   cursor: pointer;
-  box-shadow: 0 2px 6px rgba(29, 34, 51, 0.25);
+  box-shadow: 0 3px 8px rgba(29, 34, 51, 0.3);
   animation: pop-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
 }
 .confirm svg {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
 }
 @keyframes pop-in {
   from {
-    transform: scale(0.4);
+    transform: translate(-50%, 50%) scale(0.4);
     opacity: 0;
   }
 }
@@ -450,20 +475,18 @@ button.die:disabled {
 .face-row:not(.is-on) {
   opacity: 0.4;
 }
+/* 置き場の行は折り返さない */
 .slots,
 .slot-group {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 0.25rem;
 }
-.slot-group {
-  flex-wrap: nowrap;
-}
 .slot {
-  width: var(--slot);
-  height: var(--slot);
+  width: var(--die);
+  height: var(--die);
   flex: none;
   display: grid;
   place-items: center;
@@ -519,22 +542,25 @@ button.slot:disabled {
   text-align: center;
   color: var(--ink-soft);
 }
+/* パスは手元のダイスの並びの右端に置く */
 .pass {
-  width: 100%;
-  height: 100%;
-  min-height: 90px;
+  margin-left: auto;
+  align-self: center;
+  width: 48px;
+  height: 48px;
+  flex: none;
   display: grid;
   place-items: center;
   padding: 0;
   border: 2px dashed var(--line);
-  border-radius: 10px;
+  border-radius: 50%;
   background: transparent;
   color: var(--ink-soft);
   cursor: pointer;
 }
 .pass svg {
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
 }
 .pass:hover:not(:disabled) {
   border-color: var(--ink-soft);
@@ -544,96 +570,440 @@ button.slot:disabled {
   opacity: 0.4;
   cursor: default;
 }
-/* 相手の側は一回り小さく描く */
-.seat-cpu .card {
-  --slot: 32px;
+/* 狭い画面で並べるカードの名前 */
+.tabs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.3rem;
 }
-.seat-cpu .tray {
-  --die: 52px;
+.tab {
+  display: block;
+  width: 100%;
+  padding: 0.3rem 0 0.25rem;
+  border: 1px solid var(--line);
+  border-bottom: 4px solid var(--spell, var(--ink));
+  border-radius: 8px;
+  background: var(--table);
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.95rem;
+  text-align: center;
+  color: var(--spell, var(--ink));
+  transition:
+    box-shadow 150ms ease,
+    opacity 150ms ease;
+}
+button.tab {
+  cursor: pointer;
+}
+.tab.is-off {
+  opacity: 0.4;
+}
+.tab.is-current {
+  background: var(--surface);
+  box-shadow: 0 0 0 2px var(--spell, var(--ink));
+}
+.tab.is-placed {
+  background: color-mix(in srgb, var(--spell, var(--ink)) 14%, var(--surface));
+}
+.tab.is-hint {
+  animation: slot-hint 2.4s ease-in-out infinite;
+}
+.tab.is-target {
+  border-color: var(--spell, var(--ink));
+  background: color-mix(in srgb, var(--spell, var(--ink)) 16%, var(--surface));
+  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--spell, var(--ink)) 55%, transparent);
 }
 
-/* 中央 */
+/* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
 .arena {
+  position: relative;
+  min-height: 158px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.9rem;
-  padding: 0.5rem 0;
+  gap: 0.75rem;
   text-align: center;
 }
-.reveal {
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる */
+.stage {
+  position: relative;
   width: 100%;
+  height: 150px;
 }
-.reveal-pair {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.75rem;
+.stage > * {
+  position: absolute;
 }
-.reveal-side {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.3rem;
-  padding: 0.75rem;
-  border-radius: 12px;
-  background: var(--surface);
-  border: 2px solid var(--who);
-  animation: flip-in 420ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+/* 攻撃の矢印。攻撃した側の端から伸びていく */
+.arrow {
+  width: 34px;
+  transform: translateX(-50%);
+  z-index: 1;
+  animation: var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both;
 }
-.reveal-me {
-  --who: var(--me);
-  animation-delay: 60ms;
+.arrow.is-up {
+  --shoot: shoot-up;
 }
-.reveal-cpu {
-  --who: var(--cpu);
+.arrow.is-down {
+  --shoot: shoot-down;
 }
-.reveal-who {
-  font-size: 0.8rem;
-  color: var(--who);
-  font-weight: 700;
+.arrow::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  width: 6px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--spell, var(--ink));
 }
-.reveal-action {
-  font-family: var(--font-spell);
+.arrow::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  margin-left: -11px;
+  border-left: 11px solid transparent;
+  border-right: 11px solid transparent;
+}
+.arrow.is-up::before {
+  top: 14px;
+  bottom: 0;
+}
+.arrow.is-up::after {
+  top: 0;
+  border-bottom: 16px solid var(--spell, var(--ink));
+}
+.arrow.is-down::before {
+  top: 0;
+  bottom: 14px;
+}
+.arrow.is-down::after {
+  bottom: 0;
+  border-top: 16px solid var(--spell, var(--ink));
+}
+.arrow-value {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border-radius: 13px;
+  background: var(--spell, var(--ink));
+  border: 2px solid var(--table);
+  color: #fff;
   font-weight: 800;
-  font-size: 1.3rem;
-}
-.reveal-dice {
-  display: flex;
-  gap: 0.3rem;
-  min-height: 28px;
-}
-.reveal-damage {
-  font-weight: 700;
+  font-size: 0.85rem;
+  line-height: 22px;
   font-variant-numeric: tabular-nums;
 }
-.reveal-lines {
-  list-style: none;
-  margin: 0.75rem 0 0;
-  padding: 0;
-  color: var(--ink-soft);
-  font-size: 0.95rem;
+/* 反射に当たった矢印は、返る矢印が出ると薄くなる */
+.arrow.is-spent {
+  animation:
+    var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both,
+    fade 220ms ease var(--gone) both;
 }
-@keyframes flip-in {
+@keyframes shoot-up {
   from {
-    transform: rotateX(80deg);
-    opacity: 0;
+    clip-path: inset(100% 0 0 0);
   }
   to {
-    transform: rotateX(0);
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes shoot-down {
+  from {
+    clip-path: inset(0 0 100% 0);
+  }
+  to {
+    clip-path: inset(0 0 0 0);
+  }
+}
+@keyframes gone {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes fade {
+  to {
+    opacity: 0.3;
+  }
+}
+@keyframes appear {
+  from {
+    opacity: 0;
+  }
+}
+/* 受けたダメージ。当たった側の端で弾ける */
+.burst {
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-items: center;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  animation: burst 380ms cubic-bezier(0.2, 0.9, 0.3, 1.4) var(--delay) both;
+}
+.burst svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  fill: var(--hit);
+  filter: drop-shadow(0 2px 4px rgba(29, 34, 51, 0.3));
+}
+.burst span {
+  position: relative;
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+@keyframes burst {
+  from {
+    transform: translate(-50%, -50%) scale(0);
+    opacity: 0;
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.25);
     opacity: 1;
   }
 }
+/* 構え。障壁、反射、詠唱は受ける側の端に置く */
+.stance {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 2px solid var(--spell, var(--ink-soft));
+  background: var(--surface);
+  color: var(--spell, var(--ink-soft));
+  transform: translate(-50%, -50%);
+  animation: stance-in 240ms ease both;
+}
+.stance svg {
+  grid-area: 1 / 1;
+  width: 20px;
+  height: 20px;
+}
+.stance-value {
+  position: absolute;
+  right: -10px;
+  bottom: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--spell, var(--ink-soft));
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 18px;
+}
+.stance-pass {
+  border-style: dashed;
+  border-color: var(--line);
+  color: var(--ink-soft);
+}
+.stance.is-pierced {
+  animation:
+    stance-in 240ms ease both,
+    fade 220ms ease var(--delay) both;
+}
+/* 崩れる詠唱は、攻撃が当たった時に印が切り替わる */
+.stance.is-broken .chant-on {
+  animation: gone 200ms ease var(--delay) both;
+}
+.stance.is-broken .chant-off {
+  animation: appear 200ms ease var(--delay) both;
+}
+@keyframes stance-in {
+  from {
+    transform: translate(-50%, -50%) scale(0.3);
+    opacity: 0;
+  }
+}
+/* ステップやターンの切り替わり */
+.banner {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  display: grid;
+  place-items: center;
+  background: color-mix(in srgb, var(--table) 88%, transparent);
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.8rem;
+  pointer-events: none;
+  animation: banner 900ms ease both;
+}
+@keyframes banner {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  20%,
+  70% {
+    opacity: 1;
+    transform: none;
+  }
+  to {
+    opacity: 0;
+  }
+}
+/* 新しいターンのダイスは、振ったように転がって出る */
+.tray.is-rolling .die {
+  animation: die-roll 560ms cubic-bezier(0.2, 0.8, 0.3, 1.2) both;
+}
+.tray.is-rolling .die:nth-child(2) {
+  animation-delay: 70ms;
+}
+.tray.is-rolling .die:nth-child(3) {
+  animation-delay: 140ms;
+}
+@keyframes die-roll {
+  from {
+    transform: translateY(-24px) rotate(-200deg) scale(0.6);
+    opacity: 0;
+  }
+}
+
+/* 戦闘履歴。上下の並びは卓と同じ */
+.history {
+  width: 100%;
+  max-width: 560px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  text-align: left;
+}
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 340px;
+  overflow: auto;
+}
+.history-entry {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.2rem 0.6rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+}
+.history-when {
+  grid-row: span 2;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--ink-soft);
+}
+.history-side {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-height: 30px;
+  padding-left: 0.45rem;
+  border-left: 3px solid var(--who);
+}
+.side-me {
+  --who: var(--me);
+}
+.side-cpu {
+  --who: var(--cpu);
+}
+.history-who {
+  width: 3.4em;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--who);
+}
+.history-act {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--spell, var(--ink));
+}
+.history-pass {
+  display: grid;
+  color: var(--ink-soft);
+}
+.history-pass svg {
+  width: 18px;
+  height: 18px;
+}
+.history-dice {
+  display: flex;
+  gap: 0.2rem;
+}
+.history-hit {
+  margin-left: auto;
+  padding: 0 0.5rem;
+  border-radius: 999px;
+  background: var(--hit);
+  color: #fff;
+  font-weight: 800;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.history-toggle {
+  align-self: center;
+  padding: 0.1rem 0.5rem;
+  border: 0;
+  background: none;
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .reveal-side,
   .hp-fill,
   .die,
   .card,
   .slot,
   .confirm,
+  .tab,
+  .arrow,
+  .burst,
+  .stance,
+  .stance svg,
+  .banner,
+  .tray.is-rolling .die,
   .card.is-hint .face-row.is-on .slot:not(.is-filled) {
     animation: none;
     transition: none;
+  }
+  .arrow.is-spent,
+  .stance.is-pierced {
+    opacity: 0.3;
+  }
+  .stance.is-broken .chant-on {
+    opacity: 0;
   }
 }
 .result {
@@ -655,41 +1025,28 @@ button.slot:disabled {
   justify-content: center;
 }
 
-/* 経過とルール */
-.log,
+/* ルール */
 .rules {
   border-top: 1px solid var(--line);
   padding-top: 0.5rem;
 }
-.log summary,
 .rules summary {
   cursor: pointer;
   font-weight: 700;
 }
-.log-list,
 .rules-list {
   margin: 0.5rem 0 0;
   padding-left: 1.2rem;
   font-size: 0.9rem;
   color: var(--ink-soft);
 }
-.log-when {
-  display: block;
-  font-weight: 700;
-  color: var(--ink);
-}
 .rules-list strong {
   font-family: var(--font-spell);
   color: var(--ink);
 }
 
-@media (max-width: 640px) {
-  .cards {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-}
-
-@media (max-width: 520px) {
+/* useNarrow.ts の境目と合わせる */
+@media (max-width: 560px) {
   .table {
     padding: 0.75rem 0.75rem 4rem;
     gap: 0.75rem;
@@ -697,32 +1054,10 @@ button.slot:disabled {
   .seat {
     padding: 0.6rem;
   }
-  .tray {
-    --die: 54px;
-  }
-  .seat-cpu .tray {
-    --die: 44px;
-  }
-  .card {
-    --slot: 34px;
-  }
-  /* 相手のカードは自分と同じなので、狭い画面では効果の文を省いて一列に並べる */
-  .seat-cpu .cards {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 0.3rem;
-  }
-  .seat-cpu .card {
-    --slot: 22px;
-    padding: 0.25rem 0.2rem 0.35rem;
-  }
-  .seat-cpu .card-name {
-    font-size: 0.95rem;
-  }
-  .seat-cpu .sym {
-    font-size: 0.8rem;
-  }
-  .seat-cpu .effect {
-    display: none;
+  /* 自分は一枚だけ大きく出すのでダイスも大きく、相手は名前と公開したカードだけなので小さく */
+  .table {
+    --die-me: 60px;
+    --die-cpu: 44px;
   }
   .level-label {
     margin-left: 0;

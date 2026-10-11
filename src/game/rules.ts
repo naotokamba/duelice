@@ -5,7 +5,7 @@
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
 
 import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS } from './cards'
-import type { Action, CardId, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport } from './types'
+import type { Action, ActionKind, CardId, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport } from './types'
 import { DEFAULT_CONFIG } from './types'
 
 export * from './types'
@@ -90,44 +90,67 @@ export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   return out
 }
 
-function power(vals: number[], a: Action): number {
-  if (a.kind === 'pass') return 0
-  return ACTION_DEFS[a.kind].power?.(vals) ?? 0
-}
-
-/** 攻撃 a が、行動 b をとった相手に与える素のダメージ。反射は別で処理する */
-function rawDamage(atk: number[], a: Action, defVals: number[], b: Action): number {
-  if (a.kind === 'pass') return 0
-  const guard = b.kind === 'pass' || ACTION_DEFS[a.kind].piercing ? 0 : (ACTION_DEFS[b.kind].guard?.(defVals) ?? 0)
-  return Math.max(0, power(atk, a) - guard)
-}
-
 function reflects(a: Action): boolean {
   return a.kind !== 'pass' && !!ACTION_DEFS[a.kind].reflects
 }
 
+/** 攻撃が相手の構えに当たってどうなったか。当たった、障壁に削られた、障壁をすり抜けた、反射で返された */
+export type Outcome = 'hit' | 'guarded' | 'pierced' | 'reflected'
+
+/** 一つの攻撃の行方。画面はこれを矢印に描き、ダメージもこれから数える */
+export interface Strike {
+  from: PlayerIndex
+  kind: ActionKind
+  power: number
+  outcome: Outcome
+  /** ダメージを受けた側。反射されたら攻撃した側に返る */
+  to: PlayerIndex
+  dealt: number
+}
+
+/** 一つのステップで放たれた攻撃を全て、その行方とともに返す */
+export function strikes(vals: [number[], number[]], acts: [Action, Action]): Strike[] {
+  const out: Strike[] = []
+  for (const from of [0, 1] as const) {
+    const a = acts[from]
+    if (a.kind === 'pass') continue
+    const def = ACTION_DEFS[a.kind]
+    if (!def.power) continue
+    const power = def.power(vals[from])
+    const other: PlayerIndex = from === 0 ? 1 : 0
+    const b = acts[other]
+    const guardOf = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind].guard
+    const guard = guardOf && !def.piercing ? guardOf(vals[other]) : 0
+    const outcome: Outcome = reflects(b) ? 'reflected' : guardOf ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
+    out.push({
+      from,
+      kind: a.kind,
+      power,
+      outcome,
+      to: outcome === 'reflected' ? from : other,
+      dealt: Math.max(0, power - guard),
+    })
+  }
+  return out
+}
+
 /** 一つのステップで双方が受けるダメージ [0が受ける, 1が受ける] */
 export function stepDamage(vals: [number[], number[]], acts: [Action, Action]): [number, number] {
-  const to1 = rawDamage(vals[0], acts[0], vals[1], acts[1])
-  const to0 = rawDamage(vals[1], acts[1], vals[0], acts[0])
-  let take0 = to0
-  let take1 = to1
-  if (reflects(acts[1])) {
-    take1 -= to1
-    take0 += to1
-  }
-  if (reflects(acts[0])) {
-    take0 -= to0
-    take1 += to0
-  }
-  return [take0, take1]
+  const dmg: [number, number] = [0, 0]
+  for (const s of strikes(vals, acts)) dmg[s.to] += s.dealt
+  return dmg
+}
+
+/** 詠唱に置いた目以上のダメージを受けると、詠唱は崩れる */
+export function breaksChant(vals: number[], taken: number): boolean {
+  return taken >= vals[0]
 }
 
 function describe(who: string, vals: number[], a: Action, ovals: number[], b: Action, dealt: number) {
   if (a.kind === 'pass') return `${who}は何もしなかった`
   const def = ACTION_DEFS[a.kind]
-  const p = power(vals, a)
   if (def.power) {
+    const p = def.power(vals)
     if (b.kind !== 'pass' && reflects(b)) return `${who}の${def.label} ${p}点は${ACTION_DEFS[b.kind].label}で返された`
     const guard = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind]
     if (guard?.guard && def.piercing) return `${who}の${def.label} ${p}点、${guard.label}をすり抜けた`
@@ -157,7 +180,7 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     const def = ACTION_DEFS[a.kind]
     let chant = p.chant
     if (def.chant) {
-      const broken = dmg[i] >= vals[i][0]
+      const broken = breaksChant(vals[i], dmg[i])
       chant = broken ? 'broken' : 'charged'
       lines.push(broken ? `${names[i]}の詠唱は ${dmg[i]}点を受けて崩れた` : `${names[i]}の詠唱は保たれた`)
     }

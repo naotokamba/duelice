@@ -1,5 +1,5 @@
 import { SkipForward } from 'lucide-react'
-import { type ReactNode, useMemo, useRef, useState } from 'react'
+import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ACTION_DEFS, CARD_DEFS, CARD_ORDER } from '../game/cards'
 import {
   availableCards,
@@ -13,7 +13,6 @@ import {
 import { LEVEL_NAMES, type Level, Thinker } from '../game/cpu'
 import {
   type Action,
-  actionLabel,
   type CardId,
   freeDice,
   type GameState,
@@ -23,12 +22,15 @@ import {
   type PlayerState,
   type Rng,
   resolveStep,
-  type StepReport,
+  strikes,
   turnOver,
 } from '../game/rules'
-import { Card, type CardPlay, type Shown } from './Card'
+import { Card, type CardPlay, CardTabs, type Shown } from './Card'
 import { Die } from './Die'
+import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
+import { History } from './History'
 import { useDiceDrag } from './useDiceDrag'
+import { useNarrow } from './useNarrow'
 
 /** 相手の手を決める関数。既定はCPU。テストやオンライン対戦で差し替える */
 export type Opponent = (state: GameState, level: Level, rng: Rng) => Action
@@ -49,6 +51,15 @@ function isCardId(s: string | null): s is CardId {
   return CARD_ORDER.includes(s as CardId)
 }
 
+/** ステップやターンの切り替わりを知らせる帯を出す時間 */
+export const BANNER_MS = 900
+
+interface Banner {
+  text: string
+  /** 新しいターン。ダイスを振る動きを付ける */
+  turn: boolean
+}
+
 export function Game({ rng = Math.random, opponent }: GameProps) {
   const [level, setLevel] = useState<Level>('normal')
   const [game, setGame] = useState<GameState | null>(null)
@@ -56,8 +67,46 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const [placement, setPlacement] = useState<Placement | null>(null)
   /** タップで持ち上げたダイス。次にタップした置き場に置く */
   const [held, setHeld] = useState<number | null>(null)
+  /** 狭い画面で大きく出しているカード */
+  const [focus, setFocus] = useState<CardId | null>(null)
+  /** 公開してから、何ミリ秒目までの攻撃が当たったか。当たった分だけ体力を減らして見せる */
+  const [landed, setLanded] = useState(Number.POSITIVE_INFINITY)
+  /** 決着した公開の動きが終わった。勝敗はそれから出す */
+  const [settled, setSettled] = useState(false)
+  const [banner, setBanner] = useState<Banner | null>(null)
   const thinker = useRef(new Thinker())
   const drag = useDiceDrag()
+  const narrow = useNarrow()
+
+  // 公開したら、矢印が当たる時刻に体力を減らし、動きが終わったら自動で次のステップかターンへ進む
+  useEffect(() => {
+    const last = game?.history[game.history.length - 1]
+    if (!game || !revealed || !last) return
+    const list = strikes(last.values, last.actions)
+    const timers = [...new Set(list.map(landsAt))].map((t) => setTimeout(() => setLanded(t), t))
+    timers.push(
+      setTimeout(() => {
+        setLanded(Number.POSITIVE_INFINITY)
+        if (game.winner !== null) {
+          setSettled(true)
+          return
+        }
+        const turn = turnOver(game)
+        setGame(turn ? nextTurn(game, rng) : game)
+        setRevealed(false)
+        setBanner({ text: turn ? `${game.turn + 1}ターン目` : '二ステップ目', turn })
+      }, revealMs(list)),
+    )
+    return () => {
+      for (const t of timers) clearTimeout(t)
+    }
+  }, [game, revealed, rng])
+
+  useEffect(() => {
+    if (!banner) return
+    const t = setTimeout(() => setBanner(null), BANNER_MS)
+    return () => clearTimeout(t)
+  }, [banner])
 
   const clearHand = () => {
     setPlacement(null)
@@ -68,6 +117,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     thinker.current = new Thinker()
     setGame(newGame(rng))
     setRevealed(false)
+    setSettled(false)
+    setLanded(Number.POSITIVE_INFINITY)
+    setBanner({ text: '1ターン目', turn: true })
     clearHand()
   }
 
@@ -82,18 +134,27 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)
     setGame(resolveStep(game, [mine, theirs]))
     setRevealed(true)
+    setLanded(0)
+    setBanner(null)
     clearHand()
   }
 
-  const proceed = () => {
-    if (game.winner !== null) return
-    setGame(turnOver(game) ? nextTurn(game, rng) : game)
-    setRevealed(false)
-  }
+  /** まだ矢印が当たっていないダメージ。公開の途中は、その分だけ体力を多く見せる */
+  const pending = (who: PlayerIndex) =>
+    showReveal
+      ? strikes(last.values, last.actions)
+          .filter((x) => x.to === who && landsAt(x) > landed)
+          .reduce((sum, x) => sum + x.dealt, 0)
+      : 0
+  /** 詠唱の結果は、矢印が当たるまで伏せる */
+  const quiet = showReveal && landed < IMPACT_MS
 
   const put = (card: CardId, die: number) => {
     const next = placeDie(game, 0, placement, card, die)
-    if (next) setPlacement(next)
+    if (next) {
+      setPlacement(next)
+      setFocus(card)
+    }
     setHeld(null)
   }
 
@@ -140,32 +201,68 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     }
   }
 
-  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null, extra?: ReactNode) => {
+  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null) => {
     const p = game.players[who]
     const usable = availableCards(game, who)
-    return (
-      <ul className="cards">
-        {CARD_ORDER.map((c) => (
-          <Card
-            key={c}
-            card={c}
-            roll={p.roll}
-            active={usable.has(c) ? kindsNow(game, who, c) : []}
-            used={p.usedCards.includes(c) && !usable.has(c)}
-            shown={shown?.card === c ? shown : null}
-            play={who === 0 ? playFor(c) : undefined}
-          />
-        ))}
-        {extra}
-      </ul>
+    const cardView = (c: CardId) => (
+      <Card
+        key={c}
+        card={c}
+        roll={p.roll}
+        active={usable.has(c) ? kindsNow(game, who, c) : []}
+        used={p.usedCards.includes(c) && !usable.has(c)}
+        shown={shown?.card === c ? shown : null}
+        play={who === 0 ? playFor(c) : undefined}
+      />
+    )
+    if (!narrow) return <ul className="cards">{CARD_ORDER.map(cardView)}</ul>
+
+    // 狭い画面では名前を並べ、一枚だけ大きく出す。相手は公開したカードだけ出す
+    const current =
+      who === 0 ? (shown?.card ?? focus ?? CARD_ORDER.find((c) => usable.has(c)) ?? CARD_ORDER[0]) : shown?.card
+    const tabs = (
+      <CardTabs
+        tabs={CARD_ORDER.map((c) => ({
+          card: c,
+          off: !usable.has(c) && shown?.card !== c,
+          current: c === current,
+          target: who === 0 && choosing && held !== null && placeDie(game, 0, placement, c, held) !== null,
+          hint: who === 0 && choosing && held === null && usable.has(c),
+          placed: shown?.card === c,
+        }))}
+        onPick={who === 0 && choosing ? pick : undefined}
+      />
+    )
+    const one = current && <ul className="cards cards-one">{cardView(current)}</ul>
+    return who === 0 ? (
+      <>
+        {tabs}
+        {one}
+      </>
+    ) : (
+      <>
+        {one}
+        {tabs}
+      </>
     )
   }
 
-  const trayOf = (who: PlayerIndex, shown: Shown | null) => {
+  /** 狭い画面でカードの名前を押した。持っているダイスを置けるなら置き、そのカードを出す */
+  const pick = (c: CardId) => {
+    if (held !== null && placeDie(game, 0, placement, c, held)) put(c, held)
+    else setFocus(c)
+  }
+
+  const trayOf = (who: PlayerIndex, shown: Shown | null, extra?: ReactNode) => {
     const p = game.players[who]
     const free = freeDice(p)
     return (
-      <fieldset className="tray" aria-label="ダイス" data-drop={who === 0 && choosing ? 'tray' : undefined}>
+      <fieldset
+        key={game.turn}
+        className={banner?.turn ? 'tray is-rolling' : 'tray'}
+        aria-label="ダイス"
+        data-drop={who === 0 && choosing ? 'tray' : undefined}
+      >
         {p.roll.map((v, i) => {
           if (shown?.dice.includes(i)) return <span key={i} className="socket" aria-hidden="true" />
           const used = !free.includes(i)
@@ -182,23 +279,22 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             />
           )
         })}
+        {extra}
       </fieldset>
     )
   }
 
   const pass = (
-    <li className="pass-slot">
-      <button
-        type="button"
-        className="pass"
-        aria-label="パス"
-        title="パス"
-        disabled={!choosing}
-        onClick={() => commit({ kind: 'pass' })}
-      >
-        <SkipForward aria-hidden="true" />
-      </button>
-    </li>
+    <button
+      type="button"
+      className="pass"
+      aria-label="パス"
+      title="パス"
+      disabled={!choosing}
+      onClick={() => commit({ kind: 'pass' })}
+    >
+      <SkipForward aria-hidden="true" />
+    </button>
   )
 
   return (
@@ -211,41 +307,60 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         <p className="level-label">相手の強さ：{LEVEL_NAMES[level]}</p>
       </header>
 
-      <Seat side="cpu" name="相手" player={game.players[1]} maxHp={game.config.maxHp}>
+      <Seat
+        side="cpu"
+        name="相手"
+        player={game.players[1]}
+        hp={game.players[1].hp + pending(1)}
+        maxHp={game.config.maxHp}
+        quiet={quiet}
+      >
         {cardsOf(1, cpuShown)}
         {trayOf(1, cpuShown)}
       </Seat>
 
-      {(showReveal || game.winner !== null) && (
-        <section className="arena" aria-live="polite">
-          {showReveal && <Reveal report={last} />}
-          {game.winner !== null ? (
-            <div className="result">
-              <p className="result-text">
-                {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
-              </p>
-              <div className="result-actions">
-                <button type="button" className="btn btn-primary" onClick={start}>
-                  もう一戦
-                </button>
-                <button type="button" className="btn" onClick={() => setGame(null)}>
-                  強さを選び直す
-                </button>
-              </div>
+      <section className="arena">
+        {showReveal && <Exchange key={game.history.length} report={last} />}
+        {showReveal && (
+          <ul className="sr-only" aria-live="polite">
+            {last.lines.map((l, i) => (
+              <li key={i}>{l}</li>
+            ))}
+          </ul>
+        )}
+        {!revealed && <History history={game.history} />}
+        {banner && !revealed && (
+          <p key={banner.text} className="banner">
+            {banner.text}
+          </p>
+        )}
+        {settled && game.winner !== null && (
+          <div className="result">
+            <p className="result-text">
+              {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
+            </p>
+            <div className="result-actions">
+              <button type="button" className="btn btn-primary" onClick={start}>
+                もう一戦
+              </button>
+              <button type="button" className="btn" onClick={() => setGame(null)}>
+                強さを選び直す
+              </button>
             </div>
-          ) : (
-            // 公開後は Enter だけで先へ進めるように、進むボタンへフォーカスを移す
-            // biome-ignore lint/a11y/noAutofocus: 操作の流れに沿ったフォーカス移動で、ページ読み込み時の自動フォーカスではない
-            <button type="button" className="btn btn-primary" onClick={proceed} autoFocus>
-              {turnOver(game) ? '次のターンへ' : '二ステップ目へ'}
-            </button>
-          )}
-        </section>
-      )}
+          </div>
+        )}
+      </section>
 
-      <Seat side="me" name="あなた" player={game.players[0]} maxHp={game.config.maxHp}>
-        {trayOf(0, myShown)}
-        {cardsOf(0, myShown, pass)}
+      <Seat
+        side="me"
+        name="あなた"
+        player={game.players[0]}
+        hp={game.players[0].hp + pending(0)}
+        maxHp={game.config.maxHp}
+        quiet={quiet}
+      >
+        {trayOf(0, myShown, pass)}
+        {cardsOf(0, myShown)}
       </Seat>
 
       {drag.view && (
@@ -254,7 +369,6 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         </div>
       )}
 
-      <Log history={game.history} />
       <Rules />
     </main>
   )
@@ -286,14 +400,18 @@ interface SeatProps {
   side: 'me' | 'cpu'
   name: string
   player: PlayerState
+  /** 見せる体力。公開の途中は、まだ当たっていないダメージの分だけ多い */
+  hp: number
   maxHp: number
+  /** 詠唱の結果を伏せる */
+  quiet: boolean
   /** 体力から遠い順に並べる中身。相手は カード、ダイス、自分は ダイス、カード の順に渡す */
   children: ReactNode
 }
 
 /** 席。相手と自分で上下が対になるように、体力の帯を卓の中央側に置く */
-function Seat({ side, name, player, maxHp, children }: SeatProps) {
-  const hp = Math.max(0, player.hp)
+function Seat({ side, name, player, hp: shown, maxHp, quiet, children }: SeatProps) {
+  const hp = Math.max(0, shown)
   const status = (
     <div className="seat-status">
       <h2 className="seat-name">{name}</h2>
@@ -306,8 +424,8 @@ function Seat({ side, name, player, maxHp, children }: SeatProps) {
           <small> / {maxHp}</small>
         </span>
       </div>
-      {player.chant === 'charged' && <span className="badge badge-chant">詠唱中</span>}
-      {player.chant === 'broken' && <span className="badge">詠唱は崩れた</span>}
+      {!quiet && player.chant === 'charged' && <span className="badge badge-chant">詠唱中</span>}
+      {!quiet && player.chant === 'broken' && <span className="badge">詠唱は崩れた</span>}
     </div>
   )
   return (
@@ -316,54 +434,6 @@ function Seat({ side, name, player, maxHp, children }: SeatProps) {
       {children}
       {side === 'cpu' && status}
     </section>
-  )
-}
-
-function Reveal({ report }: { report: StepReport }) {
-  const side = (i: 0 | 1) => (
-    <div className={`reveal-side reveal-${i === 0 ? 'me' : 'cpu'}`}>
-      <span className="reveal-who">{i === 0 ? 'あなた' : '相手'}</span>
-      <span className="reveal-action">{actionLabel(report.actions[i])}</span>
-      <span className="reveal-dice">
-        {report.values[i].map((v, k) => (
-          <Die key={k} value={v} size="small" />
-        ))}
-      </span>
-      <span className="reveal-damage">{report.damage[i] > 0 ? `${report.damage[i]}点受けた` : '無傷'}</span>
-    </div>
-  )
-  return (
-    <div className="reveal">
-      <div className="reveal-pair">
-        {side(1)}
-        {side(0)}
-      </div>
-      <ul className="reveal-lines">
-        {report.lines.map((l, i) => (
-          <li key={i}>{l}</li>
-        ))}
-      </ul>
-    </div>
-  )
-}
-
-function Log({ history }: { history: StepReport[] }) {
-  const items = useMemo(() => [...history].reverse(), [history])
-  if (items.length === 0) return null
-  return (
-    <details className="log">
-      <summary>これまでの経過</summary>
-      <ol className="log-list">
-        {items.map((r, i) => (
-          <li key={i}>
-            <span className="log-when">
-              {r.turn}ターン目 {r.step === 1 ? '一' : '二'}ステップ目
-            </span>
-            {r.lines.join('。')}。あなた {r.damage[0]}点、相手 {r.damage[1]}点
-          </li>
-        ))}
-      </ol>
-    </details>
   )
 }
 

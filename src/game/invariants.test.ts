@@ -5,7 +5,17 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
 import { ACTION_DEFS, CARD_ORDER } from './cards'
-import { diceValues, isLegal, legalActions, newGame, nextTurn, resolveStep, stepDamage, turnOver } from './rules'
+import {
+  diceValues,
+  isLegal,
+  legalActions,
+  newGame,
+  nextTurn,
+  resolveStep,
+  stepDamage,
+  strikes,
+  turnOver,
+} from './rules'
 import type { Action, CardId, ChantState, GameState } from './types'
 
 const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
@@ -111,6 +121,32 @@ describe('ダメージ', () => {
           const a = acts[i]
           const def = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind]
           if (!def?.power && !def?.reflects) expect(dmg[1 - i]).toBe(0)
+        }
+      }),
+    )
+  })
+  it('攻撃は攻撃した行動の数だけあり、行方は受けた側の構えで決まる', () => {
+    fc.assert(
+      fc.property(stateWithActsArb, ({ s, acts }) => {
+        const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
+        const list = strikes(vals, acts)
+        const attackers = ([0, 1] as const).filter((i) => {
+          const a = acts[i]
+          return a.kind !== 'pass' && !!ACTION_DEFS[a.kind].power
+        })
+        expect(list.map((x) => x.from)).toEqual(attackers)
+        for (const x of list) {
+          const def = ACTION_DEFS[x.kind]
+          const other = x.from === 0 ? 1 : 0
+          const b = acts[other]
+          const bdef = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind]
+          expect(x.power).toBe(def.power?.(vals[x.from]))
+          expect(x.dealt).toBeGreaterThanOrEqual(0)
+          expect(x.dealt).toBeLessThanOrEqual(x.power)
+          const expected = bdef?.reflects ? 'reflected' : bdef?.guard ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
+          expect(x.outcome).toBe(expected)
+          expect(x.to).toBe(x.outcome === 'reflected' ? x.from : other)
+          if (x.outcome !== 'guarded') expect(x.dealt).toBe(x.power)
         }
       }),
     )

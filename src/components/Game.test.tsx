@@ -1,14 +1,33 @@
 // @vitest-environment happy-dom
 // 画面の操作の流れのテスト。出目は乱数を差し替えて固定し、相手の手も差し替える。
 
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Action, Rng } from '../game/types'
 import { seeded } from '../test/helpers'
-import { Game, type Opponent } from './Game'
+import { IMPACT_MS } from './Exchange'
+import { BANNER_MS, Game, type Opponent } from './Game'
 
-afterEach(cleanup)
+// 公開の動きと自動の進行は時間で進むので、偽の時計で進める。
+// Testing Library は内部で setTimeout の完了を待つので、偽の時計も実時間に合わせて少しずつ進める
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'], shouldAdvanceTime: true })
+})
+afterEach(() => {
+  cleanup()
+  vi.useRealTimers()
+})
+
+/** 時計を ms だけ進める */
+async function advance(ms: number) {
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(ms)
+  })
+}
+
+/** 公開の動きが終わり、次のステップかターンへ進むまで待つ */
+const settle = () => advance(3000)
 
 /** 振る目を順に指定する乱数。一ターンは あなたの3個、相手の3個 の順。尽きたら種つきの乱数 */
 function dice(...turns: [number[], number[]][]): Rng {
@@ -58,7 +77,7 @@ function dragTo(el: Element, target: Element | null) {
 }
 
 async function start(props: Parameters<typeof Game>[0], level?: string) {
-  const user = userEvent.setup()
+  const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
   render(<Game {...props} />)
   if (level) await user.click(screen.getByRole('radio', { name: level }))
   await user.click(button('決闘を始める'))
@@ -106,21 +125,42 @@ describe('一ターンの流れ', () => {
     await user.click(button('決定'))
     expect(screen.getByText('1ターン目 一ステップ目 公開')).toBeTruthy()
     expect(screen.getByText('あなたの火球 6点')).toBeTruthy()
-    expect(cpuSeat().getByLabelText('体力 14 / 20')).toBeTruthy()
     // 公開中も、置いたダイスはカードの上に残る
     expect(myCard('火球').getAllByRole('img', { name: '6の目' })).toHaveLength(2)
+    // 矢印が当たるまで体力は減らない
+    expect(cpuSeat().getByLabelText('体力 20 / 20')).toBeTruthy()
+    await advance(IMPACT_MS)
+    expect(cpuSeat().getByLabelText('体力 14 / 20')).toBeTruthy()
 
-    await user.click(button('二ステップ目へ'))
+    // 待てば自動で二ステップ目へ進み、切り替わりを知らせる
+    await advance(1200)
     expect(screen.getByText('1ターン目 二ステップ目')).toBeTruthy()
+    expect(screen.getByText('二ステップ目')).toBeTruthy()
+    await advance(BANNER_MS)
+    expect(screen.queryByText('二ステップ目')).toBeNull()
+    // 一つ前の結果は戦闘履歴に出る
+    const history = () => within(screen.getByRole('region', { name: '戦闘履歴' }))
+    expect(history().getByText('火球')).toBeTruthy()
+    expect(history().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    expect(history().queryByRole('button', { name: 'これまで' })).toBeNull()
     // 使ったカードには置けず、使ったダイスは手元で薄くなる
     expect(myCard('火球').getByText('使用済み')).toBeTruthy()
     expect(myCard('火球').queryByRole('button', { name: '火球に置く' })).toBeNull()
     expect(mySeat().getAllByRole('img', { name: '6の目、使用済み' })).toHaveLength(2)
 
     await user.click(button('パス'))
-    await user.click(button('次のターンへ'))
+    await advance(2000)
     expect(screen.getByText('2ターン目 一ステップ目')).toBeTruthy()
+    expect(screen.getByText('2ターン目')).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '火球に置く' })).toHaveLength(2)
+
+    // 戦闘履歴は一つ前だけを出し、開けばそれより前も見られる
+    await advance(BANNER_MS)
+    expect(history().getAllByRole('listitem')).toHaveLength(1)
+    await user.click(history().getByRole('button', { name: 'これまで' }))
+    expect(history().getAllByRole('listitem')).toHaveLength(2)
+    await user.click(history().getByRole('button', { name: '閉じる' }))
+    expect(history().getAllByRole('listitem')).toHaveLength(1)
   })
 
   it('持ったダイスは置ける場所にだけ置け、置いたダイスは戻せる', async () => {
@@ -204,13 +244,16 @@ describe('一ターンの流れ', () => {
     expect(myCard('雷槍').getByText('詠唱。5以上受けると崩れる')).toBeTruthy()
     await user.click(button('決定'))
     expect(screen.getByText('あなたの詠唱は保たれた')).toBeTruthy()
-    await user.click(button('二ステップ目へ'))
+    // 詠唱の結果は、矢印が当たる時刻まで席には出さない
+    expect(mySeat().queryByText('詠唱中')).toBeNull()
+    await settle()
     expect(mySeat().getByText('詠唱中')).toBeTruthy()
 
     await place(user, 6, '雷槍')
     await place(user, 6, '雷槍')
     expect(myCard('雷槍').getByText('12ダメージ')).toBeTruthy()
     await user.click(button('決定'))
+    await settle()
     expect(cpuSeat().getByLabelText('体力 8 / 20')).toBeTruthy()
   })
 
@@ -224,11 +267,14 @@ describe('一ターンの流れ', () => {
     })
     await user.click(button('パス'))
     expect(screen.getByText('相手の火球 6点')).toBeTruthy()
-    expect(screen.getByText('6点受けた')).toBeTruthy()
-    expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
     const theirs = cardIn(cpuSeat(), '火球')
     expect(theirs.getAllByRole('img', { name: /^[56]の目$/ })).toHaveLength(2)
     expect(theirs.getByText('6ダメージ')).toBeTruthy()
+    await settle()
+    expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
+    const latest = within(screen.getByRole('region', { name: '戦闘履歴' }))
+    expect(latest.getByRole('img', { name: 'パス' })).toBeTruthy()
+    expect(latest.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
   })
 })
 
@@ -256,7 +302,7 @@ describe('引きずって置く', () => {
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
 
     // 少し待てば、またタップで選べる
-    await new Promise((r) => setTimeout(r, 0))
+    await advance(1)
     await user.click(within(tray).getByRole('button', { name: '2の目' }))
     expect(within(tray).getByRole('button', { name: '2の目' }).getAttribute('aria-pressed')).toBe('true')
   })
@@ -290,6 +336,85 @@ describe('引きずって置く', () => {
   })
 })
 
+describe('狭い画面', () => {
+  let matches = true
+  /** 画面の幅が変わったことを知らせる。テストから呼ぶ */
+  let notify = () => {}
+  beforeEach(() => {
+    matches = true
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      (media) =>
+        ({
+          get matches() {
+            return matches
+          },
+          media,
+          addEventListener: (_: string, f: () => void) => {
+            notify = f
+          },
+          removeEventListener: () => {},
+        }) as unknown as MediaQueryList,
+    )
+  })
+  afterEach(() => vi.restoreAllMocks())
+
+  const roll = (theirs: number[] = [1, 2, 3]) => dice([[4, 5, 6], theirs])
+  /** 席に出ているカード。名前を並べた欄は数えない */
+  const cardsShown = (seat: ReturnType<typeof mySeat>): HTMLElement[] => seat.queryAllByRole('listitem', { name: /./ })
+
+  it('カードの名前が並び、押したカードが一枚だけ出る', async () => {
+    const user = await start({ rng: roll(), opponent: passOpponent })
+    expect(cardsShown(mySeat())).toHaveLength(1)
+    expect(mySeat().getByRole('listitem', { name: '火球' })).toBeTruthy()
+    // 相手は名前だけ
+    expect(cardsShown(cpuSeat())).toHaveLength(0)
+    expect(cpuSeat().getByText('火球')).toBeTruthy()
+
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['障壁'])
+    expect(mySeat().getByRole('button', { name: '障壁' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('ダイスを持って名前を押すと、置けるカードなら置いて出す', async () => {
+    const user = await start({ rng: roll(), opponent: passOpponent })
+    const four = mySeat().getByRole('button', { name: '4の目' })
+    await user.click(four)
+    // 置けないカードは出すだけで、ダイスは持ったまま
+    await user.click(mySeat().getByRole('button', { name: '反射' }))
+    expect(mySeat().getByRole('listitem', { name: '反射' })).toBeTruthy()
+    expect(four.getAttribute('aria-pressed')).toBe('true')
+
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
+    expect(button('決定')).toBeTruthy()
+  })
+
+  it('名前へ引きずって置ける', async () => {
+    await start({ rng: roll(), opponent: passOpponent })
+    dragTo(mySeat().getByRole('button', { name: '5の目' }), mySeat().getByRole('button', { name: '魔弾' }))
+    expect(myCard('魔弾').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
+  })
+
+  it('相手が公開したカードは、相手の側に一枚出る', async () => {
+    const user = await start({
+      rng: roll([6, 5, 4]),
+      opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
+    })
+    await user.click(button('パス'))
+    expect(cardsShown(cpuSeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
+    await settle()
+    expect(cardsShown(cpuSeat())).toHaveLength(0)
+  })
+
+  it('画面の幅が変わると、カードを全て並べる表示に切り替わる', async () => {
+    await start({ rng: roll(), opponent: passOpponent })
+    expect(cardsShown(mySeat())).toHaveLength(1)
+    matches = false
+    act(() => notify())
+    expect(cardsShown(mySeat())).toHaveLength(5)
+  })
+})
+
 describe('決着', () => {
   /** 火球がまだ使えるか */
   const fireballReady = () => myCard('火球').queryAllByRole('button', { name: '火球に置く' }).length > 0
@@ -297,10 +422,6 @@ describe('決着', () => {
   /** 毎ターン 6,6,6 を振り、火球と魔弾で攻め続ける */
   async function attackUntilEnd(user: User) {
     for (let k = 0; k < 20 && !screen.queryByText(RESULT); k++) {
-      if (screen.queryByRole('button', { name: /ステップ目へ|次のターンへ/ })) {
-        await user.click(screen.getByRole('button', { name: /ステップ目へ|次のターンへ/ }))
-        continue
-      }
       const card = fireballReady() ? '火球' : '魔弾'
       await place(user, 6, card)
       // 二ステップ目の魔弾には、残っている6の目を全て置く
@@ -310,6 +431,7 @@ describe('決着', () => {
         await place(user, 6, card)
       }
       await user.click(button('決定'))
+      await settle()
     }
   }
 
@@ -320,6 +442,9 @@ describe('決着', () => {
     ]
     const user = await start({ rng: dice(six, six, six, six, six, six, six, six), opponent: passOpponent })
     await attackUntilEnd(user)
+    expect(screen.getByText('あなたの勝ち')).toBeTruthy()
+    // 決着したら、時間がたっても次へは進まない
+    await settle()
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
@@ -347,14 +472,11 @@ describe('決着', () => {
     const user = await start({ rng: dice(six, six, six, six, six, six, six, six), opponent: mirror })
     // 毎ターン火球 6 と魔弾 2 を撃ち合う。相手と同じ手を指す
     for (let k = 0; k < 20 && !screen.queryByText(RESULT); k++) {
-      if (screen.queryByRole('button', { name: /ステップ目へ|次のターンへ/ })) {
-        await user.click(screen.getByRole('button', { name: /ステップ目へ|次のターンへ/ }))
-        continue
-      }
       const fireball = fireballReady()
       await place(user, 6, fireball ? '火球' : '魔弾')
       if (fireball) await place(user, 6, '火球')
       await user.click(button('決定'))
+      await settle()
     }
     expect(screen.getByText('相打ち。引き分けです')).toBeTruthy()
   })
@@ -364,10 +486,9 @@ describe('本物のCPUとの通し', () => {
   it('パスを続けても、CPUの手で最後まで進み決着する', async () => {
     const user = await start({ rng: seeded(42) }, 'つよい')
     for (let k = 0; k < 60 && !screen.queryByText(RESULT); k++) {
-      const next = screen.queryByRole('button', { name: /ステップ目へ|次のターンへ/ })
-      await user.click(next ?? button('パス'))
+      await user.click(button('パス'))
+      await settle()
     }
     expect(screen.getByText('相手の勝ち')).toBeTruthy()
-    expect(screen.getByText('これまでの経過')).toBeTruthy()
   }, 30_000)
 })
