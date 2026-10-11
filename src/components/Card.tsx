@@ -4,9 +4,10 @@
 import { Check } from 'lucide-react'
 import { Fragment, type MouseEvent } from 'react'
 import { ACTION_DEFS, CARD_DEFS, kindsOfCard } from '../game/cards'
-import { effectText, slotOrder } from '../game/compose'
+import { effectParts, slotOrder } from '../game/compose'
 import type { ActionKind, CardId } from '../game/types'
 import { Die } from './Die'
+import { EffectGlyph } from './glyphs'
 import type { DragHandlers } from './useDiceDrag'
 
 /** カードに置いて見せるダイス */
@@ -211,7 +212,11 @@ function Row({ kind, name, roll, on, shown, play }: RowProps) {
           ))}
         </span>
       </div>
-      <p className="effect">{effectText(kind, vals)}</p>
+      <p className="effect">
+        {effectParts(kind, vals).map((part, i) => (
+          <EffectGlyph key={i} part={part} />
+        ))}
+      </p>
     </div>
   )
 }

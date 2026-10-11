@@ -71,13 +71,13 @@ describe('定義表の整合性', () => {
     const ids = Object.keys(CARD_DEFS) as CardId[]
     expect([...CARD_ORDER].sort()).toEqual([...ids].sort())
   })
-  it('全てのカードに行動があり、名前とカード面の効果の文がある', () => {
+  it('全てのカードに行動があり、名前とカード面の効果がある', () => {
     for (const id of Object.keys(CARD_DEFS) as CardId[]) {
       expect(kindsOfCard(id).length, id).toBeGreaterThan(0)
       expect(CARD_DEFS[id].name, id).toMatch(/\S/)
       for (const k of kindsOfCard(id)) {
         expect(ACTION_DEFS[k].label, k).toMatch(/\S/)
-        expect(ACTION_DEFS[k].face.effect, k).toMatch(/\S/)
+        expect(ACTION_DEFS[k].face.effect.length, k).toBeGreaterThan(0)
       }
     }
   })

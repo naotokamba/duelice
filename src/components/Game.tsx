@@ -53,7 +53,7 @@ function isCardId(s: string | null): s is CardId {
 }
 
 /** ステップやターンの切り替わりを知らせる帯を出す時間 */
-export const BANNER_MS = 900
+export const BANNER_MS = 1100
 
 interface Banner {
   text: string
@@ -313,9 +313,15 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         <p className="level-label">相手の強さ：{LEVEL_NAMES[level]}</p>
         <RulesButton />
         {game.winner === null && (
-          <button type="button" className="surrender" onClick={() => surrenderDialog.current?.showModal()}>
+          <button
+            type="button"
+            className="surrender"
+            aria-label="降参"
+            title="降参"
+            onClick={() => surrenderDialog.current?.showModal()}
+          >
             <Flag aria-hidden="true" />
-            降参
+            <span className="surrender-text">降参</span>
           </button>
         )}
       </header>
@@ -366,7 +372,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         {!revealed && <History history={game.history} />}
         {banner && !revealed && (
           <p key={banner.text} className="banner">
-            {banner.text}
+            <span>{banner.text}</span>
           </p>
         )}
         {settled && game.winner !== null && (

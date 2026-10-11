@@ -1,36 +1,54 @@
-// 戦闘履歴。一つ前の結果は常に出し、それより前は開けば見られる。
+// 戦闘履歴。一つ前の結果は中央に常に出し、全ての履歴は履歴の印からモーダルで見る。
 // 上下の並びは卓と同じで、上が相手、下が自分。
 
-import { ChevronDown, ChevronUp, SkipForward } from 'lucide-react'
-import { useState } from 'react'
+import { History as HistoryIcon, SkipForward, X } from 'lucide-react'
+import { useRef } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { actionLabel, type PlayerIndex, type StepReport } from '../game/rules'
 import { Die } from './Die'
 
 export function History({ history }: { history: StepReport[] }) {
-  const [open, setOpen] = useState(false)
+  const dialog = useRef<HTMLDialogElement>(null)
   if (history.length === 0) return null
   const items = [...history].reverse()
   return (
-    <section className="history" aria-label="戦闘履歴">
-      <ol className="history-list">
-        {(open ? items : items.slice(0, 1)).map((r) => (
-          <Entry key={`${r.turn}-${r.step}`} report={r} />
-        ))}
-      </ol>
-      {items.length > 1 && (
+    <>
+      <section className="history" aria-label="一つ前の結果">
+        <ol className="history-list">
+          <Entry report={items[0]} />
+        </ol>
         <button
           type="button"
-          className="history-toggle"
-          aria-expanded={open}
-          aria-label={open ? '閉じる' : 'これまで'}
-          title={open ? '閉じる' : 'これまで'}
-          onClick={() => setOpen(!open)}
+          className="history-open"
+          aria-label="戦闘履歴"
+          title="戦闘履歴"
+          onClick={() => dialog.current?.showModal()}
         >
-          {open ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
+          <HistoryIcon aria-hidden="true" />
         </button>
-      )}
-    </section>
+      </section>
+      <dialog ref={dialog} className="history-dialog" aria-labelledby="history-title">
+        <div className="rules-head">
+          <h2 id="history-title" className="dialog-title">
+            戦闘履歴
+          </h2>
+          <button
+            type="button"
+            className="dialog-close"
+            aria-label="閉じる"
+            title="閉じる"
+            onClick={() => dialog.current?.close()}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+        <ol className="history-list">
+          {items.map((r) => (
+            <Entry key={`${r.turn}-${r.step}`} report={r} />
+          ))}
+        </ol>
+      </dialog>
+    </>
   )
 }
 

@@ -9,6 +9,16 @@ export interface CardDef {
   name: string
 }
 
+/** 効果を描く印。damage はダメージ、guard は受けるダメージを減らす、reflect は受けた攻撃を返す、chant は詠唱、pierce は障壁を無視 */
+export type EffectIcon = 'damage' | 'guard' | 'reflect' | 'chant' | 'pierce'
+
+/** カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる */
+export interface EffectPart {
+  icon?: EffectIcon
+  value?: string
+  text?: string
+}
+
 /**
  * カード面に描くダイス置き場と効果。行動1つが1行で、横に並ぶ置き場が1ステップぶん。
  * 置き場の数は dice の最大、dice の最小を超える置き場は省いてもよい置き場として描く
@@ -20,8 +30,8 @@ export interface Face {
   join?: '+' | '='
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
   sum?: string
-  /** 効果の短い文。mark か sum の記号は、ダイスを置くと値に置き換わる */
-  effect: string
+  /** 効果。文はなるべく使わず、印で描く */
+  effect: readonly EffectPart[]
 }
 
 export interface ActionDef {
@@ -69,7 +79,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     label: '火球',
     dice: [2],
     power: (v) => Math.max(...v),
-    face: { mark: 'X', effect: 'Xダメージ' },
+    face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
   },
   barrier: {
     card: 'barrier',
@@ -77,7 +87,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     dice: [1],
     guard: (v) => v[0],
     done: '障壁を張った',
-    face: { mark: 'X', effect: '受けるダメージをX減らす' },
+    face: { mark: 'X', effect: [{ icon: 'guard', value: 'X' }] },
   },
   bullet: {
     card: 'bullet',
@@ -85,7 +95,15 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     dice: [1, 2],
     power: (v) => (v.length === 1 ? 2 : 3),
     piercing: true,
-    face: { effect: '1個で2、2個で3ダメージ。障壁を無視' },
+    face: {
+      effect: [
+        { text: '1個' },
+        { icon: 'damage', value: '2' },
+        { text: '2個' },
+        { icon: 'damage', value: '3' },
+        { icon: 'pierce' },
+      ],
+    },
   },
   spearChant: {
     card: 'spear',
@@ -94,7 +112,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 1,
     chant: true,
     done: '雷槍を詠唱',
-    face: { mark: 'X', effect: '詠唱。X以上受けると崩れる' },
+    face: { mark: 'X', effect: [{ icon: 'chant' }, { icon: 'damage', value: 'X' }, { text: '以上で崩れる' }] },
   },
   spearCast: {
     card: 'spear',
@@ -103,7 +121,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 2,
     needsCharge: true,
     power: (v) => v[0] + v[1],
-    face: { join: '+', sum: 'Y', effect: 'Yダメージ' },
+    face: { join: '+', sum: 'Y', effect: [{ icon: 'damage', value: 'Y' }] },
   },
   reflect: {
     card: 'reflect',
@@ -112,7 +130,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     sameValues: true,
     reflects: true,
     done: '反射を構えた',
-    face: { join: '=', effect: '受ける攻撃をはね返す' },
+    face: { join: '=', effect: [{ icon: 'reflect' }, { text: 'はね返す' }] },
   },
 }
 

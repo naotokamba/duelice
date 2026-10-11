@@ -21,6 +21,8 @@
   --reflect-ink: #515b6a;
   /* 色の付いた札やボタンに乗せる文字 */
   --on-accent: #fff;
+  /* 切り替わりの幕。卓より少しだけ暗い */
+  --veil: color-mix(in srgb, var(--ink) 7%, var(--table));
   --surface: #f4f5fa;
   --go: #2c9754;
   --hit: #d8392b;
@@ -328,6 +330,7 @@ button {
   border: 2px dashed var(--line);
 }
 .die {
+  position: relative;
   display: inline-grid;
   place-items: center;
   border: 0;
@@ -397,12 +400,20 @@ button.die:disabled {
   cursor: default;
 }
 /* 置ける場所があることを、うっすら光らせて知らせる */
-.die-hint {
-  animation: die-hint 2.4s ease-in-out infinite;
+/* 光は色を変えずに濃さだけを動かす。影の色を混ぜると途中で黒ずむため、光を別の層にして透明度で明滅させる */
+.die-hint::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 10px 2px color-mix(in srgb, var(--me) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: glow 2.4s ease-in-out infinite;
 }
-@keyframes die-hint {
+@keyframes glow {
   50% {
-    filter: drop-shadow(0 0 7px color-mix(in srgb, var(--me) 75%, transparent));
+    opacity: 1;
   }
 }
 .die-drag {
@@ -443,8 +454,9 @@ button.die:disabled {
   /* 色を決めていない新しいカードでも表示が崩れないように、既定の色を持たせる */
   --spell: var(--ink);
   --spell-ink: var(--ink);
-  /* 一番幅を取る「Y = □ + □」が一行に収まる幅 */
+  /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い雷槍に合わせ、どのカードも同じ大きさにする */
   width: calc(var(--die) * 2 + 5.25rem);
+  height: calc(var(--die) * 2 + 10.5rem);
   flex: none;
   position: relative;
   display: flex;
@@ -454,15 +466,12 @@ button.die:disabled {
   border: 1px solid var(--line);
   border-top: 5px solid var(--spell);
   border-radius: 10px;
-  padding: 0.35rem 0.45rem 0.5rem;
+  /* 下は決定のボタンが重なる分を空ける。自分の席だけ空けると大きさが変わるので、どの席でも空ける */
+  padding: 0.35rem 0.45rem 1.6rem;
   background: var(--table);
   transition:
     box-shadow 150ms ease,
     opacity 150ms ease;
-}
-/* 決定のボタンが効果の文に重ならないように、下に空きを取る */
-.seat-me .card {
-  padding-bottom: 1.6rem;
 }
 .card-fireball {
   --spell: var(--fireball);
@@ -551,6 +560,8 @@ button.die:disabled {
 .face-row:not(.is-on) {
   --spell: var(--ink-soft);
   --spell-ink: var(--ink-soft);
+  --star: var(--ink-soft);
+  --star-ink: var(--table);
 }
 /* 置き場の行は折り返さない */
 .slots,
@@ -612,13 +623,55 @@ button.slot:disabled {
   color: var(--spell-ink);
   white-space: nowrap;
 }
+/* 効果は印で描く。文は印の間に短く添えるだけ */
 .effect {
   margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem 0.3rem;
   font-size: 0.78rem;
   line-height: 1.35;
-  text-align: center;
   color: var(--ink-soft);
 }
+.fx {
+  position: relative;
+  display: inline-grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--spell-ink);
+}
+.fx > svg {
+  grid-area: 1 / 1;
+  width: 26px;
+  height: 26px;
+}
+.fx-value {
+  grid-area: 1 / 1;
+  position: relative;
+  font-weight: 800;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+.fx-damage > svg {
+  width: 34px;
+  height: 34px;
+  fill: var(--star, var(--hit));
+}
+.fx-damage .fx-value {
+  color: var(--star-ink, #fff);
+}
+.fx-guard > svg {
+  width: 34px;
+  height: 34px;
+}
+.fx-guard .fx-value {
+  color: var(--spell-ink);
+  font-size: 0.85rem;
+}
+
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
   margin-left: auto;
@@ -697,7 +750,7 @@ button.tab {
 /* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
 .arena {
   position: relative;
-  min-height: 158px;
+  min-height: 198px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -717,18 +770,19 @@ button.tab {
   border: 0;
 }
 
-/* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる */
+/* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる。最後は薄くなって消え、切り替わりの幕につなぐ */
 .stage {
   position: relative;
   width: 100%;
-  height: 150px;
+  height: 190px;
+  animation: gone var(--out) ease var(--out-at) both;
 }
 .stage > * {
   position: absolute;
 }
 /* 攻撃の矢印。攻撃した側の端から伸びていく */
 .arrow {
-  width: 34px;
+  width: 44px;
   transform: translateX(-50%);
   z-index: 1;
   animation: var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both;
@@ -743,57 +797,57 @@ button.tab {
   content: "";
   position: absolute;
   left: 50%;
-  width: 6px;
-  margin-left: -3px;
-  border-radius: 3px;
+  width: 8px;
+  margin-left: -4px;
+  border-radius: 4px;
   background: var(--spell, var(--ink));
 }
 .arrow::after {
   content: "";
   position: absolute;
   left: 50%;
-  margin-left: -11px;
-  border-left: 11px solid transparent;
-  border-right: 11px solid transparent;
+  margin-left: -15px;
+  border-left: 15px solid transparent;
+  border-right: 15px solid transparent;
 }
 .arrow.is-up::before {
-  top: 14px;
+  top: 18px;
   bottom: 0;
 }
 .arrow.is-up::after {
   top: 0;
-  border-bottom: 16px solid var(--spell, var(--ink));
+  border-bottom: 20px solid var(--spell, var(--ink));
 }
 .arrow.is-down::before {
   top: 0;
-  bottom: 14px;
+  bottom: 18px;
 }
 .arrow.is-down::after {
   bottom: 0;
-  border-top: 16px solid var(--spell, var(--ink));
+  border-top: 20px solid var(--spell, var(--ink));
 }
 .arrow-value {
   position: absolute;
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
-  min-width: 26px;
-  height: 26px;
-  padding: 0 4px;
-  border-radius: 13px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0 5px;
+  border-radius: 16px;
   background: var(--spell-ink, var(--ink));
   border: 2px solid var(--table);
   color: var(--on-accent);
   font-weight: 800;
-  font-size: 0.85rem;
-  line-height: 22px;
+  font-size: 1rem;
+  line-height: 28px;
   font-variant-numeric: tabular-nums;
 }
-/* 反射に当たった矢印は、返る矢印が出ると薄くなる */
+/* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
   animation:
     var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both,
-    fade 220ms ease var(--gone) both;
+    fade 260ms ease var(--gone) both;
 }
 @keyframes shoot-up {
   from {
@@ -818,7 +872,7 @@ button.tab {
 }
 @keyframes fade {
   to {
-    opacity: 0.3;
+    opacity: 0.25;
   }
 }
 @keyframes appear {
@@ -828,13 +882,13 @@ button.tab {
 }
 /* 受けたダメージ。当たった側の端で弾ける */
 .burst {
-  width: 42px;
-  height: 42px;
+  width: 56px;
+  height: 56px;
   display: grid;
   place-items: center;
   transform: translate(-50%, -50%);
   z-index: 2;
-  animation: burst 380ms cubic-bezier(0.2, 0.9, 0.3, 1.4) var(--delay) both;
+  animation: burst 420ms cubic-bezier(0.2, 0.9, 0.3, 1.4) var(--delay) both;
 }
 .burst svg {
   position: absolute;
@@ -848,7 +902,7 @@ button.tab {
   position: relative;
   color: #fff;
   font-weight: 800;
-  font-size: 1rem;
+  font-size: 1.15rem;
   font-variant-numeric: tabular-nums;
 }
 @keyframes burst {
@@ -861,47 +915,76 @@ button.tab {
     opacity: 1;
   }
 }
-/* 構え。障壁、反射、詠唱は受ける側の端に置く */
+/* 構え。障壁、反射、詠唱は受ける側の端に置く。大きさは Exchange.tsx の STANCE_R と合わせる */
 .stance {
-  width: 36px;
-  height: 36px;
+  width: 56px;
+  height: 56px;
   display: grid;
   place-items: center;
   border-radius: 50%;
-  border: 2px solid var(--spell, var(--ink-soft));
+  border: 3px solid var(--spell, var(--ink-soft));
   background: var(--surface);
-  color: var(--spell, var(--ink-soft));
+  color: var(--spell-ink, var(--ink-soft));
   transform: translate(-50%, -50%);
-  animation: stance-in 240ms ease both;
+  animation: stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
 }
 .stance svg {
   grid-area: 1 / 1;
-  width: 20px;
-  height: 20px;
+  width: 30px;
+  height: 30px;
 }
 .stance-value {
   position: absolute;
-  right: -10px;
-  bottom: -6px;
-  min-width: 18px;
-  height: 18px;
-  padding: 0 4px;
-  border-radius: 9px;
+  right: -12px;
+  bottom: -8px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 5px;
+  border-radius: 13px;
   background: var(--spell-ink, var(--ink-soft));
   color: var(--on-accent);
-  font-size: 0.72rem;
+  font-size: 0.9rem;
   font-weight: 800;
-  line-height: 18px;
+  line-height: 26px;
 }
 .stance-pass {
+  width: 44px;
+  height: 44px;
   border-style: dashed;
   border-color: var(--line);
   color: var(--ink-soft);
 }
+.stance-pass svg {
+  width: 24px;
+  height: 24px;
+}
+/* 攻撃を止めた障壁は、当たった時に揺れる */
+.stance.is-blocking {
+  animation:
+    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both,
+    block 360ms ease var(--delay);
+}
+@keyframes block {
+  30% {
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+}
+/* すり抜けられた障壁は、矢印が通る時に斜線の入った盾に変わって薄くなる */
 .stance.is-pierced {
   animation:
-    stance-in 240ms ease both,
-    fade 220ms ease var(--delay) both;
+    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both,
+    fade-half 240ms ease var(--delay) both;
+}
+.stance.is-pierced .guard-on {
+  animation: gone 160ms ease var(--delay) both;
+}
+.stance.is-pierced .guard-off {
+  animation: appear 160ms ease var(--delay) both;
+}
+@keyframes fade-half {
+  to {
+    opacity: 0.45;
+  }
 }
 /* 崩れる詠唱は、攻撃が当たった時に印が切り替わる */
 .stance.is-broken .chant-on {
@@ -916,32 +999,34 @@ button.tab {
     opacity: 0;
   }
 }
-/* ステップやターンの切り替わり */
+/* ステップやターンの切り替わり。幕は最初から下を隠したまま、文字だけを出し入れし、最後に幕ごと消える */
 .banner {
   position: absolute;
   inset: 0;
   margin: 0;
   display: grid;
   place-items: center;
-  background: color-mix(in srgb, var(--table) 88%, transparent);
+  background: var(--veil);
+  pointer-events: none;
+  animation:
+    veil-in 250ms ease both,
+    gone 300ms ease 800ms both;
+}
+.banner span {
   font-family: var(--font-spell);
   font-weight: 800;
   font-size: 1.8rem;
-  pointer-events: none;
-  animation: banner 900ms ease both;
+  animation: banner-text 450ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
 }
-@keyframes banner {
+@keyframes veil-in {
+  from {
+    background: var(--table);
+  }
+}
+@keyframes banner-text {
   from {
     opacity: 0;
-    transform: translateY(8px);
-  }
-  20%,
-  70% {
-    opacity: 1;
-    transform: none;
-  }
-  to {
-    opacity: 0;
+    transform: translateY(10px) scale(0.96);
   }
 }
 /* 新しいターンのダイスは、振ったように転がって出る */
@@ -964,10 +1049,10 @@ button.tab {
 /* 戦闘履歴。上下の並びは卓と同じ */
 .history {
   width: 100%;
-  max-width: 560px;
+  max-width: 600px;
   display: flex;
-  flex-direction: column;
-  gap: 0.3rem;
+  align-items: center;
+  gap: 0.5rem;
   text-align: left;
 }
 .history-list {
@@ -977,8 +1062,10 @@ button.tab {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
-  max-height: 340px;
-  overflow: auto;
+}
+.history > .history-list {
+  flex: 1;
+  min-width: 0;
 }
 .history-entry {
   display: grid;
@@ -1046,22 +1133,40 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
-.history-toggle {
-  align-self: center;
+/* 戦闘履歴を開く印。一つ前の結果の横に置く */
+.history-open {
+  flex: none;
   display: grid;
   place-items: center;
   width: 44px;
-  height: 28px;
+  height: 44px;
   padding: 0;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--surface);
-  color: var(--ink-soft);
+  color: var(--ink);
   cursor: pointer;
 }
-.history-toggle svg {
-  width: 20px;
-  height: 20px;
+.history-open svg {
+  width: 22px;
+  height: 22px;
+}
+.history-open:hover {
+  border-color: var(--ink-soft);
+}
+.history-dialog {
+  width: min(94vw, 600px);
+  max-height: 85vh;
+  padding: 1.25rem;
+  border: 0;
+  border-radius: 16px;
+  background: var(--table);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  text-align: left;
+}
+.history-dialog::backdrop {
+  background: rgba(20, 24, 36, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1081,12 +1186,22 @@ button.tab {
     animation: none;
     transition: none;
   }
-  .arrow.is-spent,
-  .stance.is-pierced {
-    opacity: 0.3;
+  .arrow.is-spent {
+    opacity: 0.25;
   }
+  .stance.is-pierced {
+    opacity: 0.45;
+  }
+  .stance.is-pierced .guard-on,
   .stance.is-broken .chant-on {
     opacity: 0;
+  }
+  .stage {
+    animation: none;
+  }
+  .die-hint::after {
+    animation: none;
+    opacity: 0.6;
   }
 }
 .result {
@@ -1190,10 +1305,10 @@ button.tab {
   .seat {
     padding: 0.6rem;
   }
-  /* 自分は一枚だけ大きく出すのでダイスも大きく、相手は名前と公開したカードだけなので小さく */
+  /* 一枚ずつ大きく出すので、ダイスも大きくする。同じ画面ではカードの大きさを揃えるため、相手も同じ大きさ */
   :root {
     --die-me: 60px;
-    --die-cpu: 44px;
+    --die-cpu: 60px;
   }
   .level-label {
     order: 3;
@@ -1202,6 +1317,16 @@ button.tab {
   }
   .table-head .help {
     margin-left: auto;
+  }
+  /* 狭い画面では降参を旗の印だけにして、「?」と並べて右上に収める */
+  .surrender {
+    width: 36px;
+    height: 36px;
+    justify-content: center;
+    padding: 0;
+  }
+  .surrender-text {
+    display: none;
   }
   .rules-cards {
     justify-content: center;

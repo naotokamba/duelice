@@ -6,7 +6,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Action, Rng } from '../game/types'
 import { seeded } from '../test/helpers'
-import { IMPACT_MS } from './Exchange'
+import { HOLD_MS, IMPACT_MS } from './Exchange'
 import { BANNER_MS, Game, type Opponent } from './Game'
 
 // 公開の動きと自動の進行は時間で進むので、偽の時計で進める。
@@ -27,7 +27,7 @@ async function advance(ms: number) {
 }
 
 /** 公開の動きが終わり、次のステップかターンへ進むまで待つ */
-const settle = () => advance(3000)
+const settle = () => advance(4000)
 
 /** 振る目を順に指定する乱数。一ターンは あなたの3個、相手の3個 の順。尽きたら種つきの乱数 */
 function dice(...turns: [number[], number[]][]): Rng {
@@ -113,13 +113,13 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
-    expect(myCard('火球').getByText('Xダメージ')).toBeTruthy()
+    expect(myCard('火球').getByRole('img', { name: 'Xダメージ' })).toBeTruthy()
 
     await place(user, 6, '火球')
     // 一個では火球にならないので、まだ決定できない
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     await place(user, 6, '火球')
-    expect(myCard('火球').getByText('6ダメージ')).toBeTruthy()
+    expect(myCard('火球').getByRole('img', { name: '6ダメージ' })).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '6の目を戻す' })).toHaveLength(2)
 
     await user.click(button('決定'))
@@ -133,16 +133,15 @@ describe('一ターンの流れ', () => {
     expect(cpuSeat().getByLabelText('体力 14 / 20')).toBeTruthy()
 
     // 待てば自動で二ステップ目へ進み、切り替わりを知らせる
-    await advance(1200)
+    await advance(HOLD_MS + 50)
     expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
     expect(screen.getByText('Step 2')).toBeTruthy()
     await advance(BANNER_MS)
     expect(screen.queryByText('Step 2')).toBeNull()
-    // 一つ前の結果は戦闘履歴に出る
-    const history = () => within(screen.getByRole('region', { name: '戦闘履歴' }))
-    expect(history().getByText('火球')).toBeTruthy()
-    expect(history().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
-    expect(history().queryByRole('button', { name: 'これまで' })).toBeNull()
+    // 一つ前の結果は中央に出る
+    const latest = () => within(screen.getByRole('region', { name: '一つ前の結果' }))
+    expect(latest().getByText('火球')).toBeTruthy()
+    expect(latest().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
     // 使ったカードには置けず、使ったダイスは手元で薄くなる
     expect(myCard('火球').getByText('使用済み')).toBeTruthy()
     expect(myCard('火球').queryByRole('button', { name: '火球に置く' })).toBeNull()
@@ -154,13 +153,16 @@ describe('一ターンの流れ', () => {
     expect(screen.getByText('Turn 2')).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '火球に置く' })).toHaveLength(2)
 
-    // 戦闘履歴は一つ前だけを出し、開けばそれより前も見られる
+    // 中央には一つ前だけを出し、全ての履歴は履歴の印からモーダルで見る
     await advance(BANNER_MS)
-    expect(history().getAllByRole('listitem')).toHaveLength(1)
-    await user.click(history().getByRole('button', { name: 'これまで' }))
-    expect(history().getAllByRole('listitem')).toHaveLength(2)
-    await user.click(history().getByRole('button', { name: '閉じる' }))
-    expect(history().getAllByRole('listitem')).toHaveLength(1)
+    expect(latest().getAllByRole('img', { name: 'パス' })).toHaveLength(2)
+    await user.click(latest().getByRole('button', { name: '戦闘履歴' }))
+    const dialog = screen.getByRole('dialog', { name: '戦闘履歴' }) as HTMLDialogElement
+    expect(dialog.open).toBe(true)
+    const entries = within(dialog).getAllByRole('listitem')
+    expect(entries.map((e) => e.querySelector('.history-when')?.textContent)).toEqual(['1-2', '1-1'])
+    await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
+    expect(dialog.open).toBe(false)
   })
 
   it('持ったダイスは置ける場所にだけ置け、置いたダイスは戻せる', async () => {
@@ -184,7 +186,7 @@ describe('一ターンの流れ', () => {
     expect(four.getAttribute('aria-pressed')).toBe('false')
 
     await place(user, 4, '障壁')
-    expect(myCard('障壁').getByText('受けるダメージを4減らす')).toBeTruthy()
+    expect(myCard('障壁').getByRole('img', { name: '受けるダメージを4減らす' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
 
     // 埋まったカードには置けない。カードを押しても何も起きない
@@ -241,7 +243,8 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     await place(user, 5, '雷槍')
-    expect(myCard('雷槍').getByText('詠唱。5以上受けると崩れる')).toBeTruthy()
+    expect(myCard('雷槍').getByRole('img', { name: '5ダメージ' })).toBeTruthy()
+    expect(myCard('雷槍').getByText('以上で崩れる')).toBeTruthy()
     await user.click(button('決定'))
     expect(screen.getByText('あなたの詠唱は保たれた')).toBeTruthy()
     // 詠唱の結果は、矢印が当たる時刻まで席には出さない
@@ -251,7 +254,7 @@ describe('一ターンの流れ', () => {
 
     await place(user, 6, '雷槍')
     await place(user, 6, '雷槍')
-    expect(myCard('雷槍').getByText('12ダメージ')).toBeTruthy()
+    expect(myCard('雷槍').getByRole('img', { name: '12ダメージ' })).toBeTruthy()
     await user.click(button('決定'))
     await settle()
     expect(cpuSeat().getByLabelText('体力 8 / 20')).toBeTruthy()
@@ -269,10 +272,10 @@ describe('一ターンの流れ', () => {
     expect(screen.getByText('相手の火球 6点')).toBeTruthy()
     const theirs = cardIn(cpuSeat(), '火球')
     expect(theirs.getAllByRole('img', { name: /^[56]の目$/ })).toHaveLength(2)
-    expect(theirs.getByText('6ダメージ')).toBeTruthy()
+    expect(theirs.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
     await settle()
     expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
-    const latest = within(screen.getByRole('region', { name: '戦闘履歴' }))
+    const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))
     expect(latest.getByRole('img', { name: 'パス' })).toBeTruthy()
     expect(latest.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
   })

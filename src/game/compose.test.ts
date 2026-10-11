@@ -8,7 +8,7 @@ import {
   availableCards,
   canPlace,
   composeAction,
-  effectText,
+  effectParts,
   kindsNow,
   type Placement,
   placeDie,
@@ -200,19 +200,23 @@ describe('カード面', () => {
     expect(slotOrder([2, 6, 4], [0, 1, 2])).toEqual([1, 2, 0])
     expect(slotOrder([6, 2, 6], [2, 0])).toEqual([0, 2])
   })
+  /** 効果の部品を、読み比べやすい一行にする */
+  const flat = (parts: ReturnType<typeof effectParts>) =>
+    parts.map((p) => [p.icon, p.value, p.text].filter(Boolean).join(':')).join(' ')
   it.each([
-    ['fireball', [6, 2], '6ダメージ'],
-    ['barrier', [4], '受けるダメージを4減らす'],
-    ['spearChant', [5], '詠唱。5以上受けると崩れる'],
-    ['spearCast', [6, 5], '11ダメージ'],
-    ['reflect', [2, 2], '受ける攻撃をはね返す'],
-    ['bullet', [3], '1個で2、2個で3ダメージ。障壁を無視'],
-  ] as const)('%s に %j を置いた効果の文', (kind, vals, text) => {
-    expect(effectText(kind, [...vals])).toBe(text)
+    ['fireball', [6, 2], 'damage:6'],
+    ['barrier', [4], 'guard:4'],
+    ['spearChant', [5], 'chant damage:5 以上で崩れる'],
+    ['spearCast', [6, 5], 'damage:11'],
+    ['reflect', [2, 2], 'reflect はね返す'],
+    ['bullet', [3], '1個 damage:2 2個 damage:3 pierce'],
+  ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
+    expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
   it('目が決まるまでは記号のまま', () => {
-    expect(effectText('fireball')).toBe('Xダメージ')
-    expect(effectText('spearCast')).toBe('Yダメージ')
+    expect(flat(effectParts('fireball'))).toBe('damage:X')
+    expect(flat(effectParts('spearChant'))).toBe('chant damage:X 以上で崩れる')
+    expect(flat(effectParts('spearCast'))).toBe('damage:Y')
   })
   it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
     for (const card of CARD_ORDER) {
@@ -229,10 +233,11 @@ describe('カード面', () => {
       if (def.face.sum) expect(def.face.join).toBe('+')
     }
   })
-  it('置き場の記号は、どの行動でも効果の文に現れる', () => {
+  it('置き場の記号は、どの行動でも効果に現れる', () => {
     for (const kind of ACTION_KINDS) {
       const { face } = ACTION_DEFS[kind]
-      for (const sym of [face.mark, face.sum]) if (sym) expect(face.effect).toContain(sym)
+      const written = face.effect.map((p) => `${p.value ?? ''}${p.text ?? ''}`).join(' ')
+      for (const sym of [face.mark, face.sum]) if (sym) expect(written).toContain(sym)
     }
   })
 })

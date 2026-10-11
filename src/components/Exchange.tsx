@@ -2,31 +2,39 @@
 // 上が相手、下が自分。攻撃は矢印、障壁や反射や詠唱は受ける側の端に置く印、受けたダメージは星で描く。
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
-import { FlipVertical2, Shield, SkipForward, Zap, ZapOff } from 'lucide-react'
+import { FlipVertical2, Shield, ShieldOff, SkipForward, Zap, ZapOff } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { breaksChant, type PlayerIndex, type StepReport, type Strike, strikes } from '../game/rules'
 import type { CardId } from '../game/types'
+import { Star } from './glyphs'
 
 /** 舞台の高さ。styles.css の .stage と合わせる */
-const H = 150
+const H = 190
 /** 矢印が始まり、当たる位置の、端からの距離 */
-const EDGE = 10
+const EDGE = 14
 /** 構えの印の中心の、端からの距離。当たった星と重ならないように端から離す */
-const STANCE = 52
-/** 構えの印の半径。障壁や反射に当たる矢印はここで止まる */
-const STANCE_R = 18
+const STANCE = 72
+/** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。styles.css の .stance と合わせる */
+const STANCE_R = 28
 
-/** 印が出てから矢印を放つまでの間 */
-const START_MS = 150
+// 公開は三つの場面に分けて、場面ごとに間を取る。
+// 一つ目は構え。互いが何を構えたかを見せる。二つ目は攻撃。矢印が飛ぶ。三つ目は結果。当たって体力が減る
+
+/** 構えを見せてから矢印を放つまでの間 */
+export const START_MS = 800
 /** 矢印が飛ぶ時間 */
-const FLY_MS = 550
+const FLY_MS = 600
 /** 矢印が当たる時刻 */
 export const IMPACT_MS = START_MS + FLY_MS
 /** 反射で返った矢印が当たる時刻 */
 export const RETURN_MS = IMPACT_MS + FLY_MS
-/** 最後の矢印が当たってから次へ進むまでの間 */
-export const HOLD_MS = 1100
+/** 最後の矢印が当たってから次へ進むまでの間。結果を見せる */
+export const HOLD_MS = 1600
+/** 攻撃が無いときに構えを見せておく時間 */
+const CALM_MS = 1000
+/** 舞台が消えていく時間。次へ進む前に、この時間をかけて薄くなる */
+const OUT_MS = 350
 
 /** 攻撃が当たる時刻 */
 export function landsAt(s: Strike): number {
@@ -35,7 +43,8 @@ export function landsAt(s: Strike): number {
 
 /** 公開してから次へ進むまでの時間 */
 export function revealMs(list: Strike[]): number {
-  return Math.max(IMPACT_MS, ...list.map(landsAt)) + HOLD_MS
+  if (list.length === 0) return START_MS + CALM_MS
+  return Math.max(...list.map(landsAt)) + HOLD_MS
 }
 
 /** 端の位置。上が相手、下が自分 */
@@ -51,17 +60,10 @@ function laneX(list: Strike[], from: PlayerIndex): number {
   return from === 1 ? 36 : 64
 }
 
-/** 十二の角を持つ星。受けたダメージの印 */
-const STAR = Array.from({ length: 24 }, (_, i) => {
-  const r = i % 2 === 0 ? 48 : 34
-  const t = (Math.PI * i) / 12
-  return `${(r * Math.sin(t)).toFixed(1)},${(-r * Math.cos(t)).toFixed(1)}`
-}).join(' ')
-
 /** 矢印と重ならないように、横にずらす量 */
-const ASIDE = 46
+const ASIDE = 64
 /** 反射で返る矢印を、行きの矢印の横に並べる量 */
-const BACK = 26
+const BACK = 34
 
 /** CSS の変数を含む style。dx は横にずらす画素数 */
 const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
@@ -69,8 +71,9 @@ const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
 
 export function Exchange({ report }: { report: StepReport }) {
   const list = strikes(report.values, report.actions)
+  const out = { '--out-at': `${revealMs(list) - OUT_MS}ms`, '--out': `${OUT_MS}ms` } as CSSProperties
   return (
-    <div className="stage" aria-hidden="true">
+    <div className="stage" style={out} aria-hidden="true">
       {([0, 1] as const).map((who) => {
         const incoming = list.find((s) => s.from !== who)
         return (
@@ -80,7 +83,7 @@ export function Exchange({ report }: { report: StepReport }) {
             report={report}
             x={incoming ? laneX(list, incoming.from) : 50}
             aside={!!incoming}
-            pierced={incoming?.outcome === 'pierced'}
+            incoming={incoming}
           />
         )
       })}
@@ -98,7 +101,7 @@ export function Exchange({ report }: { report: StepReport }) {
             delay={START_MS}
             card={card}
             value={s.power}
-            spent={s.outcome === 'reflected'}
+            spent={stops}
           />,
           s.outcome === 'reflected' && (
             <Arrow
@@ -124,9 +127,7 @@ export function Exchange({ report }: { report: StepReport }) {
                 s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
               )}
             >
-              <svg viewBox="-50 -50 100 100" aria-hidden="true">
-                <polygon points={STAR} />
-              </svg>
+              <Star />
               <span>−{s.dealt}</span>
             </div>
           ),
@@ -144,7 +145,7 @@ interface ArrowProps {
   delay: number
   card: CardId
   value: number
-  /** 反射に当たって薄くなる矢印 */
+  /** 障壁や反射に当たって止まり、薄くなる矢印 */
   spent?: boolean
 }
 
@@ -171,11 +172,18 @@ interface StanceProps {
   x: number
   /** 矢印が飛んでくる */
   aside: boolean
-  /** 障壁をすり抜けられた */
-  pierced: boolean
+  /** 飛んでくる攻撃 */
+  incoming?: Strike
 }
 
-function Stance({ who, report, x, aside, pierced }: StanceProps) {
+/** 矢印の先が構えの印に届く時刻 */
+function reachesStance(s: Strike): number {
+  const to = otherOf(s.from)
+  const share = Math.abs(edge(s.from) - stanceY(to)) / Math.abs(edge(s.from) - edge(to))
+  return START_MS + Math.round(FLY_MS * share)
+}
+
+function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const a = report.actions[who]
   const y = stanceY(who)
   if (a.kind === 'pass') {
@@ -189,10 +197,13 @@ function Stance({ who, report, x, aside, pierced }: StanceProps) {
   const vals = report.values[who]
   const cls = `stance card-${def.card}`
   if (def.guard) {
-    // すり抜けられた障壁は、矢印が通る時に薄くなる
+    // 止めた障壁は当たった時に揺れる。すり抜けられた障壁は、矢印が通る時に斜線の入った盾に変わって薄くなる
+    const pierced = incoming?.outcome === 'pierced'
+    const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
     return (
-      <div className={pierced ? `${cls} is-pierced` : cls} style={at(x, y, IMPACT_MS)}>
-        <Shield />
+      <div className={cls + state} style={at(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
+        <Shield className="guard-on" />
+        {pierced && <ShieldOff className="guard-off" />}
         <span className="stance-value">{def.guard(vals)}</span>
       </div>
     )

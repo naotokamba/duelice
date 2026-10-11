@@ -2,7 +2,7 @@
 // プレイヤーは手元のダイスをカードの置き場に置いていくので、その途中経過を扱う。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
-import { ACTION_DEFS, kindsOfCard } from './cards'
+import { ACTION_DEFS, type EffectPart, kindsOfCard } from './cards'
 import { diceValues, freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
 
@@ -95,12 +95,16 @@ export function slotOrder(roll: number[], dice: number[]): number[] {
   return [...dice].sort((a, b) => roll[b] - roll[a] || a - b)
 }
 
-/** カード面の効果の文。目が分かっていれば、記号をその目から決まる値に置き換える */
-export function effectText(kind: ActionKind, vals?: number[]): string {
+/** カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える */
+export function effectParts(kind: ActionKind, vals?: number[]): EffectPart[] {
   const def = ACTION_DEFS[kind]
   const sym = def.face.mark ?? def.face.sum
-  if (!vals || !sym) return def.face.effect
+  if (!vals || !sym) return [...def.face.effect]
   // 記号の値は、攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる置いた目
-  const value = def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
-  return def.face.effect.replaceAll(sym, String(value))
+  const value = String(def.power?.(vals) ?? def.guard?.(vals) ?? vals[0])
+  return def.face.effect.map((p) => ({
+    ...p,
+    value: p.value?.replaceAll(sym, value),
+    text: p.text?.replaceAll(sym, value),
+  }))
 }

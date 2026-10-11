@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { resolveStep, strikes } from '../game/rules'
 import type { Action } from '../game/types'
 import { makeState } from '../test/helpers'
-import { Exchange, HOLD_MS, IMPACT_MS, RETURN_MS, revealMs } from './Exchange'
+import { Exchange, HOLD_MS, IMPACT_MS, RETURN_MS, revealMs, START_MS } from './Exchange'
 
 afterEach(cleanup)
 
@@ -37,6 +37,9 @@ describe('公開の舞台', () => {
   it('障壁に当たった矢印は障壁の値を見せ、削られた分だけ星になる', () => {
     const s = stage([6, 4, 1], fire, [3, 1, 1], { kind: 'barrier', dice: [0] })
     expect(s.one('.stance.card-barrier')?.textContent).toBe('3')
+    // 止めた障壁は揺れ、止められた矢印は薄くなる
+    expect(s.one('.stance.is-blocking')).not.toBeNull()
+    expect(s.one('.arrow.is-spent')).not.toBeNull()
     expect(s.bursts).toEqual(['−3'])
   })
   it('障壁が攻撃を上回れば星は出ない', () => {
@@ -45,7 +48,8 @@ describe('公開の舞台', () => {
   })
   it('すり抜けられた障壁は薄くなる', () => {
     const s = stage([2, 1, 1], { kind: 'bullet', dice: [0] }, [6, 1, 1], { kind: 'barrier', dice: [0] })
-    expect(s.one('.stance.is-pierced')).not.toBeNull()
+    expect(s.one('.stance.is-pierced .guard-off')).not.toBeNull()
+    expect(s.one('.arrow.is-spent')).toBeNull()
     expect(s.bursts).toEqual(['−2'])
   })
   it('反射された矢印は向きを変えて、攻撃した側に星が出る', () => {
@@ -79,6 +83,8 @@ describe('公開の舞台', () => {
       [fire, { kind: 'reflect', dice: [0, 1] }],
     )
     expect(revealMs(reflected)).toBe(RETURN_MS + HOLD_MS)
-    expect(revealMs([])).toBe(IMPACT_MS + HOLD_MS)
+    // 攻撃が無ければ、構えを見せてから短く進む
+    expect(revealMs([])).toBeGreaterThan(START_MS)
+    expect(revealMs([])).toBeLessThan(IMPACT_MS + HOLD_MS)
   })
 })
