@@ -1,7 +1,7 @@
 // 戦闘履歴。一つ前の結果は常に出し、それより前は開けば見られる。
 // 上下の並びは卓と同じで、上が相手、下が自分。
 
-import { SkipForward } from 'lucide-react'
+import { ChevronDown, ChevronUp, SkipForward } from 'lucide-react'
 import { useState } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { actionLabel, type PlayerIndex, type StepReport } from '../game/rules'
@@ -19,8 +19,15 @@ export function History({ history }: { history: StepReport[] }) {
         ))}
       </ol>
       {items.length > 1 && (
-        <button type="button" className="history-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
-          {open ? '閉じる' : 'これまで'}
+        <button
+          type="button"
+          className="history-toggle"
+          aria-expanded={open}
+          aria-label={open ? '閉じる' : 'これまで'}
+          title={open ? '閉じる' : 'これまで'}
+          onClick={() => setOpen(!open)}
+        >
+          {open ? <ChevronUp aria-hidden="true" /> : <ChevronDown aria-hidden="true" />}
         </button>
       )}
     </section>
@@ -31,7 +38,7 @@ function Entry({ report }: { report: StepReport }) {
   return (
     <li className="history-entry">
       <span className="history-when">
-        {report.turn}ターン目 {report.step === 1 ? '一' : '二'}
+        {report.turn}-{report.step}
       </span>
       {([1, 0] as const).map((who) => (
         <Side key={who} who={who} report={report} />

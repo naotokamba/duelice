@@ -13,9 +13,20 @@
   --bullet: #6a4bc4;
   --spear: #a87c00;
   --reflect: #5f6b7d;
+  /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
+  --fireball-ink: #a22d18;
+  --barrier-ink: #246268;
+  --bullet-ink: #603fc0;
+  --spear-ink: #725400;
+  --reflect-ink: #515b6a;
+  /* 色の付いた札やボタンに乗せる文字 */
+  --on-accent: #fff;
   --surface: #f4f5fa;
-  --go: #2e9d57;
+  --go: #2c9754;
   --hit: #d8392b;
+  /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
+  --die-me: 52px;
+  --die-cpu: 52px;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
   --font-spell: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
@@ -31,13 +42,19 @@
     --me: #7b9be0;
     --cpu: #d07aac;
     --surface: #212636;
-    --go: #3cb36a;
-    --hit: #e8513f;
+    --go: #38a863;
+    --hit: #e1301b;
+    --on-accent: #141824;
     --fireball: #f06a4f;
     --barrier: #5fb8bf;
     --bullet: #a690f0;
     --spear: #e0b43a;
     --reflect: #9aa6b8;
+    --fireball-ink: #f28069;
+    --barrier-ink: #5fb8bf;
+    --bullet-ink: #ab97f1;
+    --spear-ink: #e0b43a;
+    --reflect-ink: #9aa6b8;
   }
 }
 
@@ -83,6 +100,11 @@ button {
 .btn-primary {
   background: var(--me);
   border-color: var(--me);
+  color: var(--on-accent);
+}
+.btn-danger {
+  background: var(--hit);
+  border-color: var(--hit);
   color: #fff;
 }
 .btn-large {
@@ -92,9 +114,15 @@ button {
 
 /* タイトル */
 .title {
+  position: relative;
   max-width: 640px;
   margin: 0 auto;
   padding: 3rem 1rem;
+}
+.title-help {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
 }
 .title-logo,
 .logo {
@@ -140,9 +168,6 @@ button {
 
 /* 卓 */
 .table {
-  /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
-  --die-me: 52px;
-  --die-cpu: 52px;
   max-width: 1040px;
   margin: 0 auto;
   padding: 1rem 1rem 6rem;
@@ -167,6 +192,53 @@ button {
   margin: 0 0 0 auto;
   color: var(--ink-soft);
   font-size: 0.9rem;
+}
+/* 降参。対局中だけ右上に出す */
+.surrender {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.surrender svg {
+  width: 16px;
+  height: 16px;
+}
+.surrender:hover {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+.confirm-dialog {
+  max-width: min(90vw, 360px);
+  padding: 1.5rem 1.25rem 1.25rem;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+  text-align: center;
+}
+.confirm-dialog::backdrop {
+  background: rgba(20, 24, 36, 0.5);
+}
+.dialog-title {
+  margin: 0 0 1.25rem;
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.4rem;
+}
+.dialog-actions {
+  display: flex;
+  justify-content: center;
+  gap: 0.75rem;
 }
 
 /* 席。相手は上から カード、ダイス、体力。自分は 体力、ダイス、カード。色の帯は卓の中央側に付ける */
@@ -235,7 +307,7 @@ button {
 }
 .badge-chant {
   border-color: var(--spear);
-  color: var(--spear);
+  color: var(--spear-ink);
   font-weight: 700;
 }
 
@@ -370,6 +442,7 @@ button.die:disabled {
 .card {
   /* 色を決めていない新しいカードでも表示が崩れないように、既定の色を持たせる */
   --spell: var(--ink);
+  --spell-ink: var(--ink);
   /* 一番幅を取る「Y = □ + □」が一行に収まる幅 */
   width: calc(var(--die) * 2 + 5.25rem);
   flex: none;
@@ -393,18 +466,23 @@ button.die:disabled {
 }
 .card-fireball {
   --spell: var(--fireball);
+  --spell-ink: var(--fireball-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
+  --spell-ink: var(--barrier-ink);
 }
 .card-bullet {
   --spell: var(--bullet);
+  --spell-ink: var(--bullet-ink);
 }
 .card-spear {
   --spell: var(--spear);
+  --spell-ink: var(--spear-ink);
 }
 .card-reflect {
   --spell: var(--reflect);
+  --spell-ink: var(--reflect-ink);
 }
 .card-head {
   display: flex;
@@ -417,15 +495,12 @@ button.die:disabled {
   font-weight: 800;
   font-size: 1.1rem;
   line-height: 1.2;
-  color: var(--spell);
+  color: var(--spell-ink);
 }
 .card-used {
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--ink-soft);
-}
-.card.is-off {
-  opacity: 0.4;
 }
 .card.is-target {
   border-color: var(--spell);
@@ -472,8 +547,10 @@ button.die:disabled {
   border-top: 1px dashed var(--line);
   padding-top: 0.35rem;
 }
+/* 今のステップで使えない行は、薄くせずに灰色で描く。文字は読める濃さを保つ */
 .face-row:not(.is-on) {
-  opacity: 0.4;
+  --spell: var(--ink-soft);
+  --spell-ink: var(--ink-soft);
 }
 /* 置き場の行は折り返さない */
 .slots,
@@ -491,13 +568,13 @@ button.die:disabled {
   display: grid;
   place-items: center;
   padding: 0;
-  border: 2px dashed color-mix(in srgb, var(--spell) 60%, transparent);
+  border: 2px dashed var(--spell);
   border-radius: 18%;
   background: transparent;
   font-family: var(--font-spell);
   font-weight: 800;
   font-size: 1.05rem;
-  color: var(--spell);
+  color: var(--spell-ink);
   transition:
     box-shadow 150ms ease,
     background 150ms ease;
@@ -532,7 +609,7 @@ button.slot:disabled {
   font-family: var(--font-spell);
   font-weight: 800;
   font-size: 1.05rem;
-  color: var(--spell);
+  color: var(--spell-ink);
   white-space: nowrap;
 }
 .effect {
@@ -591,16 +668,15 @@ button.slot:disabled {
   font-weight: 800;
   font-size: 0.95rem;
   text-align: center;
-  color: var(--spell, var(--ink));
-  transition:
-    box-shadow 150ms ease,
-    opacity 150ms ease;
+  color: var(--spell-ink, var(--ink));
+  transition: box-shadow 150ms ease;
 }
 button.tab {
   cursor: pointer;
 }
 .tab.is-off {
-  opacity: 0.4;
+  --spell: var(--ink-soft);
+  --spell-ink: var(--ink-soft);
 }
 .tab.is-current {
   background: var(--surface);
@@ -705,9 +781,9 @@ button.tab {
   height: 26px;
   padding: 0 4px;
   border-radius: 13px;
-  background: var(--spell, var(--ink));
+  background: var(--spell-ink, var(--ink));
   border: 2px solid var(--table);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 800;
   font-size: 0.85rem;
   line-height: 22px;
@@ -811,8 +887,8 @@ button.tab {
   height: 18px;
   padding: 0 4px;
   border-radius: 9px;
-  background: var(--spell, var(--ink-soft));
-  color: #fff;
+  background: var(--spell-ink, var(--ink-soft));
+  color: var(--on-accent);
   font-size: 0.72rem;
   font-weight: 800;
   line-height: 18px;
@@ -916,7 +992,8 @@ button.tab {
 }
 .history-when {
   grid-row: span 2;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
   font-weight: 700;
   color: var(--ink-soft);
 }
@@ -945,7 +1022,7 @@ button.tab {
   font-family: var(--font-spell);
   font-weight: 800;
   font-size: 0.95rem;
-  color: var(--spell, var(--ink));
+  color: var(--spell-ink, var(--ink));
 }
 .history-pass {
   display: grid;
@@ -971,14 +1048,20 @@ button.tab {
 }
 .history-toggle {
   align-self: center;
-  padding: 0.1rem 0.5rem;
-  border: 0;
-  background: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
   color: var(--ink-soft);
-  font-size: 0.8rem;
-  font-weight: 700;
-  text-decoration: underline;
   cursor: pointer;
+}
+.history-toggle svg {
+  width: 20px;
+  height: 20px;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1025,24 +1108,77 @@ button.tab {
   justify-content: center;
 }
 
-/* ルール */
-.rules {
-  border-top: 1px solid var(--line);
-  padding-top: 0.5rem;
-}
-.rules summary {
+/* ルール。ヘッダーの「?」から開く */
+.help {
+  align-self: center;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
   cursor: pointer;
-  font-weight: 700;
+}
+.help svg {
+  width: 22px;
+  height: 22px;
+}
+.help:hover {
+  border-color: var(--ink-soft);
+}
+.rules-dialog {
+  width: min(94vw, 1040px);
+  max-height: 90vh;
+  padding: 1.25rem;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.rules-dialog::backdrop {
+  background: rgba(20, 24, 36, 0.5);
+}
+.rules-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.rules-head .dialog-title {
+  margin: 0;
+}
+.dialog-close {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.dialog-close:hover {
+  color: var(--ink);
+}
+.rules-cards-title {
+  margin: 1.25rem 0 0.6rem;
+  font-size: 1rem;
+}
+.rules-cards {
+  --die: var(--die-me);
 }
 .rules-list {
   margin: 0.5rem 0 0;
   padding-left: 1.2rem;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   color: var(--ink-soft);
-}
-.rules-list strong {
-  font-family: var(--font-spell);
-  color: var(--ink);
 }
 
 /* useNarrow.ts の境目と合わせる */
@@ -1055,11 +1191,19 @@ button.tab {
     padding: 0.6rem;
   }
   /* 自分は一枚だけ大きく出すのでダイスも大きく、相手は名前と公開したカードだけなので小さく */
-  .table {
+  :root {
     --die-me: 60px;
     --die-cpu: 44px;
   }
   .level-label {
+    order: 3;
+    width: 100%;
     margin-left: 0;
+  }
+  .table-head .help {
+    margin-left: auto;
+  }
+  .rules-cards {
+    justify-content: center;
   }
 }

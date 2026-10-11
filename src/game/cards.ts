@@ -4,10 +4,9 @@
 
 import type { ActionKind, CardId } from './types'
 
+/** カードの効果は文で書かず、ActionDef の face から置き場と短い文で描く */
 export interface CardDef {
   name: string
-  /** ルール説明に出す効果の文。カード面には ActionDef の face を描く */
-  text: string
 }
 
 /**
@@ -57,14 +56,11 @@ export interface ActionDef {
 export const CARD_ORDER: readonly CardId[] = ['fireball', 'barrier', 'bullet', 'spear', 'reflect']
 
 export const CARD_DEFS: Record<CardId, CardDef> = {
-  fireball: { name: '火球', text: '2個置く。高い方の目のダメージ' },
-  barrier: { name: '障壁', text: '1個置く。このステップに受ける攻撃を、置いた目だけ減らす。魔弾は防げない' },
-  bullet: { name: '魔弾', text: '1個で2点、2個で3点。目は問わず、障壁をすり抜ける' },
-  spear: {
-    name: '雷槍',
-    text: '一ステップ目に1個で詠唱。置いた目以上のダメージを受けると崩れる。二ステップ目に2個で発動し、合計のダメージ',
-  },
-  reflect: { name: '反射', text: '同じ目を2個置く。このステップに受ける攻撃を無効化し、相手に返す' },
+  fireball: { name: '火球' },
+  barrier: { name: '障壁' },
+  bullet: { name: '魔弾' },
+  spear: { name: '雷槍' },
+  reflect: { name: '反射' },
 }
 
 export const ACTION_DEFS: Record<ActionKind, ActionDef> = {

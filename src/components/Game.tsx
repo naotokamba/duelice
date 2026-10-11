@@ -1,6 +1,6 @@
-import { SkipForward } from 'lucide-react'
+import { Flag, SkipForward } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { ACTION_DEFS, CARD_DEFS, CARD_ORDER } from '../game/cards'
+import { ACTION_DEFS, CARD_ORDER } from '../game/cards'
 import {
   availableCards,
   composeAction,
@@ -29,6 +29,7 @@ import { Card, type CardPlay, CardTabs, type Shown } from './Card'
 import { Die } from './Die'
 import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
 import { History } from './History'
+import { RulesButton } from './RulesButton'
 import { useDiceDrag } from './useDiceDrag'
 import { useNarrow } from './useNarrow'
 
@@ -77,6 +78,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const thinker = useRef(new Thinker())
   const drag = useDiceDrag()
   const narrow = useNarrow()
+  /** 降参の確認 */
+  const surrenderDialog = useRef<HTMLDialogElement>(null)
 
   // 公開したら、矢印が当たる時刻に体力を減らし、動きが終わったら自動で次のステップかターンへ進む
   useEffect(() => {
@@ -94,7 +97,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         const turn = turnOver(game)
         setGame(turn ? nextTurn(game, rng) : game)
         setRevealed(false)
-        setBanner({ text: turn ? `${game.turn + 1}ターン目` : '二ステップ目', turn })
+        // 狭い画面で出していたカードは使い終わっているかもしれないので、使える最初のカードに戻す
+        setFocus(null)
+        setBanner({ text: turn ? `Turn ${game.turn + 1}` : 'Step 2', turn })
       }, revealMs(list)),
     )
     return () => {
@@ -119,7 +124,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     setRevealed(false)
     setSettled(false)
     setLanded(Number.POSITIVE_INFINITY)
-    setBanner({ text: '1ターン目', turn: true })
+    setBanner({ text: 'Turn 1', turn: true })
+    setFocus(null)
     clearHand()
   }
 
@@ -302,10 +308,39 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       <header className="table-head">
         <h1 className="logo">Duelice</h1>
         <p className="turn-label">
-          {`${showReveal ? last.turn : game.turn}ターン目 ${(showReveal ? last.step : game.step) === 1 ? '一' : '二'}ステップ目${revealed ? ' 公開' : ''}`}
+          {`Turn ${showReveal ? last.turn : game.turn} - Step ${showReveal ? last.step : game.step}`}
         </p>
         <p className="level-label">相手の強さ：{LEVEL_NAMES[level]}</p>
+        <RulesButton />
+        {game.winner === null && (
+          <button type="button" className="surrender" onClick={() => surrenderDialog.current?.showModal()}>
+            <Flag aria-hidden="true" />
+            降参
+          </button>
+        )}
       </header>
+
+      {/* 降参すると対局をやめてタイトルに戻る。誤って押したときのために、最初は続けるを選んでおく */}
+      <dialog ref={surrenderDialog} className="confirm-dialog" aria-labelledby="surrender-title">
+        <p id="surrender-title" className="dialog-title">
+          降参しますか？
+        </p>
+        <div className="dialog-actions">
+          <button type="button" className="btn" onClick={() => surrenderDialog.current?.close()}>
+            続ける
+          </button>
+          <button
+            type="button"
+            className="btn btn-danger"
+            onClick={() => {
+              surrenderDialog.current?.close()
+              setGame(null)
+            }}
+          >
+            降参する
+          </button>
+        </div>
+      </dialog>
 
       <Seat
         side="cpu"
@@ -368,8 +403,6 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           <Die value={game.players[0].roll[drag.view.die]} />
         </div>
       )}
-
-      <Rules />
     </main>
   )
 }
@@ -377,6 +410,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 function Title({ level, setLevel, onStart }: { level: Level; setLevel: (l: Level) => void; onStart: () => void }) {
   return (
     <main className="title">
+      <div className="title-help">
+        <RulesButton />
+      </div>
       <h1 className="title-logo">Duelice</h1>
       <p className="title-lead">3個のダイスを振り、見えている目で読み合う魔術師の決闘</p>
       <fieldset className="level-pick">
@@ -391,7 +427,6 @@ function Title({ level, setLevel, onStart }: { level: Level; setLevel: (l: Level
       <button type="button" className="btn btn-primary btn-large" onClick={onStart}>
         決闘を始める
       </button>
-      <Rules open />
     </main>
   )
 }
@@ -434,24 +469,5 @@ function Seat({ side, name, player, hp: shown, maxHp, quiet, children }: SeatPro
       {children}
       {side === 'cpu' && status}
     </section>
-  )
-}
-
-function Rules({ open = false }: { open?: boolean }) {
-  return (
-    <details className="rules" open={open}>
-      <summary>ルール</summary>
-      <ul className="rules-list">
-        <li>毎ターン、互いに3個のダイスを振る。出目は全て公開</li>
-        <li>1ターンは二ステップ。各ステップでカードを1枚選んでダイスを置き、同時に公開して解決する</li>
-        <li>一ステップ目に使わなかったダイスは二ステップ目に使える。同じカードは1ターンに1回まで</li>
-        <li>体力が先に0になった方の負け。同時なら引き分け</li>
-        {CARD_ORDER.map((c) => (
-          <li key={c}>
-            <strong>{CARD_DEFS[c].name}</strong>：{CARD_DEFS[c].text}
-          </li>
-        ))}
-      </ul>
-    </details>
   )
 }

@@ -1,0 +1,52 @@
+// ルール。読まなくても遊べることを目指すので、ふだんはヘッダーの「?」にしまっておく。
+// カードの説明は文で書かず、対戦で使うカードをそのままの大きさで並べる。
+
+import { CircleHelp, X } from 'lucide-react'
+import { useRef } from 'react'
+import { CARD_ORDER, kindsOfCard } from '../game/cards'
+import { Card } from './Card'
+
+export function RulesButton() {
+  const dialog = useRef<HTMLDialogElement>(null)
+  return (
+    <>
+      <button
+        type="button"
+        className="help"
+        aria-label="ルール"
+        title="ルール"
+        onClick={() => dialog.current?.showModal()}
+      >
+        <CircleHelp aria-hidden="true" />
+      </button>
+      <dialog ref={dialog} className="rules-dialog" aria-labelledby="rules-title">
+        <div className="rules-head">
+          <h2 id="rules-title" className="dialog-title">
+            ルール
+          </h2>
+          <button
+            type="button"
+            className="dialog-close"
+            aria-label="閉じる"
+            title="閉じる"
+            onClick={() => dialog.current?.close()}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+        <ul className="rules-list">
+          <li>毎ターン、互いにダイスを3個振る。出目はお互いに見えている</li>
+          <li>1ターンは2ステップ。各ステップでカードを1枚選んでダイスを置き、同時に公開する</li>
+          <li>ステップ1で使わなかったダイスは、ステップ2で使える。同じカードは1ターンに1回まで</li>
+          <li>体力が先に0になった方の負け。同時なら引き分け</li>
+        </ul>
+        <h3 className="rules-cards-title">カード</h3>
+        <ul className="cards rules-cards">
+          {CARD_ORDER.map((c) => (
+            <Card key={c} card={c} roll={[]} active={kindsOfCard(c)} used={false} shown={null} />
+          ))}
+        </ul>
+      </dialog>
+    </>
+  )
+}

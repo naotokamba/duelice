@@ -97,7 +97,7 @@ describe('タイトル', () => {
       'つよい',
     )
     expect(screen.getByText('相手の強さ：つよい')).toBeTruthy()
-    expect(screen.getByText('1ターン目 一ステップ目')).toBeTruthy()
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
     expect(mySeat().getByLabelText('体力 20 / 20')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 20 / 20')).toBeTruthy()
   })
@@ -123,7 +123,7 @@ describe('一ターンの流れ', () => {
     expect(myCard('火球').getAllByRole('button', { name: '6の目を戻す' })).toHaveLength(2)
 
     await user.click(button('決定'))
-    expect(screen.getByText('1ターン目 一ステップ目 公開')).toBeTruthy()
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
     expect(screen.getByText('あなたの火球 6点')).toBeTruthy()
     // 公開中も、置いたダイスはカードの上に残る
     expect(myCard('火球').getAllByRole('img', { name: '6の目' })).toHaveLength(2)
@@ -134,10 +134,10 @@ describe('一ターンの流れ', () => {
 
     // 待てば自動で二ステップ目へ進み、切り替わりを知らせる
     await advance(1200)
-    expect(screen.getByText('1ターン目 二ステップ目')).toBeTruthy()
-    expect(screen.getByText('二ステップ目')).toBeTruthy()
+    expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
+    expect(screen.getByText('Step 2')).toBeTruthy()
     await advance(BANNER_MS)
-    expect(screen.queryByText('二ステップ目')).toBeNull()
+    expect(screen.queryByText('Step 2')).toBeNull()
     // 一つ前の結果は戦闘履歴に出る
     const history = () => within(screen.getByRole('region', { name: '戦闘履歴' }))
     expect(history().getByText('火球')).toBeTruthy()
@@ -150,8 +150,8 @@ describe('一ターンの流れ', () => {
 
     await user.click(button('パス'))
     await advance(2000)
-    expect(screen.getByText('2ターン目 一ステップ目')).toBeTruthy()
-    expect(screen.getByText('2ターン目')).toBeTruthy()
+    expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
+    expect(screen.getByText('Turn 2')).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '火球に置く' })).toHaveLength(2)
 
     // 戦闘履歴は一つ前だけを出し、開けばそれより前も見られる
@@ -389,6 +389,16 @@ describe('狭い画面', () => {
     expect(button('決定')).toBeTruthy()
   })
 
+  it('次のステップへ進むと、使い終わったカードではなく使える最初のカードを出す', async () => {
+    const user = await start({ rng: roll(), opponent: passOpponent })
+    await user.click(mySeat().getByRole('button', { name: '4の目' }))
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    await user.click(button('決定'))
+    await settle()
+    expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
+    expect(mySeat().getByRole('button', { name: '火球' }).getAttribute('aria-pressed')).toBe('true')
+  })
+
   it('名前へ引きずって置ける', async () => {
     await start({ rng: roll(), opponent: passOpponent })
     dragTo(mySeat().getByRole('button', { name: '5の目' }), mySeat().getByRole('button', { name: '魔弾' }))
@@ -412,6 +422,58 @@ describe('狭い画面', () => {
     matches = false
     act(() => notify())
     expect(cardsShown(mySeat())).toHaveLength(5)
+  })
+})
+
+describe('ルール', () => {
+  it('タイトルでも対局中でも「?」から開け、対局と同じカードが並ぶ', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(
+      <Game
+        rng={dice([
+          [1, 2, 3],
+          [1, 2, 3],
+        ])}
+        opponent={passOpponent}
+      />,
+    )
+    const open = async () => {
+      await user.click(button('ルール'))
+      const dialog = screen.getByRole('dialog', { name: 'ルール' }) as HTMLDialogElement
+      expect(dialog.open).toBe(true)
+      const cards = within(dialog).getAllByRole('listitem', { name: /./ })
+      expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['火球', '障壁', '魔弾', '雷槍', '反射'])
+      // ルールで見せるカードは、どの行も使える色で描く
+      expect(dialog.querySelectorAll('.face-row:not(.is-on)')).toHaveLength(0)
+      await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
+      expect(dialog.open).toBe(false)
+    }
+    await open()
+    await user.click(button('決闘を始める'))
+    await open()
+  })
+})
+
+describe('降参', () => {
+  it('確認して降参するとタイトルに戻り、続けるを選べば対局が続く', async () => {
+    const user = await start({
+      rng: dice([
+        [1, 2, 3],
+        [1, 2, 3],
+      ]),
+      opponent: passOpponent,
+    })
+    await user.click(button('降参'))
+    const dialog = screen.getByRole('dialog', { name: '降参しますか？' }) as HTMLDialogElement
+    expect(dialog.open).toBe(true)
+
+    await user.click(within(dialog).getByRole('button', { name: '続ける' }))
+    expect(dialog.open).toBe(false)
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
+
+    await user.click(button('降参'))
+    await user.click(within(dialog).getByRole('button', { name: '降参する' }))
+    expect(button('決闘を始める')).toBeTruthy()
   })
 })
 
@@ -443,15 +505,16 @@ describe('決着', () => {
     const user = await start({ rng: dice(six, six, six, six, six, six, six, six), opponent: passOpponent })
     await attackUntilEnd(user)
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
-    // 決着したら、時間がたっても次へは進まない
+    // 決着したら、時間がたっても次へは進まない。降参もできない
     await settle()
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
+    expect(screen.queryByRole('button', { name: '降参' })).toBeNull()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     expect((button('パス') as HTMLButtonElement).disabled).toBe(true)
 
     await user.click(button('もう一戦'))
-    expect(screen.getByText('1ターン目 一ステップ目')).toBeTruthy()
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 20 / 20')).toBeTruthy()
 
     await attackUntilEnd(user)
