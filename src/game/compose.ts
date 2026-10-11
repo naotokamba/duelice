@@ -1,10 +1,16 @@
 // 画面の操作から行動を組み立てる処理。
-// プレイヤーはカードを選んでからダイスを選ぶので、その途中経過を扱う。
+// プレイヤーは手元のダイスをカードの置き場に置いていくので、その途中経過を扱う。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
 import { ACTION_DEFS, kindsOfCard } from './cards'
-import { isLegal, legalActions } from './rules'
+import { diceValues, freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
+
+/** カードに置いたダイス。置けるのは1ステップに1枚だけ */
+export interface Placement {
+  card: CardId
+  dice: number[]
+}
 
 /** 今のステップで、そのカードが取りうる行動の種類 */
 export function kindsNow(state: GameState, who: PlayerIndex, card: CardId): ActionKind[] {
@@ -17,11 +23,6 @@ export function kindsNow(state: GameState, who: PlayerIndex, card: CardId): Acti
   })
 }
 
-/** そのカードに今置けるダイスの最大数 */
-export function maxDice(state: GameState, who: PlayerIndex, card: CardId): number {
-  return Math.max(0, ...kindsNow(state, who, card).flatMap((k) => ACTION_DEFS[k].dice))
-}
-
 /** 今のステップで使えるカード */
 export function availableCards(state: GameState, who: PlayerIndex): Set<CardId> {
   const set = new Set<CardId>()
@@ -29,7 +30,7 @@ export function availableCards(state: GameState, who: PlayerIndex): Set<CardId> 
   return set
 }
 
-/** カードと選んだダイスから合法な行動を組み立てる。足りなければ null */
+/** カードと置いたダイスから合法な行動を組み立てる。足りなければ null */
 export function composeAction(state: GameState, who: PlayerIndex, card: CardId, picked: number[]): Action | null {
   for (const kind of kindsNow(state, who, card)) {
     if (!ACTION_DEFS[kind].dice.includes(picked.length)) continue
@@ -39,30 +40,67 @@ export function composeAction(state: GameState, who: PlayerIndex, card: CardId, 
   return null
 }
 
-function countText(counts: number[]): string {
-  return `${counts.join('個か')}個`
+/** vals の目が全て、all の中に重複を数えて含まれる */
+function containsValues(all: number[], vals: number[]): boolean {
+  const rest = [...all]
+  return vals.every((v) => {
+    const i = rest.indexOf(v)
+    if (i < 0) return false
+    rest.splice(i, 1)
+    return true
+  })
 }
 
-/** 選択中の内容を一行で説明する */
-export function previewText(state: GameState, who: PlayerIndex, card: CardId, picked: number[]): string {
-  const kinds = kindsNow(state, who, card)
+/**
+ * picked を置いたカードに、さらに die を置けるか。置いた後に、足りないダイスを足せば合法な行動になるなら置ける。
+ * 合法かどうかは目の値だけで決まるので、合法手の目に含まれるかで判定する
+ */
+export function canPlace(state: GameState, who: PlayerIndex, card: CardId, picked: number[], die: number): boolean {
   const p = state.players[who]
-  const vals = picked.map((i) => p.roll[i])
-  const a = composeAction(state, who, card, picked)
-  if (a && a.kind !== 'pass') {
-    const def = ACTION_DEFS[a.kind]
-    const v = vals.join('と')
-    if (def.power) {
-      const n = def.power(vals)
-      return `${def.label}：${v}、${n}点${def.piercing ? '、防御をすり抜ける' : ''}`
-    }
-    if (def.guard) return `${def.label}：${v}、受ける攻撃を${def.guard(vals)}減らす`
-    if (def.chant) return `${def.label}：${v}。${vals[0]}以上のダメージを受けると崩れる`
-    if (def.reflects) return `${def.label}：${v}、受ける攻撃を返す`
-    return `${def.label}：${v}`
-  }
-  const def = ACTION_DEFS[kinds[0]]
-  if (def.sameValues && picked.length > 0) return `${def.label}：同じ目を${Math.max(...def.dice)}個選んでください`
-  const counts = [...new Set(kinds.flatMap((k) => ACTION_DEFS[k].dice))].sort((x, y) => x - y)
-  return `${def.label}：ダイスを${countText(counts)}選んでください`
+  if (picked.includes(die) || !freeDice(p).includes(die)) return false
+  const vals = [...picked, die].map((i) => p.roll[i])
+  return legalActions(state, who).some(
+    (a) => a.kind !== 'pass' && ACTION_DEFS[a.kind].card === card && containsValues(diceValues(p, a), vals),
+  )
+}
+
+/** die をカードに置いた後の配置。置けなければ null。別のカードに置いてあったダイスは手元に戻る */
+export function placeDie(
+  state: GameState,
+  who: PlayerIndex,
+  placement: Placement | null,
+  card: CardId,
+  die: number,
+): Placement | null {
+  const base = placement?.card === card ? placement.dice.filter((d) => d !== die) : []
+  return canPlace(state, who, card, base, die) ? { card, dice: [...base, die] } : null
+}
+
+/** die を手元に戻した後の配置 */
+export function removeDie(placement: Placement | null, die: number): Placement | null {
+  const dice = placement?.dice.filter((d) => d !== die) ?? []
+  return placement && dice.length > 0 ? { card: placement.card, dice } : null
+}
+
+/**
+ * 置いたダイスを描く行動。カード面は1行が1ステップぶんなので、1枚のカードが1つのステップに使える行動は1つに限る。
+ * この約束は compose.test.ts で検査する
+ */
+export function placedKind(state: GameState, who: PlayerIndex, placement: Placement): ActionKind {
+  return kindsNow(state, who, placement.card)[0]
+}
+
+/** 置き場に並べる順。高い目から並べるので、最初の置き場には一番高い目が入る */
+export function slotOrder(roll: number[], dice: number[]): number[] {
+  return [...dice].sort((a, b) => roll[b] - roll[a] || a - b)
+}
+
+/** カード面の効果の文。目が分かっていれば、記号をその目から決まる値に置き換える */
+export function effectText(kind: ActionKind, vals?: number[]): string {
+  const def = ACTION_DEFS[kind]
+  const sym = def.face.mark ?? def.face.sum
+  if (!vals || !sym) return def.face.effect
+  // 記号の値は、攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる置いた目
+  const value = def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
+  return def.face.effect.replaceAll(sym, String(value))
 }

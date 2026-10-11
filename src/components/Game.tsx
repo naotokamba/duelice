@@ -1,6 +1,15 @@
-import { useMemo, useRef, useState } from 'react'
-import { CARD_DEFS, CARD_ORDER } from '../game/cards'
-import { availableCards, composeAction, maxDice, previewText } from '../game/compose'
+import { SkipForward } from 'lucide-react'
+import { type ReactNode, useMemo, useRef, useState } from 'react'
+import { ACTION_DEFS, CARD_DEFS, CARD_ORDER } from '../game/cards'
+import {
+  availableCards,
+  composeAction,
+  kindsNow,
+  type Placement,
+  placeDie,
+  placedKind,
+  removeDie,
+} from '../game/compose'
 import { LEVEL_NAMES, type Level, Thinker } from '../game/cpu'
 import {
   type Action,
@@ -10,13 +19,16 @@ import {
   type GameState,
   newGame,
   nextTurn,
+  type PlayerIndex,
   type PlayerState,
   type Rng,
   resolveStep,
   type StepReport,
   turnOver,
 } from '../game/rules'
+import { Card, type CardPlay, type Shown } from './Card'
 import { Die } from './Die'
+import { useDiceDrag } from './useDiceDrag'
 
 /** 相手の手を決める関数。既定はCPU。テストやオンライン対戦で差し替える */
 export type Opponent = (state: GameState, level: Level, rng: Rng) => Action
@@ -27,39 +39,50 @@ interface GameProps {
   opponent?: Opponent
 }
 
+/** 公開した行動を、カードに置いたダイスとして見せる */
+function shownOf(a: Action | undefined): (Shown & { card: CardId }) | null {
+  if (!a || a.kind === 'pass') return null
+  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, dice: a.dice, complete: true }
+}
+
+function isCardId(s: string | null): s is CardId {
+  return CARD_ORDER.includes(s as CardId)
+}
+
 export function Game({ rng = Math.random, opponent }: GameProps) {
   const [level, setLevel] = useState<Level>('normal')
   const [game, setGame] = useState<GameState | null>(null)
   const [revealed, setRevealed] = useState(false)
-  const [card, setCard] = useState<CardId | null>(null)
-  const [picked, setPicked] = useState<number[]>([])
+  const [placement, setPlacement] = useState<Placement | null>(null)
+  /** タップで持ち上げたダイス。次にタップした置き場に置く */
+  const [held, setHeld] = useState<number | null>(null)
   const thinker = useRef(new Thinker())
+  const drag = useDiceDrag()
+
+  const clearHand = () => {
+    setPlacement(null)
+    setHeld(null)
+  }
 
   const start = () => {
     thinker.current = new Thinker()
     setGame(newGame(rng))
     setRevealed(false)
-    setCard(null)
-    setPicked([])
+    clearHand()
   }
 
   if (!game) return <Title level={level} setLevel={setLevel} onStart={start} />
 
-  const me = game.players[0]
-  const cpu = game.players[1]
   const last = game.history[game.history.length - 1]
+  const showReveal = revealed && last !== undefined
   const choosing = !revealed && game.winner === null
-  const myCards = availableCards(game, 0)
-  const cpuCards = availableCards(game, 1)
-  const action = card ? composeAction(game, 0, card, picked) : null
-  const ready = action !== null
+  const action = placement ? composeAction(game, 0, placement.card, placement.dice) : null
 
   const commit = (mine: Action) => {
     const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)
     setGame(resolveStep(game, [mine, theirs]))
     setRevealed(true)
-    setCard(null)
-    setPicked([])
+    clearHand()
   }
 
   const proceed = () => {
@@ -68,93 +91,166 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     setRevealed(false)
   }
 
-  const chooseCard = (c: CardId) => {
-    setCard(card === c ? null : c)
-    setPicked([])
+  const put = (card: CardId, die: number) => {
+    const next = placeDie(game, 0, placement, card, die)
+    if (next) setPlacement(next)
+    setHeld(null)
   }
 
-  const toggleDie = (i: number) => {
-    if (!card) return
-    if (picked.includes(i)) setPicked(picked.filter((x) => x !== i))
-    else if (picked.length < maxDice(game, 0, card)) setPicked([...picked, i])
+  const takeBack = (die: number) => {
+    setPlacement(removeDie(placement, die))
+    setHeld(null)
   }
+
+  const dragDie = (die: number) =>
+    drag.bind(die, {
+      start: () => setHeld(die),
+      drop: (target) => {
+        if (target === 'tray') takeBack(die)
+        else if (isCardId(target)) put(target, die)
+        else setHeld(null)
+      },
+    })
+
+  /** 引きずりの直後に届くクリックは、タップとして扱わない */
+  const tap = (f: () => void) => () => {
+    if (!drag.afterDrop()) f()
+  }
+
+  const myShown = showReveal
+    ? shownOf(last.actions[0])
+    : placement && {
+        card: placement.card,
+        kind: placedKind(game, 0, placement),
+        dice: placement.dice,
+        complete: action !== null,
+      }
+  const cpuShown = showReveal ? shownOf(last.actions[1]) : null
+
+  const playFor = (c: CardId): CardPlay | undefined => {
+    if (!choosing) return undefined
+    return {
+      target: held !== null && placeDie(game, 0, placement, c, held) !== null,
+      hint: held === null,
+      onSlot: () => held !== null && put(c, held),
+      onTakeBack: (die) => tap(() => takeBack(die))(),
+      drag: dragDie,
+      lifted: drag.view?.die ?? null,
+      onConfirm: action && placement?.card === c ? () => commit(action) : undefined,
+    }
+  }
+
+  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null, extra?: ReactNode) => {
+    const p = game.players[who]
+    const usable = availableCards(game, who)
+    return (
+      <ul className="cards">
+        {CARD_ORDER.map((c) => (
+          <Card
+            key={c}
+            card={c}
+            roll={p.roll}
+            active={usable.has(c) ? kindsNow(game, who, c) : []}
+            used={p.usedCards.includes(c) && !usable.has(c)}
+            shown={shown?.card === c ? shown : null}
+            play={who === 0 ? playFor(c) : undefined}
+          />
+        ))}
+        {extra}
+      </ul>
+    )
+  }
+
+  const trayOf = (who: PlayerIndex, shown: Shown | null) => {
+    const p = game.players[who]
+    const free = freeDice(p)
+    return (
+      <fieldset className="tray" aria-label="ダイス" data-drop={who === 0 && choosing ? 'tray' : undefined}>
+        {p.roll.map((v, i) => {
+          if (shown?.dice.includes(i)) return <span key={i} className="socket" aria-hidden="true" />
+          const used = !free.includes(i)
+          if (who === 1 || !choosing || used) return <Die key={i} value={v} used={used} />
+          return (
+            <Die
+              key={i}
+              value={v}
+              selected={held === i}
+              hint={held === null}
+              onClick={tap(() => setHeld(held === i ? null : i))}
+              drag={dragDie(i)}
+              lifted={drag.view?.die === i}
+            />
+          )
+        })}
+      </fieldset>
+    )
+  }
+
+  const pass = (
+    <li className="pass-slot">
+      <button
+        type="button"
+        className="pass"
+        aria-label="パス"
+        title="パス"
+        disabled={!choosing}
+        onClick={() => commit({ kind: 'pass' })}
+      >
+        <SkipForward aria-hidden="true" />
+      </button>
+    </li>
+  )
 
   return (
     <main className="table">
       <header className="table-head">
         <h1 className="logo">Duelice</h1>
         <p className="turn-label">
-          {`${revealed && last ? last.turn : game.turn}ターン目 ${(revealed && last ? last.step : game.step) === 1 ? '一' : '二'}ステップ目${revealed ? ' 公開' : ''}`}
+          {`${showReveal ? last.turn : game.turn}ターン目 ${(showReveal ? last.step : game.step) === 1 ? '一' : '二'}ステップ目${revealed ? ' 公開' : ''}`}
         </p>
         <p className="level-label">相手の強さ：{LEVEL_NAMES[level]}</p>
       </header>
 
-      <Seat side="cpu" name="相手" player={cpu} maxHp={game.config.maxHp} cards={cpuCards} hideUsed={revealed} />
+      <Seat side="cpu" name="相手" player={game.players[1]} maxHp={game.config.maxHp}>
+        {cardsOf(1, cpuShown)}
+        {trayOf(1, cpuShown)}
+      </Seat>
 
-      <section className="arena" aria-live="polite">
-        {revealed && last ? (
-          <Reveal report={last} />
-        ) : (
-          <p className="arena-hint">
-            {game.step === 1
-              ? 'ダイスは互いに公開されています。カードを選び、置くダイスを選んでください'
-              : '一ステップ目の結果を見て、残りのダイスで二ステップ目を選んでください'}
-          </p>
-        )}
-        {game.winner !== null ? (
-          <div className="result">
-            <p className="result-text">
-              {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
-            </p>
-            <div className="result-actions">
-              <button type="button" className="btn btn-primary" onClick={start}>
-                もう一戦
-              </button>
-              <button type="button" className="btn" onClick={() => setGame(null)}>
-                強さを選び直す
-              </button>
+      {(showReveal || game.winner !== null) && (
+        <section className="arena" aria-live="polite">
+          {showReveal && <Reveal report={last} />}
+          {game.winner !== null ? (
+            <div className="result">
+              <p className="result-text">
+                {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
+              </p>
+              <div className="result-actions">
+                <button type="button" className="btn btn-primary" onClick={start}>
+                  もう一戦
+                </button>
+                <button type="button" className="btn" onClick={() => setGame(null)}>
+                  強さを選び直す
+                </button>
+              </div>
             </div>
-          </div>
-        ) : (
-          revealed && (
+          ) : (
             // 公開後は Enter だけで先へ進めるように、進むボタンへフォーカスを移す
             // biome-ignore lint/a11y/noAutofocus: 操作の流れに沿ったフォーカス移動で、ページ読み込み時の自動フォーカスではない
             <button type="button" className="btn btn-primary" onClick={proceed} autoFocus>
               {turnOver(game) ? '次のターンへ' : '二ステップ目へ'}
             </button>
-          )
-        )}
-      </section>
+          )}
+        </section>
+      )}
 
-      <Seat
-        side="me"
-        name="あなた"
-        player={me}
-        maxHp={game.config.maxHp}
-        cards={myCards}
-        selectedCard={card}
-        onCard={choosing ? chooseCard : undefined}
-        picked={picked}
-        onDie={choosing && card ? toggleDie : undefined}
-        hideUsed={revealed}
-      />
+      <Seat side="me" name="あなた" player={game.players[0]} maxHp={game.config.maxHp}>
+        {trayOf(0, myShown)}
+        {cardsOf(0, myShown, pass)}
+      </Seat>
 
-      {choosing && (
-        <div className="command">
-          <p className="command-preview">{card ? previewText(game, 0, card, picked) : 'カードを選んでください'}</p>
-          <div className="command-buttons">
-            <button type="button" className="btn" onClick={() => commit({ kind: 'pass' })}>
-              何もしない
-            </button>
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={!ready}
-              onClick={() => action && commit(action)}
-            >
-              決定して公開
-            </button>
-          </div>
+      {drag.view && (
+        <div className="drag-ghost" style={{ left: drag.view.x, top: drag.view.y }} aria-hidden="true">
+          <Die value={game.players[0].roll[drag.view.die]} />
         </div>
       )}
 
@@ -191,93 +287,35 @@ interface SeatProps {
   name: string
   player: PlayerState
   maxHp: number
-  cards: Set<CardId>
-  selectedCard?: CardId | null
-  onCard?: (c: CardId) => void
-  picked?: number[]
-  onDie?: (i: number) => void
-  hideUsed: boolean
+  /** 体力から遠い順に並べる中身。相手は カード、ダイス、自分は ダイス、カード の順に渡す */
+  children: ReactNode
 }
 
-function Seat({ side, name, player, maxHp, cards, selectedCard, onCard, picked = [], onDie, hideUsed }: SeatProps) {
-  const free = freeDice(player)
+/** 席。相手と自分で上下が対になるように、体力の帯を卓の中央側に置く */
+function Seat({ side, name, player, maxHp, children }: SeatProps) {
   const hp = Math.max(0, player.hp)
+  const status = (
+    <div className="seat-status">
+      <h2 className="seat-name">{name}</h2>
+      <div className="hp" role="img" aria-label={`体力 ${hp} / ${maxHp}`}>
+        <div className="hp-bar">
+          <div className="hp-fill" style={{ width: `${(hp / maxHp) * 100}%` }} />
+        </div>
+        <span className="hp-num">
+          {hp}
+          <small> / {maxHp}</small>
+        </span>
+      </div>
+      {player.chant === 'charged' && <span className="badge badge-chant">詠唱中</span>}
+      {player.chant === 'broken' && <span className="badge">詠唱は崩れた</span>}
+    </div>
+  )
   return (
     <section className={`seat seat-${side}`} aria-label={name}>
-      <div className="seat-top">
-        <h2 className="seat-name">{name}</h2>
-        <div className="hp" role="img" aria-label={`体力 ${hp} / ${maxHp}`}>
-          <div className="hp-bar">
-            <div className="hp-fill" style={{ width: `${(hp / maxHp) * 100}%` }} />
-          </div>
-          <span className="hp-num">
-            {hp}
-            <small> / {maxHp}</small>
-          </span>
-        </div>
-        {player.chant === 'charged' && <span className="badge badge-chant">詠唱中</span>}
-        {player.chant === 'broken' && <span className="badge">詠唱は崩れた</span>}
-      </div>
-      <div className="dice-row">
-        {player.roll.map((v, i) => (
-          <Die
-            key={i}
-            value={v}
-            used={!free.includes(i)}
-            selected={picked.includes(i)}
-            onClick={onDie ? () => onDie(i) : undefined}
-            disabled={!free.includes(i)}
-          />
-        ))}
-      </div>
-      <ul className="cards">
-        {CARD_ORDER.map((c) => {
-          const used = player.usedCards.includes(c) && !cards.has(c)
-          const usable = cards.has(c)
-          const cls = ['card', `card-${c}`, selectedCard === c && 'is-selected', used && 'is-used', !usable && 'is-off']
-            .filter(Boolean)
-            .join(' ')
-          const label = `${CARD_DEFS[c].name}${used ? '、このターンは使用済み' : usable ? '' : '、今は使えない'}`
-          return (
-            <li key={c}>
-              {onCard ? (
-                <button
-                  type="button"
-                  className={cls}
-                  disabled={!usable}
-                  onClick={() => onCard(c)}
-                  aria-pressed={selectedCard === c}
-                  aria-label={label}
-                >
-                  <CardFace c={c} used={used} />
-                </button>
-              ) : (
-                <div
-                  className={cls}
-                  role="img"
-                  aria-label={label}
-                  title={side === 'cpu' && usable && !hideUsed ? '今の出目で使える' : undefined}
-                >
-                  <CardFace c={c} used={used} />
-                </div>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      {side === 'me' && status}
+      {children}
+      {side === 'cpu' && status}
     </section>
-  )
-}
-
-function CardFace({ c, used }: { c: CardId; used: boolean }) {
-  return (
-    <>
-      <span className="card-name">
-        {CARD_DEFS[c].name}
-        {used && <span className="card-used">使用済み</span>}
-      </span>
-      <span className="card-text">{CARD_DEFS[c].text}</span>
-    </>
   )
 }
 

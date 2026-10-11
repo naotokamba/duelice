@@ -4,9 +4,20 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, rollArb } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
-import { availableCards, composeAction, kindsNow, maxDice, previewText } from './compose'
+import {
+  availableCards,
+  canPlace,
+  composeAction,
+  effectText,
+  kindsNow,
+  type Placement,
+  placeDie,
+  placedKind,
+  removeDie,
+  slotOrder,
+} from './compose'
 import { diceValues, isLegal, legalActions } from './rules'
-import type { CardId } from './types'
+import type { CardId, GameState } from './types'
 
 describe('行動の組み立て', () => {
   it('画面の操作で全ての行動を作れる', () => {
@@ -78,42 +89,148 @@ describe('ステップごとの行動', () => {
   it('雷槍は一ステップ目に詠唱、二ステップ目は詠唱が保たれたときだけ発動', () => {
     const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
     expect(kindsNow(s1, 0, 'spear')).toEqual(['spearChant'])
-    expect(maxDice(s1, 0, 'spear')).toBe(1)
     const charged = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
     expect(kindsNow(charged, 0, 'spear')).toEqual(['spearCast'])
-    expect(maxDice(charged, 0, 'spear')).toBe(2)
     const broken = makeState({ roll: [6, 5, 4], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
     expect(kindsNow(broken, 0, 'spear')).toEqual([])
-    expect(maxDice(broken, 0, 'spear')).toBe(0)
   })
 })
 
-describe('説明文', () => {
-  const s = makeState({ roll: [6, 2, 2] }, { roll: [1, 2, 3] })
-  it.each([
-    ['fireball', [0, 1], '火球：6と2、6点'],
-    ['bullet', [1], '魔弾：2、2点、防御をすり抜ける'],
-    ['barrier', [0], '障壁：6、受ける攻撃を6減らす'],
-    ['spear', [0], '雷槍の詠唱：6。6以上のダメージを受けると崩れる'],
-    ['reflect', [1, 2], '反射：2と2、受ける攻撃を返す'],
-    ['bullet', [], '魔弾：ダイスを1個か2個選んでください'],
-    ['fireball', [0], '火球：ダイスを2個選んでください'],
-    ['reflect', [0, 1], '反射：同じ目を2個選んでください'],
-    ['reflect', [], '反射：ダイスを2個選んでください'],
-  ] as const)('%s に %j を置く', (card, picked, text) => {
-    expect(previewText(s, 0, card, [...picked])).toBe(text)
-  })
-  it('雷槍の発動は合計を示す', () => {
-    const c = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
-    expect(previewText(c, 0, 'spear', [0, 1])).toBe('雷槍の発動：6と5、11点')
-  })
-  it('どのカードとダイスの組でも説明文が空にならない', () => {
+/** dice を順に card へ置いていく。途中で置けなければ null */
+function placeAll(s: GameState, card: CardId, dice: number[]): Placement | null {
+  let pl: Placement | null = null
+  for (const d of dice) {
+    pl = placeDie(s, 0, pl, card, d)
+    if (pl === null) return null
+  }
+  return pl
+}
+
+/** picked を含む、空きダイスの組み合わせ全て */
+function supersets(free: number[], picked: number[]): number[][] {
+  const rest = free.filter((i) => !picked.includes(i))
+  return rest.reduce<number[][]>((acc, i) => acc.flatMap((xs) => [xs, [...xs, i]]), [picked])
+}
+
+describe('ダイスを置く', () => {
+  it('合法手は全て、ダイスを一つずつどの順で置いても組み立てられる', () => {
     fc.assert(
-      fc.property(rollArb, fc.constantFrom<CardId>(...CARD_ORDER), fc.subarray([0, 1, 2]), (roll, card, picked) => {
-        const st = makeState({ roll }, { roll: [1, 2, 3] })
-        if (kindsNow(st, 0, card).length === 0) return
-        expect(previewText(st, 0, card, picked).length).toBeGreaterThan(0)
+      fc.property(rollArb, fc.boolean(), fc.boolean(), (roll, step2, reversed) => {
+        const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
+        for (const a of legalActions(s, 0)) {
+          if (a.kind === 'pass') continue
+          const card = ACTION_DEFS[a.kind].card
+          const order = reversed ? [...a.dice].reverse() : a.dice
+          const pl = placeAll(s, card, order)
+          expect(pl?.dice).toEqual(order)
+          expect(composeAction(s, 0, card, pl?.dice ?? [])?.kind).toBe(a.kind)
+        }
       }),
     )
+  })
+  it('置けたダイスは、足りないダイスを足せば必ず合法な行動になる', () => {
+    fc.assert(
+      fc.property(
+        rollArb,
+        fc.constantFrom<CardId>(...CARD_ORDER),
+        fc.subarray([0, 1, 2]),
+        fc.boolean(),
+        (roll, card, order, step2) => {
+          const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
+          const pl = placeAll(s, card, order)
+          if (pl === null) return
+          const made = supersets([0, 1, 2], pl.dice).some((dice) => composeAction(s, 0, card, dice) !== null)
+          expect(made).toBe(true)
+        },
+      ),
+    )
+  })
+  it('使用済みのダイスや、置いてあるダイスは置けない', () => {
+    const s = makeState({ roll: [6, 6, 2], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
+    expect(canPlace(s, 0, 'bullet', [], 2)).toBe(false)
+    expect(canPlace(s, 0, 'bullet', [0], 0)).toBe(false)
+    expect(canPlace(s, 0, 'bullet', [0], 1)).toBe(true)
+  })
+  it('置き場より多くは置けない', () => {
+    const s = makeState({ roll: [6, 6, 2] }, { roll: [1, 2, 3] })
+    expect(placeAll(s, 'barrier', [0])).toEqual({ card: 'barrier', dice: [0] })
+    expect(placeAll(s, 'barrier', [0, 1])).toBeNull()
+    expect(placeAll(s, 'bullet', [0, 1, 2])).toBeNull()
+  })
+  it('反射には同じ目しか並べられない', () => {
+    const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
+    expect(placeAll(s, 'reflect', [0, 2])).toEqual({ card: 'reflect', dice: [0, 2] })
+    expect(canPlace(s, 0, 'reflect', [0], 1)).toBe(false)
+    // ゾロ目の無い目は、最初の一個から置けない
+    expect(canPlace(s, 0, 'reflect', [], 1)).toBe(false)
+  })
+  it('使えないカードには置けない', () => {
+    const s = makeState({ roll: [6, 6, 2], usedCards: ['fireball'] }, { roll: [1, 2, 3] }, 2)
+    expect(canPlace(s, 0, 'fireball', [], 0)).toBe(false)
+    expect(canPlace(s, 0, 'spear', [], 0)).toBe(false)
+  })
+  it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
+    const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
+    const fire: Placement = { card: 'fireball', dice: [0, 1] }
+    expect(placeDie(s, 0, fire, 'barrier', 1)).toEqual({ card: 'barrier', dice: [1] })
+    // 同じカードに置き直しても、ダイスは増えない
+    expect(placeDie(s, 0, fire, 'fireball', 0)).toEqual({ card: 'fireball', dice: [1, 0] })
+    expect(placeDie(s, 0, fire, 'fireball', 2)).toBeNull()
+  })
+  it('ダイスを手元に戻す', () => {
+    const fire: Placement = { card: 'fireball', dice: [0, 1] }
+    expect(removeDie(fire, 0)).toEqual({ card: 'fireball', dice: [1] })
+    expect(removeDie(fire, 2)).toEqual(fire)
+    expect(removeDie({ card: 'barrier', dice: [2] }, 2)).toBeNull()
+    expect(removeDie(null, 0)).toBeNull()
+  })
+  it('雷槍は一ステップ目は詠唱、二ステップ目は発動の行に置く', () => {
+    const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
+    expect(placedKind(s1, 0, { card: 'spear', dice: [0] })).toBe('spearChant')
+    const s2 = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
+    expect(placedKind(s2, 0, { card: 'spear', dice: [0] })).toBe('spearCast')
+    expect(placedKind(s2, 0, { card: 'spear', dice: [0, 1] })).toBe('spearCast')
+  })
+})
+
+describe('カード面', () => {
+  it('置き場には高い目から並べ、同じ目は置いた位置の順にする', () => {
+    expect(slotOrder([2, 6, 4], [0, 1, 2])).toEqual([1, 2, 0])
+    expect(slotOrder([6, 2, 6], [2, 0])).toEqual([0, 2])
+  })
+  it.each([
+    ['fireball', [6, 2], '6ダメージ'],
+    ['barrier', [4], '受けるダメージを4減らす'],
+    ['spearChant', [5], '詠唱。5以上受けると崩れる'],
+    ['spearCast', [6, 5], '11ダメージ'],
+    ['reflect', [2, 2], '受ける攻撃をはね返す'],
+    ['bullet', [3], '1個で2、2個で3ダメージ。障壁を無視'],
+  ] as const)('%s に %j を置いた効果の文', (kind, vals, text) => {
+    expect(effectText(kind, [...vals])).toBe(text)
+  })
+  it('目が決まるまでは記号のまま', () => {
+    expect(effectText('fireball')).toBe('Xダメージ')
+    expect(effectText('spearCast')).toBe('Yダメージ')
+  })
+  it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
+    for (const card of CARD_ORDER) {
+      for (const step of [1, 2] as const) {
+        const s = makeState({ roll: [6, 6, 6], chant: 'charged' }, { roll: [1, 2, 3] }, step)
+        expect(kindsNow(s, 0, card).length).toBeLessThanOrEqual(1)
+      }
+    }
+  })
+  it('同じ目を求める行動は置き場を = でつなぎ、合計を名付ける行動は + でつなぐ', () => {
+    for (const kind of ACTION_KINDS) {
+      const def = ACTION_DEFS[kind]
+      if (def.sameValues) expect(def.face.join).toBe('=')
+      if (def.face.sum) expect(def.face.join).toBe('+')
+    }
+  })
+  it('置き場の記号は、どの行動でも効果の文に現れる', () => {
+    for (const kind of ACTION_KINDS) {
+      const { face } = ACTION_DEFS[kind]
+      for (const sym of [face.mark, face.sum]) if (sym) expect(face.effect).toContain(sym)
+    }
   })
 })

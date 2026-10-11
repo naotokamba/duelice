@@ -6,8 +6,23 @@ import type { ActionKind, CardId } from './types'
 
 export interface CardDef {
   name: string
-  /** 画面とルール説明に出す効果の文 */
+  /** ルール説明に出す効果の文。カード面には ActionDef の face を描く */
   text: string
+}
+
+/**
+ * カード面に描くダイス置き場と効果。行動1つが1行で、横に並ぶ置き場が1ステップぶん。
+ * 置き場の数は dice の最大、dice の最小を超える置き場は省いてもよい置き場として描く
+ */
+export interface Face {
+  /** 最初の置き場の中に書く記号。置いた目が効果の値になる */
+  mark?: string
+  /** 置き場の間に書く記号 */
+  join?: '+' | '='
+  /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
+  sum?: string
+  /** 効果の短い文。mark か sum の記号は、ダイスを置くと値に置き換わる */
+  effect: string
 }
 
 export interface ActionDef {
@@ -34,6 +49,8 @@ export interface ActionDef {
   reflects?: boolean
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
   done?: string
+  /** カード面の描き方 */
+  face: Face
 }
 
 /** 画面に並べる順 */
@@ -56,6 +73,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     label: '火球',
     dice: [2],
     power: (v) => Math.max(...v),
+    face: { mark: 'X', effect: 'Xダメージ' },
   },
   barrier: {
     card: 'barrier',
@@ -63,6 +81,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     dice: [1],
     guard: (v) => v[0],
     done: '障壁を張った',
+    face: { mark: 'X', effect: '受けるダメージをX減らす' },
   },
   bullet: {
     card: 'bullet',
@@ -70,6 +89,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     dice: [1, 2],
     power: (v) => (v.length === 1 ? 2 : 3),
     piercing: true,
+    face: { effect: '1個で2、2個で3ダメージ。障壁を無視' },
   },
   spearChant: {
     card: 'spear',
@@ -78,6 +98,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 1,
     chant: true,
     done: '雷槍を詠唱',
+    face: { mark: 'X', effect: '詠唱。X以上受けると崩れる' },
   },
   spearCast: {
     card: 'spear',
@@ -86,6 +107,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 2,
     needsCharge: true,
     power: (v) => v[0] + v[1],
+    face: { join: '+', sum: 'Y', effect: 'Yダメージ' },
   },
   reflect: {
     card: 'reflect',
@@ -94,6 +116,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     sameValues: true,
     reflects: true,
     done: '反射を構えた',
+    face: { join: '=', effect: '受ける攻撃をはね返す' },
   },
 }
 

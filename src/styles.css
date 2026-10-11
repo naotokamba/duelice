@@ -14,6 +14,7 @@
   --spear: #a87c00;
   --reflect: #5f6b7d;
   --surface: #f4f5fa;
+  --go: #2e9d57;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
   --font-spell: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
@@ -29,6 +30,7 @@
     --me: #7b9be0;
     --cpu: #d07aac;
     --surface: #212636;
+    --go: #3cb36a;
     --fireball: #f06a4f;
     --barrier: #5fb8bf;
     --bullet: #a690f0;
@@ -162,25 +164,28 @@ button {
   font-size: 0.9rem;
 }
 
-/* 席 */
+/* 席。相手は上から カード、ダイス、体力。自分は 体力、ダイス、カード。色の帯は卓の中央側に付ける */
 .seat {
   border-radius: 16px;
-  padding: 1rem;
+  padding: 0.85rem;
   background: var(--surface);
-  border-top: 4px solid var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
 }
 .seat-me {
   --accent: var(--me);
+  border-top: 4px solid var(--accent);
 }
 .seat-cpu {
   --accent: var(--cpu);
+  border-bottom: 4px solid var(--accent);
 }
-.seat-top {
+.seat-status {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.5rem 1rem;
-  margin-bottom: 0.75rem;
 }
 .seat-name {
   margin: 0;
@@ -228,10 +233,21 @@ button {
 }
 
 /* ダイス。この試作で一番手をかけるところ */
-.dice-row {
+.tray {
+  --die: 64px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
   display: flex;
   gap: 0.9rem;
-  margin-bottom: 0.9rem;
+  min-height: var(--die);
+}
+.socket {
+  width: var(--die);
+  height: var(--die);
+  border-radius: 18%;
+  border: 2px dashed var(--line);
 }
 .die {
   display: inline-grid;
@@ -253,8 +269,8 @@ button.die {
   cursor: pointer;
 }
 .die-large {
-  width: 64px;
-  height: 64px;
+  width: var(--die, 64px);
+  height: var(--die, 64px);
 }
 .die-small {
   width: 28px;
@@ -262,6 +278,14 @@ button.die {
   box-shadow:
     inset 0 -2px 0 rgba(29, 34, 51, 0.12),
     0 1px 3px rgba(29, 34, 51, 0.2);
+}
+.die-slot {
+  width: 100%;
+  height: 100%;
+  box-shadow:
+    inset 0 -3px 0 rgba(29, 34, 51, 0.12),
+    inset 0 2px 0 rgba(255, 255, 255, 0.9),
+    0 2px 5px rgba(29, 34, 51, 0.2);
 }
 .die-face {
   display: grid;
@@ -294,6 +318,29 @@ button.die {
 button.die:disabled {
   cursor: default;
 }
+/* 置ける場所があることを、うっすら光らせて知らせる */
+.die-hint {
+  animation: die-hint 2.4s ease-in-out infinite;
+}
+@keyframes die-hint {
+  50% {
+    filter: drop-shadow(0 0 7px color-mix(in srgb, var(--me) 75%, transparent));
+  }
+}
+.die-drag {
+  touch-action: none;
+  cursor: grab;
+}
+.die-lifted {
+  opacity: 0.25;
+}
+.drag-ghost {
+  position: fixed;
+  z-index: 10;
+  pointer-events: none;
+  transform: translate(-50%, -50%) scale(1.08);
+  filter: drop-shadow(0 10px 14px rgba(29, 34, 51, 0.35));
+}
 
 /* カード */
 .cards {
@@ -301,29 +348,26 @@ button.die:disabled {
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 0.5rem;
 }
 .card {
   /* 色を決めていない新しいカードでも表示が崩れないように、既定の色を持たせる */
   --spell: var(--ink);
+  --slot: 40px;
+  position: relative;
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
-  width: 100%;
-  height: 100%;
-  text-align: left;
+  gap: 0.35rem;
+  min-width: 0;
   border: 1px solid var(--line);
-  border-left: 6px solid var(--spell);
+  border-top: 5px solid var(--spell);
   border-radius: 10px;
-  padding: 0.5rem 0.65rem;
+  padding: 0.35rem 0.45rem 0.5rem;
   background: var(--table);
-}
-button.card {
-  cursor: pointer;
-}
-button.card:hover:not(:disabled) {
-  border-color: var(--spell);
+  transition:
+    box-shadow 150ms ease,
+    opacity 150ms ease;
 }
 .card-fireball {
   --spell: var(--fireball);
@@ -340,42 +384,176 @@ button.card:hover:not(:disabled) {
 .card-reflect {
   --spell: var(--reflect);
 }
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  min-height: 30px;
+}
 .card-name {
   font-family: var(--font-spell);
   font-weight: 800;
-  font-size: 1.15rem;
+  font-size: 1.1rem;
+  line-height: 1.2;
   color: var(--spell);
 }
-.card-text {
-  font-size: 0.75rem;
-  line-height: 1.5;
+.card-used {
+  font-size: 0.7rem;
+  font-weight: 700;
   color: var(--ink-soft);
-}
-.card.is-selected {
-  box-shadow: 0 0 0 2px var(--me);
-  background: var(--surface);
 }
 .card.is-off {
   opacity: 0.4;
 }
-.card-used {
-  font-family: var(--font-ui);
-  font-size: 0.7rem;
-  font-weight: 700;
+.card.is-target {
+  border-color: var(--spell);
+}
+.card.is-ready {
+  box-shadow: 0 0 0 2px var(--go);
+}
+.confirm {
+  margin-left: auto;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--go);
+  color: #fff;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(29, 34, 51, 0.25);
+  animation: pop-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
+}
+.confirm svg {
+  width: 18px;
+  height: 18px;
+}
+@keyframes pop-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0;
+  }
+}
+.face-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+.face-row + .face-row {
+  border-top: 1px dashed var(--line);
+  padding-top: 0.35rem;
+}
+.face-row:not(.is-on) {
+  opacity: 0.4;
+}
+.slots,
+.slot-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+}
+.slot-group {
+  flex-wrap: nowrap;
+}
+.slot {
+  width: var(--slot);
+  height: var(--slot);
+  flex: none;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px dashed color-mix(in srgb, var(--spell) 60%, transparent);
+  border-radius: 18%;
+  background: transparent;
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--spell);
+  transition:
+    box-shadow 150ms ease,
+    background 150ms ease;
+}
+.slot.is-optional {
+  border-style: dotted;
+}
+.slot.is-filled {
+  border: 0;
+}
+button.slot {
+  cursor: pointer;
+}
+button.slot:disabled {
+  cursor: default;
+}
+.card.is-hint .face-row.is-on .slot:not(.is-filled) {
+  animation: slot-hint 2.4s ease-in-out infinite;
+}
+@keyframes slot-hint {
+  50% {
+    background: color-mix(in srgb, var(--spell) 10%, transparent);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--spell) 40%, transparent);
+  }
+}
+.card.is-target .face-row.is-on .slot:not(.is-filled) {
+  border-style: solid;
+  background: color-mix(in srgb, var(--spell) 16%, transparent);
+  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--spell) 55%, transparent);
+}
+.sym {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.05rem;
+  color: var(--spell);
+  white-space: nowrap;
+}
+.effect {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  text-align: center;
   color: var(--ink-soft);
-  margin-left: 0.4rem;
 }
-/* 相手のカードは名前だけ。説明は自分の側で読む */
-.seat-cpu .cards {
-  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+.pass {
+  width: 100%;
+  height: 100%;
+  min-height: 90px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 2px dashed var(--line);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
 }
-.seat-cpu .card-text {
-  display: none;
+.pass svg {
+  width: 30px;
+  height: 30px;
+}
+.pass:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+  color: var(--ink);
+}
+.pass:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+/* 相手の側は一回り小さく描く */
+.seat-cpu .card {
+  --slot: 32px;
+}
+.seat-cpu .tray {
+  --die: 52px;
 }
 
 /* 中央 */
 .arena {
-  min-height: 9rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -383,11 +561,6 @@ button.card:hover:not(:disabled) {
   gap: 0.9rem;
   padding: 0.5rem 0;
   text-align: center;
-}
-.arena-hint {
-  margin: 0;
-  color: var(--ink-soft);
-  max-width: 34em;
 }
 .reveal {
   width: 100%;
@@ -454,7 +627,11 @@ button.card:hover:not(:disabled) {
 @media (prefers-reduced-motion: reduce) {
   .reveal-side,
   .hp-fill,
-  .die {
+  .die,
+  .card,
+  .slot,
+  .confirm,
+  .card.is-hint .face-row.is-on .slot:not(.is-filled) {
     animation: none;
     transition: none;
   }
@@ -476,30 +653,6 @@ button.card:hover:not(:disabled) {
   gap: 0.5rem;
   flex-wrap: wrap;
   justify-content: center;
-}
-
-/* 操作 */
-.command {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem 1rem;
-  padding: 0.75rem 1rem;
-  border-radius: 14px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  box-shadow: 0 -6px 18px rgba(29, 34, 51, 0.08);
-}
-.command-preview {
-  margin: 0;
-  font-weight: 700;
-}
-.command-buttons {
-  display: flex;
-  gap: 0.5rem;
 }
 
 /* 経過とルール */
@@ -530,18 +683,48 @@ button.card:hover:not(:disabled) {
   color: var(--ink);
 }
 
+@media (max-width: 640px) {
+  .cards {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 520px) {
-  .die-large {
-    width: 54px;
-    height: 54px;
+  .table {
+    padding: 0.75rem 0.75rem 4rem;
+    gap: 0.75rem;
+  }
+  .seat {
+    padding: 0.6rem;
+  }
+  .tray {
+    --die: 54px;
+  }
+  .seat-cpu .tray {
+    --die: 44px;
+  }
+  .card {
+    --slot: 34px;
+  }
+  /* 相手のカードは自分と同じなので、狭い画面では効果の文を省いて一列に並べる */
+  .seat-cpu .cards {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 0.3rem;
+  }
+  .seat-cpu .card {
+    --slot: 22px;
+    padding: 0.25rem 0.2rem 0.35rem;
+  }
+  .seat-cpu .card-name {
+    font-size: 0.95rem;
+  }
+  .seat-cpu .sym {
+    font-size: 0.8rem;
+  }
+  .seat-cpu .effect {
+    display: none;
   }
   .level-label {
     margin-left: 0;
-  }
-  .command-buttons {
-    width: 100%;
-  }
-  .command-buttons .btn {
-    flex: 1;
   }
 }
