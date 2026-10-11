@@ -10,10 +10,12 @@ export interface CardDef {
 }
 
 /**
- * 効果を描く印。damage はダメージ、guard は受けるダメージを減らす、pierce は障壁を貫通する、
- * reflect は受けた攻撃を返す、chant は詠唱、chantBroken は詠唱が崩れる、then は「そうなると」の矢印
+ * 効果を描く印。数を添える印は、印の中に数を描く。
+ * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
+ * reflect は受けた攻撃を返す、chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
+ * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'guard' | 'pierce' | 'reflect' | 'chant' | 'chantBroken' | 'then'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'reflect' | 'chant'
 
 /** カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる */
 export interface EffectPart {
@@ -99,13 +101,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     power: (v) => (v.length === 1 ? 2 : 3),
     piercing: true,
     face: {
-      effect: [
-        { text: '1個' },
-        { icon: 'damage', value: '2' },
-        { text: '2個' },
-        { icon: 'damage', value: '3' },
-        { icon: 'pierce' },
-      ],
+      effect: [{ text: '1個' }, { icon: 'pierce', value: '2' }, { text: '2個' }, { icon: 'pierce', value: '3' }],
     },
   },
   spearChant: {
@@ -115,11 +111,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     step: 1,
     chant: true,
     done: '雷槍を詠唱',
-    // X 以上のダメージを受けると崩れる
-    face: {
-      mark: 'X',
-      effect: [{ icon: 'chant' }, { icon: 'damage', value: 'X+' }, { icon: 'then' }, { icon: 'chantBroken' }],
-    },
+    face: { mark: 'X', effect: [{ icon: 'chant', value: 'X' }] },
   },
   spearCast: {
     card: 'spear',

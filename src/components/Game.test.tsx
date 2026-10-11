@@ -243,9 +243,7 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     await place(user, 5, '雷槍')
-    // 5以上のダメージを受けると、詠唱が崩れる
-    expect(myCard('雷槍').getByRole('img', { name: '5以上のダメージ' })).toBeTruthy()
-    expect(myCard('雷槍').getByRole('img', { name: '詠唱が崩れる' })).toBeTruthy()
+    expect(myCard('雷槍').getByRole('img', { name: '詠唱。5以上のダメージで崩れる' })).toBeTruthy()
     await user.click(button('決定'))
     expect(screen.getByText('あなたの詠唱は保たれた')).toBeTruthy()
     // 詠唱の結果は、矢印が当たる時刻まで席には出さない

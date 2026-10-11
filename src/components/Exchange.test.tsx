@@ -48,7 +48,9 @@ describe('公開の舞台', () => {
   })
   it('すり抜けられた障壁は薄くなる', () => {
     const s = stage([2, 1, 1], { kind: 'bullet', dice: [0] }, [6, 1, 1], { kind: 'barrier', dice: [0] })
-    expect(s.one('.stance.is-pierced .guard-off')).not.toBeNull()
+    // 貫通する攻撃の矢印には、カードと同じ串刺しの星が付く
+    expect(s.one('.stance.is-pierced')).not.toBeNull()
+    expect(s.one('.arrow .glyph-pierce')).not.toBeNull()
     expect(s.one('.arrow.is-spent')).toBeNull()
     expect(s.bursts).toEqual(['−2'])
   })

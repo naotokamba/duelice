@@ -206,16 +206,16 @@ describe('カード面', () => {
   it.each([
     ['fireball', [6, 2], 'damage:6'],
     ['barrier', [4], 'guard:4'],
-    ['spearChant', [5], 'chant damage:5+ then chantBroken'],
+    ['spearChant', [5], 'chant:5'],
     ['spearCast', [6, 5], 'damage:11'],
     ['reflect', [2, 2], 'reflect'],
-    ['bullet', [3], '1個 damage:2 2個 damage:3 pierce'],
+    ['bullet', [3], '1個 pierce:2 2個 pierce:3'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
   it('目が決まるまでは記号のまま', () => {
     expect(flat(effectParts('fireball'))).toBe('damage:X')
-    expect(flat(effectParts('spearChant'))).toBe('chant damage:X+ then chantBroken')
+    expect(flat(effectParts('spearChant'))).toBe('chant:X')
     expect(flat(effectParts('spearCast'))).toBe('damage:Y')
   })
   it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
@@ -231,6 +231,18 @@ describe('カード面', () => {
       const def = ACTION_DEFS[kind]
       if (def.sameValues) expect(def.face.join).toBe('=')
       if (def.face.sum) expect(def.face.join).toBe('+')
+    }
+  })
+  it('効果の印は行動の性質と食い違わない', () => {
+    for (const kind of ACTION_KINDS) {
+      const def = ACTION_DEFS[kind]
+      const icons = new Set(def.face.effect.map((p) => p.icon).filter(Boolean))
+      // 攻撃は、貫通するかどうかで星の印を使い分ける
+      expect(icons.has('damage'), kind).toBe(!!def.power && !def.piercing)
+      expect(icons.has('pierce'), kind).toBe(!!def.power && !!def.piercing)
+      expect(icons.has('guard'), kind).toBe(!!def.guard)
+      expect(icons.has('reflect'), kind).toBe(!!def.reflects)
+      expect(icons.has('chant'), kind).toBe(!!def.chant)
     }
   })
   it('置き場の記号は、どの行動でも効果に現れる', () => {

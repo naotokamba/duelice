@@ -6,8 +6,8 @@ import { SkipForward } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { breaksChant, type PlayerIndex, type StepReport, type Strike, strikes } from '../game/rules'
-import type { CardId } from '../game/types'
-import { ChantGlyph, NumberBadge, PierceGlyph, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
+import type { ActionKind, CardId } from '../game/types'
+import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
 
 /** 舞台の高さ。styles.css の .stage と合わせる */
 const H = 190
@@ -95,6 +95,7 @@ export function Exchange({ report }: { report: StepReport }) {
         return [
           <Arrow
             key={`a${s.from}`}
+            kind={s.kind}
             x={x}
             y0={edge(s.from)}
             y1={stops ? stanceRim(other) : edge(other)}
@@ -106,6 +107,7 @@ export function Exchange({ report }: { report: StepReport }) {
           s.outcome === 'reflected' && (
             <Arrow
               key={`r${s.from}`}
+              kind={s.kind}
               x={x}
               dx={BACK}
               y0={stanceRim(other)}
@@ -137,6 +139,7 @@ export function Exchange({ report }: { report: StepReport }) {
 }
 
 interface ArrowProps {
+  kind: ActionKind
   x: number
   dx?: number
   y0: number
@@ -148,7 +151,7 @@ interface ArrowProps {
   spent?: boolean
 }
 
-function Arrow({ x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProps) {
+function Arrow({ kind, x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProps) {
   const style = {
     ...at(x, Math.min(y0, y1), delay, dx),
     height: Math.abs(y1 - y0),
@@ -158,8 +161,9 @@ function Arrow({ x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProps) {
   const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent'].filter(Boolean).join(' ')
   return (
     <div className={cls} style={style}>
+      {/* 矢印には、放ったカードと同じ印を付ける */}
       <span className="arrow-value">
-        <NumberBadge value={value} />
+        {ACTION_DEFS[kind].piercing ? <PierceStar value={String(value)} /> : <Star value={String(value)} />}
       </span>
     </div>
   )
@@ -198,15 +202,12 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const vals = report.values[who]
   const cls = `stance card-${def.card}`
   if (def.guard) {
-    // 止めた障壁は当たった時に揺れる。すり抜けられた障壁は、矢印が通る時に斜線の入った盾に変わって薄くなる
+    // 止めた障壁は当たった時に揺れる。貫通された障壁は、矢印が通る時に薄くなる
     const pierced = incoming?.outcome === 'pierced'
     const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
     return (
       <div className={cls + state} style={at(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
-        <span className="guard-on">
-          <ShieldGlyph value={def.guard(vals)} />
-        </span>
-        {pierced && <PierceGlyph className="guard-off" />}
+        <ShieldGlyph value={def.guard(vals)} />
       </div>
     )
   }
@@ -221,12 +222,12 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     // 詠唱は攻撃を止めないので、矢印の横に置く。崩れるなら、攻撃が当たった時に印が切り替わる
     const broken = breaksChant(vals, report.damage[who])
     return (
-      <div className={`${cls}${broken ? ' is-broken' : ''}`} style={at(x, y, IMPACT_MS, aside ? -ASIDE : 0)}>
-        <ChantGlyph className="chant-on" />
-        {broken && <ChantGlyph broken className="chant-off" />}
-        <span className="stance-value">
-          <Star value={`${vals[0]}+`} />
-        </span>
+      <div
+        className={`${cls} stance-chant${broken ? ' is-broken' : ''}`}
+        style={at(x, y, IMPACT_MS, aside ? -ASIDE : 0)}
+      >
+        <ChantGlyph value={vals[0]} className="chant-on" />
+        {broken && <ChantGlyph value={vals[0]} broken className="chant-off" />}
       </div>
     )
   }

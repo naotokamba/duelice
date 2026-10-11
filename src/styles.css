@@ -650,14 +650,6 @@ button.slot:disabled {
   width: 100%;
   height: 100%;
 }
-.fx-then {
-  width: 20px;
-  color: var(--ink-soft);
-}
-.fx-then > svg {
-  width: 20px;
-  height: 20px;
-}
 
 /* 印の形。glyphs.tsx で描く */
 .glyph-line {
@@ -671,10 +663,24 @@ button.slot:disabled {
   fill: currentColor;
   stroke: none;
 }
-/* 貫通の矢印が盾の線を断ち切る。印の下の面の色で塗る */
-.glyph-cut {
-  stroke: var(--glyph-bg, var(--table));
-  stroke-width: 5;
+/* 貫通ダメージの星を串刺しにする槍。カードの色で描く */
+.glyph-spear {
+  fill: none;
+  stroke: var(--card-ink, var(--ink));
+  stroke-width: 7;
+  stroke-linecap: round;
+}
+/* 詠唱の点線の輪。輪の中をうっすら塗る */
+.glyph-chant-ring {
+  fill: color-mix(in srgb, currentColor 10%, transparent);
+  stroke: currentColor;
+  stroke-width: 6;
+  stroke-dasharray: 13 8;
+}
+.glyph-chant-slash {
+  stroke: currentColor;
+  stroke-width: 8;
+  stroke-linecap: round;
 }
 .glyph-value {
   fill: currentColor;
@@ -689,13 +695,8 @@ button.slot:disabled {
 .glyph-star .glyph-value {
   fill: #fff;
 }
-.glyph-badge circle {
-  fill: var(--spell-ink, var(--ink));
-  stroke: var(--table);
-  stroke-width: 2;
-}
-.glyph-badge .glyph-value {
-  fill: var(--on-accent);
+.glyph-star .glyph-spear-head {
+  fill: var(--card-ink, var(--ink));
 }
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
@@ -863,6 +864,13 @@ button.tab {
   width: 100%;
   height: 100%;
 }
+/* 印は矢印の放った側寄りに付け、受ける側の構えの印と重ならないようにする */
+.arrow.is-up .arrow-value {
+  top: 70%;
+}
+.arrow.is-down .arrow-value {
+  top: 30%;
+}
 /* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
   animation:
@@ -929,7 +937,6 @@ button.tab {
 }
 /* 構え。障壁、反射、詠唱は受ける側の端に置く。大きさは Exchange.tsx の STANCE_R と合わせる */
 .stance {
-  --glyph-bg: var(--surface);
   width: 56px;
   height: 56px;
   display: grid;
@@ -942,7 +949,7 @@ button.tab {
   animation: stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
 }
 /* 印を重ねて置き、切り替わる時は透明度で入れ替える */
-.stance > :not(.stance-value) {
+.stance > * {
   grid-area: 1 / 1;
   display: grid;
   width: 36px;
@@ -952,13 +959,14 @@ button.tab {
   width: 100%;
   height: 100%;
 }
-/* 詠唱が崩れるダメージの境目。印の右下に小さな星で添える */
-.stance-value {
-  position: absolute;
-  right: -14px;
-  bottom: -12px;
-  width: 32px;
-  height: 32px;
+/* 詠唱の印は自分で輪を持つので、構えの枠を描かずに大きく出す */
+.stance-chant {
+  border-color: transparent;
+  background: transparent;
+}
+.stance-chant > * {
+  width: 54px;
+  height: 54px;
 }
 .stance-pass {
   width: 44px;
@@ -967,7 +975,7 @@ button.tab {
   border-color: var(--line);
   color: var(--ink-soft);
 }
-.stance-pass > :not(.stance-value) {
+.stance-pass > * {
   width: 24px;
   height: 24px;
 }
@@ -987,12 +995,6 @@ button.tab {
   animation:
     stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both,
     fade-half 240ms ease var(--delay) both;
-}
-.stance.is-pierced .guard-on {
-  animation: gone 160ms ease var(--delay) both;
-}
-.stance.is-pierced .guard-off {
-  animation: appear 160ms ease var(--delay) both;
 }
 @keyframes fade-half {
   to {
@@ -1205,7 +1207,6 @@ button.tab {
   .stance.is-pierced {
     opacity: 0.45;
   }
-  .stance.is-pierced .guard-on,
   .stance.is-broken .chant-on {
     opacity: 0;
   }
@@ -1294,6 +1295,23 @@ button.tab {
 }
 .dialog-close:hover {
   color: var(--ink);
+}
+/* 印の見方 */
+.rules-marks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.rules-marks li {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.95rem;
+}
+.rules-marks .fx {
+  flex: none;
 }
 .rules-cards-title {
   margin: 1.25rem 0 0.6rem;
