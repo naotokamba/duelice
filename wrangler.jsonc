@@ -1,9 +1,13 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "duelice",
+  "account_id": "84aa482c288f619eff337b5e2f5b2c24",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
   "main": "@tanstack/react-start/server-entry",
+  "routes": [{ "pattern": "duelice.naotokamba.com", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false,
   "observability": {
     "enabled": true
   },

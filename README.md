@@ -4,6 +4,8 @@
 
 ## 遊び方
 
+公開版は https://duelice.naotokamba.com で遊べます。手元で動かすときは次のとおりです。
+
 ```sh
 pnpm install
 pnpm dev
@@ -55,4 +57,4 @@ pnpm dev
 
 ## 開発
 
-開発の約束とテストの構成は `AGENTS.md`、カードを足す手順は `docs/adding-a-card.md` にあります。
+本番への公開は `v` で始まるタグの push で行います。開発の約束とテストの構成、リリースの手順は `AGENTS.md`、カードを足す手順は `docs/adding-a-card.md` にあります。

@@ -45,3 +45,14 @@ pnpm check
 - Biome の設定に従う。`pnpm format` で整形する
 - コメントと画面の文言は日本語。画面の文言は平易に、括弧で補足しない
 - 設計の判断の記録は Claude Docs の「ダイス対戦ゲーム 確定ルール」にある
+
+## リリース
+
+本番は https://duelice.naotokamba.com 。`v` で始まるタグを push すると、GitHub Actions が `pnpm check` を通したうえで Cloudflare Workers に出す。仕組みは `.github/workflows/release.yml` にある。公開の経路はこれだけで、手元から `wrangler deploy` はしない。
+
+```sh
+git tag v0.2.0
+git push origin v0.2.0
+```
+
+Cloudflare の API トークンはリポジトリの secret `CLOUDFLARE_API_TOKEN` に入っている。
