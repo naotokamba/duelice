@@ -113,13 +113,13 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
-    expect(myCard('火球').getByRole('img', { name: 'Xダメージ' })).toBeTruthy()
+    expect(myCard('火球').getByRole('button', { name: 'Xダメージを与える' })).toBeTruthy()
 
     await place(user, 6, '火球')
     // 一個では火球にならないので、まだ決定できない
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     await place(user, 6, '火球')
-    expect(myCard('火球').getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    expect(myCard('火球').getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '6の目を戻す' })).toHaveLength(2)
 
     await user.click(button('決定'))
@@ -186,7 +186,7 @@ describe('一ターンの流れ', () => {
     expect(four.getAttribute('aria-pressed')).toBe('false')
 
     await place(user, 4, '障壁')
-    expect(myCard('障壁').getByRole('img', { name: '受けるダメージを4減らす' })).toBeTruthy()
+    expect(myCard('障壁').getByRole('button', { name: '受けるダメージを4減らす' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
 
     // 埋まったカードには置けない。カードを押しても何も起きない
@@ -243,7 +243,7 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     await place(user, 5, '雷槍')
-    expect(myCard('雷槍').getByRole('img', { name: '詠唱。5以上のダメージで崩れる' })).toBeTruthy()
+    expect(myCard('雷槍').getByRole('button', { name: '詠唱。5以上のダメージを受けると崩れる' })).toBeTruthy()
     await user.click(button('決定'))
     expect(screen.getByText('あなたの詠唱は保たれた')).toBeTruthy()
     // 詠唱の結果は、矢印が当たる時刻まで席には出さない
@@ -253,7 +253,7 @@ describe('一ターンの流れ', () => {
 
     await place(user, 6, '雷槍')
     await place(user, 6, '雷槍')
-    expect(myCard('雷槍').getByRole('img', { name: '12ダメージ' })).toBeTruthy()
+    expect(myCard('雷槍').getByRole('button', { name: '12ダメージを与える' })).toBeTruthy()
     await user.click(button('決定'))
     await settle()
     expect(cpuSeat().getByLabelText('体力 8 / 20')).toBeTruthy()
@@ -271,7 +271,7 @@ describe('一ターンの流れ', () => {
     expect(screen.getByText('相手の火球 6点')).toBeTruthy()
     const theirs = cardIn(cpuSeat(), '火球')
     expect(theirs.getAllByRole('img', { name: /^[56]の目$/ })).toHaveLength(2)
-    expect(theirs.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
+    expect(theirs.getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
     await settle()
     expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
     const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))

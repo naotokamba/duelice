@@ -1,4 +1,7 @@
 :root {
+  /* 押せるものの大きさと間隔。Google の Android のアクセシビリティの指針に合わせ、48×48 以上、間を 8 以上空ける */
+  --tap: 48px;
+  --tap-gap: 8px;
   --table: #e6e8f0;
   --table-deep: #d6d9e5;
   --ink: #1d2233;
@@ -85,6 +88,7 @@ button {
 
 /* ボタン */
 .btn {
+  min-height: var(--tap);
   border: 1px solid var(--line);
   background: var(--surface);
   border-radius: 10px;
@@ -154,6 +158,9 @@ button {
   margin-bottom: 0.5rem;
 }
 .level-option {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 0.5rem 1rem;
@@ -170,7 +177,7 @@ button {
 
 /* 卓 */
 .table {
-  max-width: 1040px;
+  max-width: 1100px;
   margin: 0 auto;
   padding: 1rem 1rem 6rem;
   display: flex;
@@ -201,7 +208,8 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.3rem 0.75rem;
+  min-height: var(--tap);
+  padding: 0 1rem;
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
@@ -455,8 +463,8 @@ button.die:disabled {
   --spell: var(--ink);
   --spell-ink: var(--ink);
   /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い雷槍に合わせ、どのカードも同じ大きさにする */
-  width: calc(var(--die) * 2 + 5.25rem);
-  height: calc(var(--die) * 2 + 11rem);
+  width: calc(var(--die) * 2 + 6rem);
+  height: calc(var(--die) * 2 + 13rem);
   flex: none;
   position: relative;
   display: flex;
@@ -467,7 +475,8 @@ button.die:disabled {
   border-top: 5px solid var(--spell);
   border-radius: 10px;
   /* 下は決定のボタンが重なる分を空ける。自分の席だけ空けると大きさが変わるので、どの席でも空ける */
-  padding: 0.35rem 0.45rem 1.6rem;
+  /* 決定のボタンは下端に半分重なるので、その半分と押せるものの間隔だけ空ける */
+  padding: 0.35rem 0.45rem calc(var(--tap) / 2 + var(--tap-gap));
   background: var(--table);
   transition:
     box-shadow 150ms ease,
@@ -528,8 +537,8 @@ button.die:disabled {
   left: 50%;
   bottom: 0;
   transform: translate(-50%, 50%);
-  width: 44px;
-  height: 44px;
+  width: var(--tap);
+  height: var(--tap);
   display: grid;
   place-items: center;
   padding: 0;
@@ -555,7 +564,7 @@ button.die:disabled {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.25rem;
+  gap: var(--tap-gap);
 }
 .face-row + .face-row {
   border-top: 1px dashed var(--line);
@@ -573,7 +582,7 @@ button.die:disabled {
   flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
-  gap: 0.25rem;
+  gap: var(--tap-gap);
 }
 .slot {
   width: var(--die);
@@ -633,22 +642,54 @@ button.slot:disabled {
   flex-wrap: wrap;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem 0.3rem;
+  gap: var(--tap-gap);
   font-size: 0.78rem;
   line-height: 1.35;
   color: var(--ink-soft);
 }
 /* 効果の印は、使えない行でもカードの色のまま描く。灰色になるのは置き場と記号だけ */
+/* 押す場所は 48×48 にして、印はその中に 40×40 で描く */
 .fx {
+  position: relative;
   display: inline-grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
   color: var(--card-ink, var(--ink));
 }
 .fx > svg {
-  width: 100%;
-  height: 100%;
+  width: 40px;
+  height: 40px;
+}
+button.fx {
+  cursor: help;
+}
+button.fx:hover,
+button.fx[aria-describedby] {
+  background: color-mix(in srgb, var(--card-ink, var(--ink)) 10%, transparent);
+}
+/* 印の一行の説明 */
+.tip-bubble {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  z-index: 20;
+  transform: translateX(-50%);
+  padding: 0.35rem 0.65rem;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--table);
+  font-family: var(--font-ui);
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.4;
+  white-space: nowrap;
+  pointer-events: none;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
 }
 
 /* 印の形。glyphs.tsx で描く */
@@ -733,11 +774,12 @@ button.slot:disabled {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 0.3rem;
+  gap: var(--tap-gap);
 }
 .tab {
   display: block;
   width: 100%;
+  min-height: var(--tap);
   padding: 0.3rem 0 0.25rem;
   border: 1px solid var(--line);
   border-bottom: 4px solid var(--spell, var(--ink));
@@ -1153,8 +1195,8 @@ button.tab {
   flex: none;
   display: grid;
   place-items: center;
-  width: 44px;
-  height: 44px;
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
@@ -1242,8 +1284,8 @@ button.tab {
   align-self: center;
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--tap);
+  height: var(--tap);
   flex: none;
   padding: 0;
   border: 1px solid var(--line);
@@ -1284,8 +1326,8 @@ button.tab {
 .dialog-close {
   display: grid;
   place-items: center;
-  width: 36px;
-  height: 36px;
+  width: var(--tap);
+  height: var(--tap);
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -1351,8 +1393,8 @@ button.tab {
   }
   /* 狭い画面では降参を旗の印だけにして、「?」と並べて右上に収める */
   .surrender {
-    width: 36px;
-    height: 36px;
+    width: var(--tap);
+    height: var(--tap);
     justify-content: center;
     padding: 0;
   }

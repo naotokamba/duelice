@@ -34,6 +34,7 @@ pnpm check
 | `src/game/cpu.test.ts` | CPU の戦略が均衡で、強さの順序が保たれているか |
 | `src/components/Game.test.tsx` | 画面の操作の流れ。乱数と相手の手を差し替えて固定し、公開の動きと自動の進行は偽の時計で進める |
 | `src/components/Exchange.test.tsx` | 公開の舞台の描き分け。場面ごとに矢印、構えの印、受けたダメージの星が出るか |
+| `src/components/Tip.test.tsx` | 印に添える一行の説明の出し入れ |
 | `src/game/balance.slow.test.ts` | バランスの記録。`pnpm test:balance` で別に走らせる |
 | `pnpm test:mutation` | 変異テスト。ルール本体にわざと小さなバグを入れ、テストが検出できる割合を測る。85%を下回ると失敗する。数分かかる |
 
@@ -45,6 +46,7 @@ pnpm check
 
 - Biome の設定に従う。`pnpm format` で整形する
 - コメントと画面の文言は日本語。画面の文言は平易に、括弧で補足しない
+- 押せるものは 48×48 以上にし、間を 8 以上空ける。Google の Android のアクセシビリティの指針に合わせた値で、styles.css の `--tap` と `--tap-gap` にある
 - 設計の判断の記録は Claude Docs の「ダイス対戦ゲーム 確定ルール」にある
 
 ## リリース

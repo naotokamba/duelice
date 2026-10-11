@@ -60,7 +60,7 @@ export function RulesButton() {
         <ul className="rules-marks">
           {MARKS.map(([part, text]) => (
             <li key={part.icon}>
-              <EffectGlyph part={part} />
+              <EffectGlyph part={part} tip={false} />
               <span>{text}</span>
             </li>
           ))}

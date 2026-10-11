@@ -4,6 +4,7 @@
 
 import type { ReactNode } from 'react'
 import type { EffectPart } from '../game/cards'
+import { Tip } from './Tip'
 
 /**
  * 数字や X の字の高さの半分を、字の大きさに対する割合で表したもの。
@@ -118,29 +119,40 @@ export function ChantGlyph({ value, broken, className }: ChantProps) {
   )
 }
 
-/** 効果の印の読み上げと形 */
+/** 効果の印の一行の説明と形 */
 function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
   const v = part.value
   switch (part.icon) {
     case 'damage':
-      return { label: `${v}ダメージ`, glyph: <Star value={v} /> }
+      return { label: `${v}ダメージを与える`, glyph: <Star value={v} /> }
     case 'pierce':
-      return { label: `障壁を貫通する${v}ダメージ`, glyph: <PierceStar value={v} /> }
+      return { label: `障壁で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
     case 'reflect':
-      return { label: '受けた攻撃を返す', glyph: <ReflectGlyph /> }
+      return { label: '受けた攻撃をそのまま返す', glyph: <ReflectGlyph /> }
     default:
-      return { label: `詠唱。${v}以上のダメージで崩れる`, glyph: <ChantGlyph value={v} /> }
+      return { label: `詠唱。${v}以上のダメージを受けると崩れる`, glyph: <ChantGlyph value={v} /> }
   }
 }
 
-/** カード面の効果の部品を一つ描く */
-export function EffectGlyph({ part }: { part: EffectPart }) {
+/**
+ * カード面の効果の部品を一つ描く。印は押すと一行の説明が出る。
+ * 説明を横に書いて並べるときは tip を false にして、ただの絵として描く
+ */
+export function EffectGlyph({ part, tip = true }: { part: EffectPart; tip?: boolean }) {
   if (!part.icon) return <span className="fx-text">{part.text}</span>
   const { label, glyph } = effectIcon(part)
+  const cls = `fx fx-${part.icon}`
+  if (tip) {
+    return (
+      <Tip text={label} className={cls}>
+        {glyph}
+      </Tip>
+    )
+  }
   return (
-    <span className={`fx fx-${part.icon}`} role="img" aria-label={label}>
+    <span className={cls} role="img" aria-label={label}>
       {glyph}
     </span>
   )
