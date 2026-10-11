@@ -237,7 +237,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     const usable = availableCards(game, who)
     if (!narrow) return <ul className="cards">{CARD_ORDER.map((c) => cardView(who, c, shown))}</ul>
 
-    // 狭い画面では名前を並べ、一枚だけ大きく出す。相手は公開したカードだけ出す
+    // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す
     const current =
       who === 0 ? (shown?.card ?? focus ?? CARD_ORDER.find((c) => usable.has(c)) ?? CARD_ORDER[0]) : shown?.card
     const tabs = (
@@ -253,16 +253,12 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         onPick={who === 0 ? (choosing ? pick : undefined) : setPeek}
       />
     )
-    const one = current && <ul className="cards cards-one">{cardView(who, current, shown)}</ul>
-    return who === 0 ? (
+    // 相手のカードは名前だけ並べる。公開した技は中央の名乗りの札で分かり、カードは名前を押せばモーダルで見られる
+    if (who === 1) return tabs
+    return (
       <>
         {tabs}
-        {one}
-      </>
-    ) : (
-      <>
-        {one}
-        {tabs}
+        {current && <ul className="cards cards-one">{cardView(who, current, shown)}</ul>}
       </>
     )
   }

@@ -32,6 +32,8 @@
   /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
   --die-me: 48px;
   --die-cpu: 48px;
+  /* 相手の手元のダイス。押すものではないので小さくする。カードの置き場は、カードの大きさを揃えるため小さくしない */
+  --die-tray-cpu: 40px;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
   --font-spell: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
@@ -1393,7 +1395,10 @@ button.tab {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
   text-align: left;
 }
-/* 狭い画面で相手のカードを大きく見る */
+.seat-cpu .tray {
+  --die: var(--die-tray-cpu);
+}
+/* 狭い画面で相手のカードを大きく見る。カードは自分のと同じ大きさ */
 .peek-dialog {
   --die: var(--die-cpu);
   padding: 1rem;
@@ -1572,10 +1577,12 @@ button.tab {
   .seat {
     padding: 0.6rem;
   }
-  /* 一枚ずつ大きく出すので、ダイスも大きくする。同じ画面ではカードの大きさを揃えるため、相手も同じ大きさ */
   :root {
-    --die-me: 60px;
-    --die-cpu: 60px;
+    --die-tray-cpu: 36px;
+  }
+  /* 中央の直近の結果は、一番新しい1件だけにする。全ては履歴の印から見る */
+  .history-recent > .history-entry:not(.is-latest) {
+    display: none;
   }
   .table-head .help {
     margin-left: auto;

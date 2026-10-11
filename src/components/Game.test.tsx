@@ -409,13 +409,14 @@ describe('狭い画面', () => {
     expect(myCard('魔弾').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
   })
 
-  it('相手が公開したカードは、相手の側に一枚出る', async () => {
+  it('相手が公開したカードは席には出さず、名前の札で示す', async () => {
     const user = await start({
       rng: roll([6, 5, 4]),
       opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
     })
     await user.click(button('パス'))
-    expect(cardsShown(cpuSeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
+    expect(cardsShown(cpuSeat())).toHaveLength(0)
+    expect(cpuSeat().getByRole('button', { name: '火球' }).classList.contains('is-placed')).toBe(true)
     await settle()
     expect(cardsShown(cpuSeat())).toHaveLength(0)
   })
