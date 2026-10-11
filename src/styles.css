@@ -768,17 +768,24 @@ button.fx[aria-describedby] {
   stroke-width: 8;
   stroke-linecap: round;
 }
-/* 詠唱の点線の輪。輪の中をうっすら塗る */
-.glyph-chant-ring {
-  fill: color-mix(in srgb, currentColor 10%, transparent);
+/* 詠唱の魔法陣。外の輪は太く、内の輪は細くしてうっすら塗る */
+.chant-outer {
+  fill: none;
   stroke: currentColor;
-  stroke-width: 6;
-  stroke-dasharray: 13 8;
+  stroke-width: 4.5;
 }
-.glyph-chant-slash {
+.chant-inner {
+  fill: currentColor;
+  fill-opacity: 0.16;
   stroke: currentColor;
-  stroke-width: 8;
-  stroke-linecap: round;
+  stroke-width: 3;
+}
+/* 割れた魔法陣の上の数は、下の面の色で縁取って読めるようにする */
+.glyph-halo {
+  stroke: var(--glyph-bg, var(--table));
+  stroke-width: 4;
+  stroke-linejoin: round;
+  paint-order: stroke;
 }
 .glyph-value {
   fill: currentColor;
@@ -1065,6 +1072,7 @@ button.tab {
 }
 /* 構え。障壁、反射、詠唱は受ける側の端に置く。大きさは Exchange.tsx の STANCE_R と合わせる */
 .stance {
+  --glyph-bg: var(--surface);
   width: 56px;
   height: 56px;
   display: grid;

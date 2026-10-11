@@ -1,8 +1,8 @@
 // カード面と公開の舞台で共有する印。同じ意味は同じ形で描く。
-// ダメージは赤い星、貫通ダメージは槍が串刺しにした赤い星、障壁は盾、反射は壁で折り返す矢印、詠唱は点線の輪。
+// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、障壁は盾、反射は壁で折り返す矢印、詠唱は魔法陣。
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
-import type { ReactNode } from 'react'
+import { type ReactNode, useId } from 'react'
 import type { EffectPart } from '../game/cards'
 import { Tip } from './Tip'
 
@@ -13,10 +13,25 @@ import { Tip } from './Tip'
  */
 const CAP_HALF = 0.37
 
+interface ValueProps {
+  cx: number
+  cy: number
+  size: number
+  /** 字の周りを下の面の色で縁取って、割れた線の上でも読めるようにする */
+  halo?: boolean
+  children: ReactNode
+}
+
 /** 印の中心 (cx, cy) に字の中心を合わせて値を描く */
-function Value({ cx, cy, size, children }: { cx: number; cy: number; size: number; children: ReactNode }) {
+function Value({ cx, cy, size, halo, children }: ValueProps) {
   return (
-    <text className="glyph-value" x={cx} y={cy + size * CAP_HALF} fontSize={size} textAnchor="middle">
+    <text
+      className={halo ? 'glyph-value glyph-halo' : 'glyph-value'}
+      x={cx}
+      y={cy + size * CAP_HALF}
+      fontSize={size}
+      textAnchor="middle"
+    >
       {children}
     </text>
   )
@@ -102,20 +117,68 @@ interface ChantProps {
   className?: string
 }
 
-/** 詠唱。力を溜めている点線の輪の中に、崩れずに耐えられる数を描く。崩れたときは輪を薄くして斜線を引く */
+/** 魔法陣の輪の間に並べる12の点 */
+const CHANT_DOTS = Array.from({ length: 12 }, (_, i) => {
+  const t = (Math.PI * 2 * i) / 12
+  return [Number((40 * Math.sin(t)).toFixed(1)), Number((-40 * Math.cos(t)).toFixed(1))]
+})
+
+/** 崩れた魔法陣を割るひびの線。上から下へジグザグに走る */
+const CRACK = '-4,-60 6,-26 -5,-6 7,16 -3,60'
+
+/** 魔法陣の形。字は含まない */
+function ChantShape() {
+  return (
+    <>
+      <circle className="chant-outer" r={45} />
+      <circle className="chant-inner" r={34} />
+      {CHANT_DOTS.map(([x, y]) => (
+        <circle key={`${x},${y}`} className="glyph-fill" cx={x} cy={y} r={2.6} />
+      ))}
+    </>
+  )
+}
+
+/**
+ * 詠唱。実線の二重の輪に小さな点を並べた魔法陣の中に、崩れずに耐えられる数を描く。
+ * 崩れたときは、輪をひびに沿って左右に割ってずらし、薄くする。数は割らずにその上に重ねる
+ */
 export function ChantGlyph({ value, broken, className }: ChantProps) {
+  // 同じ画面に何枚あっても切り抜きが混ざらないように、印ごとに名前を変える
+  const id = `chant${useId().replace(/[^a-zA-Z0-9]/g, '')}`
   return (
     <svg className={`glyph-chant ${className ?? ''}`} viewBox="-50 -50 100 100" aria-hidden="true">
-      <g opacity={broken ? 0.4 : 1}>
-        <circle className="glyph-chant-ring" r={42} />
-        <path className="glyph-fill" d="M33 -50 36.5 -38.5 48 -35 36.5 -31.5 33 -20 29.5 -31.5 18 -35 29.5 -38.5z" />
-        {value !== undefined && (
-          <Value cx={0} cy={0} size={44}>
-            {value}
-          </Value>
-        )}
-      </g>
-      {broken && <path className="glyph-chant-slash" d="M-38 -38 38 38" />}
+      {broken ? (
+        <>
+          <defs>
+            <clipPath id={`${id}l`}>
+              <polygon points={`-70,-70 ${CRACK} -70,70`} />
+            </clipPath>
+            <clipPath id={`${id}r`}>
+              <polygon points={`${CRACK} 70,70 70,-70`} />
+            </clipPath>
+          </defs>
+          <g opacity={0.5}>
+            <g transform="translate(-5 2) rotate(-7)">
+              <g clipPath={`url(#${id}l)`}>
+                <ChantShape />
+              </g>
+            </g>
+            <g transform="translate(5 -2) rotate(7)">
+              <g clipPath={`url(#${id}r)`}>
+                <ChantShape />
+              </g>
+            </g>
+          </g>
+        </>
+      ) : (
+        <ChantShape />
+      )}
+      {value !== undefined && (
+        <Value cx={0} cy={0} size={44} halo={broken}>
+          {value}
+        </Value>
+      )}
     </svg>
   )
 }
