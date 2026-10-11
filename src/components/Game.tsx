@@ -1,4 +1,4 @@
-import { Flag, SkipForward } from 'lucide-react'
+import { Flag, SkipForward, X } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ACTION_DEFS, CARD_ORDER } from '../game/cards'
 import {
@@ -80,6 +80,12 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const narrow = useNarrow()
   /** 降参の確認 */
   const surrenderDialog = useRef<HTMLDialogElement>(null)
+  /** 狭い画面で、名前を押して大きく見ている相手のカード */
+  const [peek, setPeek] = useState<CardId | null>(null)
+  const peekDialog = useRef<HTMLDialogElement>(null)
+  useEffect(() => {
+    if (peek) peekDialog.current?.showModal()
+  }, [peek])
 
   // 公開したら、矢印が当たる時刻に体力を減らし、動きが終わったら自動で次のステップかターンへ進む
   useEffect(() => {
@@ -152,6 +158,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           .filter((x) => x.to === who && landsAt(x) > landed)
           .reduce((sum, x) => sum + x.dealt, 0)
       : 0
+  /** 決着して、最後の公開の動きも終わった */
+  const over = settled && game.winner !== null
   /** 詠唱の結果は、矢印が当たるまで伏せる */
   const quiet = showReveal && landed < IMPACT_MS
 
@@ -207,10 +215,11 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     }
   }
 
-  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null) => {
+  /** 席のカードを1枚描く */
+  const cardView = (who: PlayerIndex, c: CardId, shown: (Shown & { card: CardId }) | null = null) => {
     const p = game.players[who]
     const usable = availableCards(game, who)
-    const cardView = (c: CardId) => (
+    return (
       <Card
         key={c}
         card={c}
@@ -218,10 +227,15 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         active={usable.has(c) ? kindsNow(game, who, c) : []}
         used={p.usedCards.includes(c) && !usable.has(c)}
         shown={shown?.card === c ? shown : null}
+        casting={showReveal && shown?.card === c}
         play={who === 0 ? playFor(c) : undefined}
       />
     )
-    if (!narrow) return <ul className="cards">{CARD_ORDER.map(cardView)}</ul>
+  }
+
+  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null) => {
+    const usable = availableCards(game, who)
+    if (!narrow) return <ul className="cards">{CARD_ORDER.map((c) => cardView(who, c, shown))}</ul>
 
     // 狭い画面では名前を並べ、一枚だけ大きく出す。相手は公開したカードだけ出す
     const current =
@@ -236,10 +250,10 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           hint: who === 0 && choosing && held === null && usable.has(c),
           placed: shown?.card === c,
         }))}
-        onPick={who === 0 && choosing ? pick : undefined}
+        onPick={who === 0 ? (choosing ? pick : undefined) : setPeek}
       />
     )
-    const one = current && <ul className="cards cards-one">{cardView(current)}</ul>
+    const one = current && <ul className="cards cards-one">{cardView(who, current, shown)}</ul>
     return who === 0 ? (
       <>
         {tabs}
@@ -259,7 +273,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     else setFocus(c)
   }
 
-  const trayOf = (who: PlayerIndex, shown: Shown | null, extra?: ReactNode) => {
+  const trayOf = (who: PlayerIndex, shown: Shown | null) => {
     const p = game.players[who]
     const free = freeDice(p)
     return (
@@ -285,7 +299,6 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             />
           )
         })}
-        {extra}
       </fieldset>
     )
   }
@@ -307,10 +320,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     <main className="table">
       <header className="table-head">
         <h1 className="logo">Duelice</h1>
-        <p className="turn-label">
-          {`Turn ${showReveal ? last.turn : game.turn} - Step ${showReveal ? last.step : game.step}`}
-        </p>
-        <p className="level-label">相手の強さ：{LEVEL_NAMES[level]}</p>
+        <TurnLabel turn={showReveal ? last.turn : game.turn} step={showReveal ? last.step : game.step} />
         <RulesButton />
         {game.winner === null && (
           <button
@@ -325,6 +335,25 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           </button>
         )}
       </header>
+
+      {/* 狭い画面では相手のカードは名前だけなので、名前を押すとカードを大きく出す */}
+      <dialog ref={peekDialog} className="peek-dialog" aria-labelledby="peek-title" onClose={() => setPeek(null)}>
+        <div className="rules-head">
+          <h2 id="peek-title" className="dialog-title">
+            相手のカード
+          </h2>
+          <button
+            type="button"
+            className="dialog-close"
+            aria-label="閉じる"
+            title="閉じる"
+            onClick={() => peekDialog.current?.close()}
+          >
+            <X aria-hidden="true" />
+          </button>
+        </div>
+        {peek && <ul className="cards cards-one">{cardView(1, peek)}</ul>}
+      </dialog>
 
       {/* 降参すると対局をやめてタイトルに戻る。誤って押したときのために、最初は続けるを選んでおく */}
       <dialog ref={surrenderDialog} className="confirm-dialog" aria-labelledby="surrender-title">
@@ -355,13 +384,13 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         hp={game.players[1].hp + pending(1)}
         maxHp={game.config.maxHp}
         quiet={quiet}
-      >
-        {cardsOf(1, cpuShown)}
-        {trayOf(1, cpuShown)}
-      </Seat>
+        tray={trayOf(1, cpuShown)}
+        cards={cardsOf(1, cpuShown)}
+      />
 
       <section className="arena">
-        {showReveal && <Exchange key={game.history.length} report={last} />}
+        {/* 決着したら、消えた舞台の場所を残さず、勝敗と直近の結果を出す */}
+        {showReveal && !over && <Exchange key={game.history.length} report={last} />}
         {showReveal && (
           <ul className="sr-only" aria-live="polite">
             {last.lines.map((l, i) => (
@@ -369,15 +398,13 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             ))}
           </ul>
         )}
-        {!revealed && game.winner === null && (
-          <History history={game.history} turn={game.turn} step={game.step} choosing={choosing} />
-        )}
+        {!revealed && <History history={game.history} />}
         {banner && !revealed && (
           <p key={banner.text} className="banner">
             <span>{banner.text}</span>
           </p>
         )}
-        {settled && game.winner !== null && (
+        {over && (
           <div className="result">
             <p className="result-text">
               {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
@@ -392,6 +419,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             </div>
           </div>
         )}
+        {over && <History history={game.history} />}
       </section>
 
       <Seat
@@ -401,10 +429,10 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         hp={game.players[0].hp + pending(0)}
         maxHp={game.config.maxHp}
         quiet={quiet}
-      >
-        {trayOf(0, myShown, pass)}
-        {cardsOf(0, myShown)}
-      </Seat>
+        tray={trayOf(0, myShown)}
+        extra={pass}
+        cards={cardsOf(0, myShown)}
+      />
 
       {drag.view && (
         <div className="drag-ghost" style={{ left: drag.view.x, top: drag.view.y }} aria-hidden="true">
@@ -412,6 +440,26 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         </div>
       )}
     </main>
+  )
+}
+
+/**
+ * 今のターンとステップ。ステップは2つに区切った札で見せ、終わったステップを埋め、今のステップを枠で強調する。
+ * 押せるものではないので動かさない
+ */
+function TurnLabel({ turn, step }: { turn: number; step: 1 | 2 }) {
+  return (
+    <p className="turn-label">
+      <span className="sr-only">{`Turn ${turn} - Step ${step}`}</span>
+      <span aria-hidden="true">Turn {turn}</span>
+      <span className="steps" aria-hidden="true">
+        {([1, 2] as const).map((s) => (
+          <span key={s} className={`step-pill${s < step ? ' is-done' : s === step ? ' is-now' : ''}`}>
+            {s}
+          </span>
+        ))}
+      </span>
+    </p>
   )
 }
 
@@ -448,12 +496,15 @@ interface SeatProps {
   maxHp: number
   /** 詠唱の結果を伏せる */
   quiet: boolean
-  /** 体力から遠い順に並べる中身。相手は カード、ダイス、自分は ダイス、カード の順に渡す */
-  children: ReactNode
+  /** 手元のダイス。体力と同じ段に並べる */
+  tray: ReactNode
+  /** ダイスと体力の段の右端に置くもの。自分の席のパス */
+  extra?: ReactNode
+  cards: ReactNode
 }
 
-/** 席。相手と自分で上下が対になるように、体力の帯を卓の中央側に置く */
-function Seat({ side, name, player, hp: shown, maxHp, quiet, children }: SeatProps) {
+/** 席。相手と自分で上下が対になるように、ダイスと体力の段を卓の中央側に置く */
+function Seat({ side, name, player, hp: shown, maxHp, quiet, tray, extra, cards }: SeatProps) {
   const hp = Math.max(0, shown)
   const status = (
     <div className="seat-status">
@@ -471,11 +522,19 @@ function Seat({ side, name, player, hp: shown, maxHp, quiet, children }: SeatPro
       {!quiet && player.chant === 'broken' && <span className="badge">詠唱は崩れた</span>}
     </div>
   )
+  // 高さを抑えるため、ダイスと体力を一つの段に並べる。段は卓の中央側に置く
+  const row = (
+    <div className="seat-row">
+      {tray}
+      {status}
+      {extra}
+    </div>
+  )
   return (
     <section className={`seat seat-${side}`} aria-label={name}>
-      {side === 'me' && status}
-      {children}
-      {side === 'cpu' && status}
+      {side === 'me' && row}
+      {cards}
+      {side === 'cpu' && row}
     </section>
   )
 }

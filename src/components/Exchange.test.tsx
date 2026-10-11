@@ -19,6 +19,7 @@ function stage(mine: number[], a: Action, theirs: number[], b: Action) {
     arrows: all('.arrow'),
     bursts: all('.burst').map((e) => e.textContent),
     stances: all('.stance'),
+    plates: all('.plate').map((e) => e.textContent),
     one: (sel: string) => container.querySelector(sel),
   }
 }
@@ -33,10 +34,13 @@ describe('公開の舞台', () => {
     expect(s.bursts).toEqual(['−6'])
     // パスした側にはパスの印
     expect(s.one('.stance-pass')).not.toBeNull()
+    // 名乗りの札に、技の名前と値が出る。矢印の札にも技の名前が付く
+    expect(s.plates).toEqual(['パス', '火球6'])
+    expect(s.one('.arrow-name')?.textContent).toBe('火球')
   })
   it('障壁に当たった矢印は障壁の値を見せ、削られた分だけ星になる', () => {
     const s = stage([6, 4, 1], fire, [3, 1, 1], { kind: 'barrier', dice: [0] })
-    expect(s.one('.stance.card-barrier')?.textContent).toBe('3')
+    expect(s.one('.stance.card-barrier')?.textContent).toBe('3障壁')
     // 止めた障壁は揺れ、止められた矢印は薄くなる
     expect(s.one('.stance.is-blocking')).not.toBeNull()
     expect(s.one('.arrow.is-spent')).not.toBeNull()

@@ -40,10 +40,12 @@ interface Props {
   active: ActionKind[]
   used: boolean
   shown: Shown | null
+  /** 公開で使ったカード。光らせて、中央の技と結びつける */
+  casting?: boolean
   play?: CardPlay
 }
 
-export function Card({ card, roll, active, used, shown, play }: Props) {
+export function Card({ card, roll, active, used, shown, casting, play }: Props) {
   const name = CARD_DEFS[card].name
   const cls = [
     'card',
@@ -52,6 +54,7 @@ export function Card({ card, roll, active, used, shown, play }: Props) {
     play?.target && 'is-target',
     play?.hint && active.length > 0 && 'is-hint',
     play?.onConfirm && 'is-ready',
+    casting && 'is-casting',
   ]
     .filter(Boolean)
     .join(' ')
@@ -202,7 +205,8 @@ function Row({ kind, name, roll, on, shown, play }: RowProps) {
   return (
     <div className={on ? 'face-row is-on' : 'face-row'}>
       <div className="slots">
-        {face.sum && <span className="sym">{face.sum} =</span>}
+        {/* 「Y =」は置き場の並びの外に出し、置き場の並びをカードの真ん中に置く */}
+        {face.sum && <span className="sym slots-sum">{face.sum} =</span>}
         <span className="slot-group">
           {Array.from({ length: Math.max(...def.dice) }, (_, k) => (
             <Fragment key={k}>

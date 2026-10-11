@@ -32,11 +32,9 @@ function starPoints(r: number) {
 }
 
 const STAR = starPoints(48)
-/** 槍を通すために一回り小さくした星 */
-const PIERCED_STAR = starPoints(38)
 
 /** 星に入れる字の大きさ。字数が増えるほど小さくする */
-const starText = (value: string, scale = 1) => (value.length === 1 ? 44 : value.length === 2 ? 34 : 28) * scale
+const starText = (value: string) => (value.length === 1 ? 44 : value.length === 2 ? 34 : 28)
 
 /** ダメージの星 */
 export function Star({ value }: { value?: string }) {
@@ -52,15 +50,18 @@ export function Star({ value }: { value?: string }) {
   )
 }
 
-/** 貫通ダメージ。槍が星を斜めに串刺しにしている。槍は星の後ろを通り、星の外に柄と穂先だけが見える */
+/**
+ * 貫通ダメージ。普通のダメージと同じ大きさの星を、矢印が斜めに突き抜けている。
+ * 矢印は星の後ろを通り、星の外に柄と穂先が出る。星が印の枠いっぱいなので、矢印は枠の外まではみ出して描く
+ */
 export function PierceStar({ value }: { value?: string }) {
   return (
     <svg className="glyph-star glyph-pierce" viewBox="-50 -50 100 100" aria-hidden="true">
-      <path className="glyph-spear" d="M-46 46 34 -34" />
-      <polygon className="glyph-spear-head" points="48,-48 24,-40 40,-24" />
-      <polygon points={PIERCED_STAR} />
+      <path className="glyph-spear" d="M-60 60 46 -46" />
+      <polygon className="glyph-spear-head" points="64,-64 36,-54 54,-36" />
+      <polygon points={STAR} />
       {value && (
-        <Value cx={0} cy={0} size={starText(value, 0.82)}>
+        <Value cx={0} cy={0} size={starText(value)}>
           {value}
         </Value>
       )}

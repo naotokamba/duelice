@@ -30,8 +30,8 @@
   --go: #2c9754;
   --hit: #d8392b;
   /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
-  --die-me: 52px;
-  --die-cpu: 52px;
+  --die-me: 48px;
+  --die-cpu: 48px;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
   --font-spell: "Shippori Mincho", "Hiragino Mincho ProN", serif;
   color-scheme: light dark;
@@ -176,31 +176,56 @@ button {
 }
 
 /* 卓 */
+/* 縦 1080 の画面にも収まるように、段の間は詰めておく */
 .table {
-  max-width: 1100px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 1rem 1rem 6rem;
+  padding: 0.5rem 1rem 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 0.6rem;
 }
 .table-head {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: 0.25rem 1.25rem;
+  align-items: center;
+  gap: 0.25rem 0.75rem;
 }
 .logo {
-  font-size: 1.6rem;
+  font-size: 1.4rem;
 }
 .turn-label {
   margin: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   font-weight: 700;
 }
-.level-label {
-  margin: 0 0 0 auto;
+/* ステップの札。終わったステップを埋め、今のステップを枠で強調する。動かさない */
+.steps {
+  display: inline-flex;
+  gap: 4px;
+}
+.step-pill {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 22px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 800;
   color: var(--ink-soft);
-  font-size: 0.9rem;
+}
+.step-pill.is-done {
+  border-color: var(--ink-soft);
+  background: var(--ink-soft);
+  color: var(--table);
+}
+.step-pill.is-now {
+  border: 2px solid var(--me);
+  background: color-mix(in srgb, var(--me) 12%, transparent);
+  color: var(--me);
 }
 /* 降参。対局中だけ右上に出す */
 .surrender {
@@ -219,8 +244,8 @@ button {
   cursor: pointer;
 }
 .surrender svg {
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
 }
 .surrender:hover {
   border-color: var(--ink-soft);
@@ -254,11 +279,11 @@ button {
 /* 席。相手は上から カード、ダイス、体力。自分は 体力、ダイス、カード。色の帯は卓の中央側に付ける */
 .seat {
   border-radius: 16px;
-  padding: 0.85rem;
+  padding: 0.6rem 0.75rem;
   background: var(--surface);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.55rem;
 }
 .seat-me {
   --accent: var(--me);
@@ -270,7 +295,15 @@ button {
   --die: var(--die-cpu);
   border-bottom: 4px solid var(--accent);
 }
+/* ダイスと体力を一つの段に並べる */
+.seat-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem 1.25rem;
+}
 .seat-status {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -463,8 +496,8 @@ button.die:disabled {
   --spell: var(--ink);
   --spell-ink: var(--ink);
   /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い雷槍に合わせ、どのカードも同じ大きさにする */
-  width: calc(var(--die) * 2 + 6rem);
-  height: calc(var(--die) * 2 + 13rem);
+  width: calc(var(--die) * 2 + 7.5rem);
+  height: calc(var(--die) * 2 + 12.1rem);
   flex: none;
   position: relative;
   display: flex;
@@ -476,7 +509,7 @@ button.die:disabled {
   border-radius: 10px;
   /* 下は決定のボタンが重なる分を空ける。自分の席だけ空けると大きさが変わるので、どの席でも空ける */
   /* 決定のボタンは下端に半分重なるので、その半分と押せるものの間隔だけ空ける */
-  padding: 0.35rem 0.45rem calc(var(--tap) / 2 + var(--tap-gap));
+  padding: 0.3rem 0.45rem calc(var(--tap) * 0.4 + var(--tap-gap));
   background: var(--table);
   transition:
     box-shadow 150ms ease,
@@ -511,7 +544,7 @@ button.die:disabled {
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  min-height: 30px;
+  min-height: 24px;
 }
 .card-name {
   font-family: var(--font-spell);
@@ -528,6 +561,20 @@ button.die:disabled {
 .card.is-target {
   border-color: var(--spell);
 }
+.card.is-casting {
+  border-color: var(--spell);
+  box-shadow:
+    0 0 0 3px var(--spell),
+    0 0 22px 6px color-mix(in srgb, var(--spell) 45%, transparent);
+  animation: cast 500ms ease both;
+}
+@keyframes cast {
+  from {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 0 transparent;
+  }
+}
 .card.is-ready {
   box-shadow: 0 0 0 2px var(--go);
 }
@@ -536,7 +583,7 @@ button.die:disabled {
   position: absolute;
   left: 50%;
   bottom: 0;
-  transform: translate(-50%, 50%);
+  transform: translate(-50%, 60%);
   width: var(--tap);
   height: var(--tap);
   display: grid;
@@ -556,7 +603,7 @@ button.die:disabled {
 }
 @keyframes pop-in {
   from {
-    transform: translate(-50%, 50%) scale(0.4);
+    transform: translate(-50%, 60%) scale(0.4);
     opacity: 0;
   }
 }
@@ -583,6 +630,16 @@ button.die:disabled {
   align-items: center;
   justify-content: center;
   gap: var(--tap-gap);
+}
+.slots {
+  position: relative;
+}
+/* 「Y =」は置き場の並びの外、左に置く。並びの幅の半分は、置き場2つと記号の分 */
+.slots-sum {
+  position: absolute;
+  top: 50%;
+  right: calc(50% + var(--die) + 14px + 6px);
+  transform: translateY(-50%);
 }
 .slot {
   width: var(--die);
@@ -708,7 +765,7 @@ button.fx[aria-describedby] {
 .glyph-spear {
   fill: none;
   stroke: var(--card-ink, var(--ink));
-  stroke-width: 7;
+  stroke-width: 8;
   stroke-linecap: round;
 }
 /* 詠唱の点線の輪。輪の中をうっすら塗る */
@@ -738,6 +795,10 @@ button.fx[aria-describedby] {
 }
 .glyph-star .glyph-spear-head {
   fill: var(--card-ink, var(--ink));
+}
+/* 貫通の矢印は星の枠の外まで出す */
+.glyph-pierce {
+  overflow: visible;
 }
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
@@ -816,9 +877,11 @@ button.tab {
 }
 
 /* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
+/* 中央。選んでいる間は直近の結果の高さだけ取る。公開の舞台は、上下の席のダイスと体力の段に重ねて大きく描く */
 .arena {
   position: relative;
-  min-height: 198px;
+  z-index: 2;
+  min-height: 96px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -840,20 +903,31 @@ button.tab {
 
 /* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる。最後は薄くなって消え、切り替わりの幕につなぐ */
 .stage {
-  position: relative;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  margin-top: -85px;
   width: 100%;
-  height: 190px;
+  height: 170px;
+  pointer-events: none;
   animation: gone var(--out) ease var(--out-at) both;
 }
 .stage > * {
   position: absolute;
 }
 /* 攻撃の矢印。攻撃した側の端から伸びていく */
+/* 軸は放った側から伸び、穂先は届いた時に出る。札は軸より幅が広いので、矢印ごとは切り抜かない */
 .arrow {
   width: 44px;
   transform: translateX(-50%);
   z-index: 1;
+}
+.arrow::before {
   animation: var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both;
+}
+.arrow::after {
+  animation: appear 120ms ease calc(var(--delay) + var(--fly) - 120ms) both;
 }
 .arrow.is-up {
   --shoot: shoot-up;
@@ -894,17 +968,31 @@ button.tab {
   bottom: 0;
   border-top: 20px solid var(--spell, var(--ink));
 }
+/* 矢印の札。技の名前と、放ったカードと同じ印 */
 .arrow-value {
   position: absolute;
   left: 50%;
   top: 50%;
-  width: 36px;
-  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 10px;
+  border: 2px solid var(--spell, var(--ink));
+  border-radius: 999px;
+  background: var(--surface);
+  white-space: nowrap;
   transform: translate(-50%, -50%);
+  animation: appear 200ms ease var(--delay) both;
 }
 .arrow-value svg {
-  width: 100%;
-  height: 100%;
+  width: 30px;
+  height: 30px;
+}
+.arrow-name {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: var(--spell-ink, var(--ink));
 }
 /* 印は矢印の放った側寄りに付け、受ける側の構えの印と重ならないようにする */
 .arrow.is-up .arrow-value {
@@ -915,9 +1003,7 @@ button.tab {
 }
 /* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
-  animation:
-    var(--shoot) var(--fly) cubic-bezier(0.3, 0.7, 0.4, 1) var(--delay) both,
-    fade 260ms ease var(--gone) both;
+  animation: fade 260ms ease var(--gone) both;
 }
 @keyframes shoot-up {
   from {
@@ -988,10 +1074,10 @@ button.tab {
   background: var(--surface);
   color: var(--spell-ink, var(--ink-soft));
   transform: translate(-50%, -50%);
-  animation: stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both;
+  animation: stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both;
 }
 /* 印を重ねて置き、切り替わる時は透明度で入れ替える */
-.stance > * {
+.stance > svg {
   grid-area: 1 / 1;
   display: grid;
   width: 36px;
@@ -1001,12 +1087,69 @@ button.tab {
   width: 100%;
   height: 100%;
 }
+/* 構えの印の左に添える技の名前 */
+.stance-name {
+  position: absolute;
+  right: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--spell-ink, var(--ink));
+}
+/* 名乗りの札。上が相手、下が自分。技の名前と値を大きく出し、構えの拍で消える。
+   出しておく時間は Exchange.tsx の ANNOUNCE_MS と合わせる */
+.plate {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 16px 6px 14px;
+  border: 2px solid var(--spell, var(--line));
+  border-left: 6px solid var(--who);
+  border-radius: 14px;
+  background: var(--surface);
+  white-space: nowrap;
+  z-index: 3;
+  box-shadow: 0 6px 18px rgba(29, 34, 51, 0.18);
+  transform: translate(-50%, -50%);
+  animation: plate 1000ms ease both;
+}
+.plate-name {
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 1.5rem;
+  color: var(--spell-ink, var(--ink));
+}
+.plate-mark {
+  display: grid;
+}
+.plate-mark svg {
+  width: 44px;
+  height: 44px;
+}
+@keyframes plate {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.7);
+  }
+  25%,
+  80% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.96);
+  }
+}
 /* 詠唱の印は自分で輪を持つので、構えの枠を描かずに大きく出す */
 .stance-chant {
   border-color: transparent;
   background: transparent;
 }
-.stance-chant > * {
+.stance-chant > svg {
   width: 54px;
   height: 54px;
 }
@@ -1017,14 +1160,14 @@ button.tab {
   border-color: var(--line);
   color: var(--ink-soft);
 }
-.stance-pass > * {
+.stance-pass > svg {
   width: 24px;
   height: 24px;
 }
 /* 攻撃を止めた障壁は、当たった時に揺れる */
 .stance.is-blocking {
   animation:
-    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both,
+    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
     block 360ms ease var(--delay);
 }
 @keyframes block {
@@ -1035,7 +1178,7 @@ button.tab {
 /* すり抜けられた障壁は、矢印が通る時に斜線の入った盾に変わって薄くなる */
 .stance.is-pierced {
   animation:
-    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) both,
+    stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
     fade-half 240ms ease var(--delay) both;
 }
 @keyframes fade-half {
@@ -1106,109 +1249,18 @@ button.tab {
 /* 戦闘履歴。上下の並びは卓と同じ */
 .history {
   width: 100%;
-  max-width: 820px;
+  max-width: 860px;
   display: flex;
   align-items: center;
   gap: var(--tap-gap);
   text-align: left;
 }
-/* 戦いの流れ。1ターンを左右2つに割った牌にして、右へ並べる */
-.tiles-scroll {
+/* 直近の2ステップ。広い画面は横に、狭い画面は縦に並べる */
+.history-recent {
   flex: 1;
   min-width: 0;
-  overflow-x: auto;
-  padding: 2px 2px 6px;
-}
-.tiles {
-  list-style: none;
-  margin: 0 auto;
-  padding: 0;
-  display: flex;
-  gap: 12px;
-  width: max-content;
-}
-.tile {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  animation: tile-in 360ms cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
-}
-.tile-turn {
-  font-size: 0.75rem;
-  font-weight: 700;
-  color: var(--ink-soft);
-  text-align: center;
-}
-.tile-halves {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  width: 268px;
-  border: 2px solid color-mix(in srgb, var(--ink) 22%, transparent);
-  border-radius: 12px;
-  background: var(--surface);
-  overflow: hidden;
-}
-.half {
-  position: relative;
-  min-width: 0;
-  min-height: 78px;
-  padding: 6px 8px 6px 22px;
-  display: flex;
-  flex-direction: column;
+  flex-direction: row;
   justify-content: center;
-  gap: 4px;
-}
-.half + .half {
-  border-left: 2px dashed color-mix(in srgb, var(--ink) 22%, transparent);
-}
-.half-step {
-  position: absolute;
-  top: 4px;
-  left: 7px;
-  font-size: 0.75rem;
-  font-weight: 800;
-  color: var(--ink-soft);
-}
-/* 今のステップの半分は、色と枠で強調する。押せるものではないので、明滅はさせない */
-.half.is-now {
-  background: color-mix(in srgb, var(--me) 10%, var(--surface));
-  box-shadow: inset 0 0 0 2px var(--me);
-}
-.half.is-now .half-step {
-  color: var(--me);
-}
-/* 結果が入った半分は、埋まる瞬間に一度だけ色が差す */
-.half.is-done {
-  animation: half-fill 500ms ease both;
-}
-@keyframes half-fill {
-  from {
-    background: color-mix(in srgb, var(--me) 20%, var(--surface));
-  }
-}
-@keyframes tile-in {
-  from {
-    opacity: 0;
-    transform: translateX(16px);
-  }
-}
-.mini {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 26px;
-  padding-left: 6px;
-  border-left: 3px solid var(--who);
-}
-.mini-act {
-  font-family: var(--font-spell);
-  font-weight: 800;
-  font-size: 0.85rem;
-  white-space: nowrap;
-  color: var(--spell-ink, var(--ink));
 }
 .history-list {
   list-style: none;
@@ -1217,6 +1269,10 @@ button.tab {
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+}
+.history > .history-list {
+  flex: 1;
+  min-width: 0;
 }
 .history-entry {
   display: grid;
@@ -1227,6 +1283,19 @@ button.tab {
   border-radius: 12px;
   background: var(--surface);
   border: 1px solid var(--line);
+}
+.history-recent > .history-entry {
+  flex: 1;
+  min-width: 0;
+  max-width: 420px;
+}
+/* 一番新しい結果は枠を太くして目立たせる。古い方は背景を落とす */
+.history-recent > .history-entry:not(.is-latest) {
+  background: transparent;
+  border-style: dashed;
+}
+.history-entry.is-latest {
+  border: 2px solid color-mix(in srgb, var(--ink) 35%, transparent);
 }
 .history-when {
   grid-row: span 2;
@@ -1316,6 +1385,19 @@ button.tab {
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
   text-align: left;
 }
+/* 狭い画面で相手のカードを大きく見る */
+.peek-dialog {
+  --die: var(--die-cpu);
+  padding: 1rem;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.peek-dialog::backdrop {
+  background: rgba(20, 24, 36, 0.5);
+}
 .history-dialog::backdrop {
   background: rgba(20, 24, 36, 0.5);
 }
@@ -1333,8 +1415,6 @@ button.tab {
   .stance svg,
   .banner,
   .tray.is-rolling .die,
-  .tile,
-  .half.is-done,
   .card.is-hint .face-row.is-on .slot:not(.is-filled) {
     animation: none;
     transition: none;
@@ -1354,6 +1434,15 @@ button.tab {
   .die-hint::after {
     animation: none;
     opacity: 0.6;
+  }
+  .plate {
+    display: none;
+  }
+  .arrow::before,
+  .arrow::after,
+  .arrow-value,
+  .card.is-casting {
+    animation: none;
   }
 }
 .result {
@@ -1377,6 +1466,7 @@ button.tab {
 
 /* ルール。ヘッダーの「?」から開く */
 .help {
+  margin-left: auto;
   align-self: center;
   display: grid;
   place-items: center;
@@ -1479,13 +1569,20 @@ button.tab {
     --die-me: 60px;
     --die-cpu: 60px;
   }
-  .level-label {
-    order: 3;
-    width: 100%;
-    margin-left: 0;
-  }
   .table-head .help {
     margin-left: auto;
+  }
+  .history-recent {
+    flex-direction: column;
+  }
+  .seat-row {
+    flex-wrap: wrap;
+  }
+  .seat-status {
+    flex-basis: 100%;
+  }
+  .seat-me .seat-status {
+    order: -1;
   }
   /* 狭い画面では降参を旗の印だけにして、「?」と並べて右上に収める */
   .surrender {

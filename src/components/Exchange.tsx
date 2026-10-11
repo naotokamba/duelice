@@ -3,36 +3,51 @@
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
 import { SkipForward } from 'lucide-react'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ReactNode } from 'react'
 import { ACTION_DEFS } from '../game/cards'
-import { breaksChant, type PlayerIndex, type StepReport, type Strike, strikes } from '../game/rules'
-import type { ActionKind, CardId } from '../game/types'
+import {
+  type Action,
+  actionLabel,
+  breaksChant,
+  type PlayerIndex,
+  type StepReport,
+  type Strike,
+  strikes,
+} from '../game/rules'
+import type { CardId } from '../game/types'
 import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
 
 /** 舞台の高さ。styles.css の .stage と合わせる */
-const H = 190
+const H = 170
 /** 矢印が始まり、当たる位置の、端からの距離 */
-const EDGE = 14
+const EDGE = 12
 /** 構えの印の中心の、端からの距離。当たった星と重ならないように端から離す */
-const STANCE = 72
+const STANCE = 64
 /** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。styles.css の .stance と合わせる */
 const STANCE_R = 28
 
-// 公開は三つの場面に分けて、場面ごとに間を取る。
-// 一つ目は構え。互いが何を構えたかを見せる。二つ目は攻撃。矢印が飛ぶ。三つ目は結果。当たって体力が減る
+// 公開は三つの拍に分けて、拍ごとに間を取る。
+// 一つ目は名乗り。使ったカードが光り、技の名前と値の札が中央に出る。
+// 二つ目は構え。札が消え、障壁や反射や詠唱の印が技の名前と一緒に出る。
+// 三つ目は攻撃と結果。技の名前を付けた矢印が飛び、当たって体力が減る。
+// 札の出入りの時間は styles.css の .plate と合わせる
 
-/** 構えを見せてから矢印を放つまでの間 */
-export const START_MS = 800
+/** 名乗りの札を出しておく時間 */
+export const ANNOUNCE_MS = 800
+/** 構えの印が出る時刻 */
+const STANCE_AT = 850
+/** 矢印を放つ時刻 */
+export const START_MS = 1300
 /** 矢印が飛ぶ時間 */
-const FLY_MS = 600
+const FLY_MS = 550
 /** 矢印が当たる時刻 */
 export const IMPACT_MS = START_MS + FLY_MS
 /** 反射で返った矢印が当たる時刻 */
 export const RETURN_MS = IMPACT_MS + FLY_MS
 /** 最後の矢印が当たってから次へ進むまでの間。結果を見せる */
-export const HOLD_MS = 1600
+export const HOLD_MS = 1500
 /** 攻撃が無いときに構えを見せておく時間 */
-const CALM_MS = 1000
+const CALM_MS = 900
 /** 舞台が消えていく時間。次へ進む前に、この時間をかけて薄くなる */
 const OUT_MS = 350
 
@@ -69,11 +84,28 @@ const BACK = 34
 const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
   ({ left: `calc(${x}% + ${dx}px)`, top: y, '--delay': `${delay}ms` }) as CSSProperties
 
+/** 行動の印を、実際に出た値で描く。攻撃は威力、障壁は減らす量、詠唱は崩れる境目 */
+function actionMark(a: Action, vals: number[]): ReactNode {
+  if (a.kind === 'pass') return <SkipForward />
+  const def = ACTION_DEFS[a.kind]
+  if (def.power) {
+    const v = String(def.power(vals))
+    return def.piercing ? <PierceStar value={v} /> : <Star value={v} />
+  }
+  if (def.guard) return <ShieldGlyph value={def.guard(vals)} />
+  if (def.reflects) return <ReflectGlyph />
+  return <ChantGlyph value={vals[0]} />
+}
+
 export function Exchange({ report }: { report: StepReport }) {
   const list = strikes(report.values, report.actions)
   const out = { '--out-at': `${revealMs(list) - OUT_MS}ms`, '--out': `${OUT_MS}ms` } as CSSProperties
   return (
     <div className="stage" style={out} aria-hidden="true">
+      {/* 一つ目の拍。技の名前と値を中央に名乗る */}
+      {([1, 0] as const).map((who) => (
+        <Plate key={`p${who}`} who={who} report={report} />
+      ))}
       {([0, 1] as const).map((who) => {
         const incoming = list.find((s) => s.from !== who)
         return (
@@ -90,31 +122,32 @@ export function Exchange({ report }: { report: StepReport }) {
       {list.map((s) => {
         const x = laneX(list, s.from)
         const other = otherOf(s.from)
-        const card = ACTION_DEFS[s.kind].card
         const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
+        const a = report.actions[s.from]
+        const mark = actionMark(a, report.values[s.from])
         return [
           <Arrow
             key={`a${s.from}`}
-            kind={s.kind}
+            label={actionLabel(a)}
+            mark={mark}
             x={x}
             y0={edge(s.from)}
             y1={stops ? stanceRim(other) : edge(other)}
             delay={START_MS}
-            card={card}
-            value={s.power}
+            card={ACTION_DEFS[s.kind].card}
             spent={stops}
           />,
           s.outcome === 'reflected' && (
             <Arrow
               key={`r${s.from}`}
-              kind={s.kind}
+              label={actionLabel(a)}
+              mark={mark}
               x={x}
               dx={BACK}
               y0={stanceRim(other)}
               y1={edge(s.from)}
               delay={IMPACT_MS}
-              card={card}
-              value={s.dealt}
+              card={ACTION_DEFS[s.kind].card}
             />
           ),
           s.dealt > 0 && (
@@ -138,20 +171,34 @@ export function Exchange({ report }: { report: StepReport }) {
   )
 }
 
+/** 名乗りの札。上が相手、下が自分。技の名前と、実際に出た値の印を大きく出し、構えの拍で消える */
+function Plate({ who, report }: { who: PlayerIndex; report: StepReport }) {
+  const a = report.actions[who]
+  const card = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].card
+  const cls = ['plate', who === 0 ? 'side-me' : 'side-cpu', card && `card-${card}`].filter(Boolean).join(' ')
+  return (
+    <div className={cls} style={at(50, who === 1 ? H * 0.3 : H * 0.7)}>
+      <span className="plate-name">{a.kind === 'pass' ? 'パス' : actionLabel(a)}</span>
+      <span className="plate-mark">{actionMark(a, report.values[who])}</span>
+    </div>
+  )
+}
+
 interface ArrowProps {
-  kind: ActionKind
+  /** 技の名前。矢印の札に印と並べる */
+  label: string
+  mark: ReactNode
   x: number
   dx?: number
   y0: number
   y1: number
   delay: number
   card: CardId
-  value: number
   /** 障壁や反射に当たって止まり、薄くなる矢印 */
   spent?: boolean
 }
 
-function Arrow({ kind, x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProps) {
+function Arrow({ label, mark, x, dx = 0, y0, y1, delay, card, spent }: ArrowProps) {
   const style = {
     ...at(x, Math.min(y0, y1), delay, dx),
     height: Math.abs(y1 - y0),
@@ -161,9 +208,10 @@ function Arrow({ kind, x, dx = 0, y0, y1, delay, card, value, spent }: ArrowProp
   const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent'].filter(Boolean).join(' ')
   return (
     <div className={cls} style={style}>
-      {/* 矢印には、放ったカードと同じ印を付ける */}
+      {/* 矢印には、技の名前と、放ったカードと同じ印を付ける */}
       <span className="arrow-value">
-        {ACTION_DEFS[kind].piercing ? <PierceStar value={String(value)} /> : <Star value={String(value)} />}
+        <span className="arrow-name">{label}</span>
+        {mark}
       </span>
     </div>
   )
@@ -188,12 +236,16 @@ function reachesStance(s: Strike): number {
   return START_MS + Math.round(FLY_MS * share)
 }
 
+/** 構えの印の位置と、現れる時刻 */
+const stanceAt = (x: number, y: number, delay: number, dx = 0) =>
+  ({ ...at(x, y, delay, dx), '--appear': `${STANCE_AT}ms` }) as CSSProperties
+
 function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const a = report.actions[who]
   const y = stanceY(who)
   if (a.kind === 'pass') {
     return (
-      <div className="stance stance-pass" style={at(12, y)}>
+      <div className="stance stance-pass" style={stanceAt(12, y, 0)}>
         <SkipForward />
       </div>
     )
@@ -201,20 +253,24 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const def = ACTION_DEFS[a.kind]
   const vals = report.values[who]
   const cls = `stance card-${def.card}`
+  // 印の横に技の名前を添える
+  const name = <span className="stance-name">{def.label}</span>
   if (def.guard) {
     // 止めた障壁は当たった時に揺れる。貫通された障壁は、矢印が通る時に薄くなる
     const pierced = incoming?.outcome === 'pierced'
     const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
     return (
-      <div className={cls + state} style={at(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
+      <div className={cls + state} style={stanceAt(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
         <ShieldGlyph value={def.guard(vals)} />
+        {name}
       </div>
     )
   }
   if (def.reflects) {
     return (
-      <div className={cls} style={at(x, y)}>
+      <div className={cls} style={stanceAt(x, y, 0)}>
         <ReflectGlyph />
+        {name}
       </div>
     )
   }
@@ -224,10 +280,11 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     return (
       <div
         className={`${cls} stance-chant${broken ? ' is-broken' : ''}`}
-        style={at(x, y, IMPACT_MS, aside ? -ASIDE : 0)}
+        style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}
       >
         <ChantGlyph value={vals[0]} className="chant-on" />
         {broken && <ChantGlyph value={vals[0]} broken className="chant-off" />}
+        {name}
       </div>
     )
   }
