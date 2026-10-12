@@ -603,14 +603,20 @@ describe('狭い画面', () => {
     expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
 
-    // ダイスを置いた後でも、ほかのカードを見られる。置いたダイスはそのまま残る
+    // 見ているカードの名前を押しても、置いたダイスはそのまま
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
+
+    // 別のカードに替えると、置いたダイスも持っていたダイスも手元に戻る
     await user.click(mySeat().getByRole('button', { name: '5の目' }))
     await user.click(mySeat().getByRole('button', { name: '火球' }))
     expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
     expect(mySeat().getByRole('button', { name: '5の目' }).getAttribute('aria-pressed')).toBe('false')
-    expect(mySeat().getByRole('button', { name: '障壁' }).classList.contains('is-placed')).toBe(true)
+    expect(mySeat().getByRole('button', { name: '4の目' })).toBeTruthy()
+    expect(mySeat().getByRole('button', { name: '障壁' }).classList.contains('is-placed')).toBe(false)
+    expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     await user.click(mySeat().getByRole('button', { name: '障壁' }))
-    expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
+    expect(myCard('障壁').queryByRole('button', { name: '4の目を戻す' })).toBeNull()
   })
 
   it('2ステップ目も見ていたカードを出し続け、新しいターンには左端のカードに戻る', async () => {
@@ -623,6 +629,15 @@ describe('狭い画面', () => {
     expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['雷槍'])
     expect(mySeat().getByRole('button', { name: '雷槍' }).getAttribute('aria-pressed')).toBe('true')
     expect(myCard('雷槍').getByRole('img', { name: '4の目' })).toBeTruthy()
+
+    // 2段目に置いてから別のカードに替えると、2ステップ目に置いたダイスだけが手元に戻り、詠唱のダイスは残る
+    await place(user, 5, '雷槍')
+    expect(myCard('雷槍').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    await user.click(mySeat().getByRole('button', { name: '雷槍' }))
+    expect(myCard('雷槍').queryByRole('button', { name: '5の目を戻す' })).toBeNull()
+    expect(myCard('雷槍').getByRole('img', { name: '4の目' })).toBeTruthy()
+    expect(mySeat().getByRole('button', { name: '5の目' })).toBeTruthy()
 
     // パスで見ていたカードも残る
     await user.click(mySeat().getByRole('button', { name: '障壁' }))

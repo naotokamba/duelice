@@ -301,11 +301,14 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 
   /**
    * 狭い画面でカードの名前を押した。ダイスを持っていても、いつもそのカードを出す。
-   * 名前は置き場ではないので、持っているダイスは置かずに手元へ戻し、置いてあるダイスはそのままにする
+   * 名前は置き場ではないので、持っているダイスは置かずに手元へ戻す。
+   * 別のカードに替えたなら、そのカードを使うことを考えているので、このステップに置いたダイスも手元へ戻す。
+   * 1ステップ目に使ったダイスは行動として済んでいるので、カードに残ったままになる
    */
   const pick = (c: CardId) => {
     setFocus(c)
     setHeld(null)
+    if (placement && placement.card !== c) setPlacement(null)
   }
 
   const trayOf = (who: PlayerIndex, shown: Shown | null) => {
