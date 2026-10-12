@@ -19,3 +19,7 @@ todos.json
 coverage
 reports
 .stryker-tmp
+
+# Playwright の結果
+test-results
+playwright-report
