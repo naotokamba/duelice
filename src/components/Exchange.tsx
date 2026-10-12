@@ -20,10 +20,15 @@ import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyph
 
 /** 舞台の高さ。卓の上に重ねるので、席の間に収める必要はない */
 const STAGE_H = 300
-/** 矢印が始まり、当たる位置の、端からの距離 */
+/** 矢印が始まる位置の、端からの距離 */
 const EDGE = 16
+/**
+ * 矢印が当たり、ダメージの星が出る位置の、端からの距離。
+ * 星は幅60で、出る時に1.25倍まで膨らむ。膨らんでも舞台の外の枠や体力の帯にかからないように、半径より内側に置く
+ */
+const HIT = 38
 /** 構えの印の中心の、端からの距離の割合。当たった星と重ならないように端から離す */
-const STANCE_SHARE = 0.3
+const STANCE_SHARE = 0.35
 /** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。styles.css の .stance と合わせる */
 const STANCE_R = 28
 
@@ -68,6 +73,8 @@ const H = STAGE_H
 const STANCE = Math.round(H * STANCE_SHARE)
 /** 端の位置 */
 const edge = (who: PlayerIndex) => (who === 1 ? EDGE : H - EDGE)
+/** 当たる位置 */
+const hit = (who: PlayerIndex) => (who === 1 ? HIT : H - HIT)
 const stanceY = (who: PlayerIndex) => (who === 1 ? STANCE : H - STANCE)
 /** 構えの印の、攻撃が飛んでくる側の縁 */
 const stanceRim = (who: PlayerIndex) => (who === 1 ? STANCE + STANCE_R : H - STANCE - STANCE_R)
@@ -147,10 +154,11 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                 mark={mark}
                 x={x}
                 y0={edge(s.from)}
-                y1={stops ? stanceRim(other) : edge(other)}
+                y1={stops ? stanceRim(other) : hit(other)}
                 delay={START_MS}
                 card={ACTION_DEFS[s.kind].card}
                 spent={stops}
+                returned={s.outcome === 'reflected'}
               />,
               s.outcome === 'reflected' && (
                 <Arrow
@@ -160,7 +168,7 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                   x={x}
                   dx={BACK}
                   y0={stanceRim(other)}
-                  y1={edge(s.from)}
+                  y1={hit(s.from)}
                   delay={IMPACT_MS}
                   card={ACTION_DEFS[s.kind].card}
                 />
@@ -172,7 +180,7 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                   className="burst"
                   style={at(
                     x,
-                    edge(s.to),
+                    hit(s.to),
                     landsAt(s),
                     s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
                   )}
@@ -214,16 +222,20 @@ interface ArrowProps {
   card: CardId
   /** 障壁や反射に当たって止まり、薄くなる矢印 */
   spent?: boolean
+  /** 反射で返された矢印。返る矢印と入れ替わりに札を消す */
+  returned?: boolean
 }
 
-function Arrow({ label, mark, x, dx = 0, y0, y1, delay, card, spent }: ArrowProps) {
+function Arrow({ label, mark, x, dx = 0, y0, y1, delay, card, spent, returned }: ArrowProps) {
   const style = {
     ...at(x, Math.min(y0, y1), delay, dx),
     height: Math.abs(y1 - y0),
     '--fly': `${FLY_MS}ms`,
     '--gone': `${IMPACT_MS}ms`,
   } as CSSProperties
-  const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent'].filter(Boolean).join(' ')
+  const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent', returned && 'is-returned']
+    .filter(Boolean)
+    .join(' ')
   return (
     <div className={cls} style={style}>
       {/* 矢印には、技の名前と、放ったカードと同じ印を付ける */}
@@ -250,7 +262,7 @@ interface StanceProps {
 /** 矢印の先が構えの印に届く時刻 */
 function reachesStance(s: Strike): number {
   const to = otherOf(s.from)
-  const share = Math.abs(edge(s.from) - stanceY(to)) / Math.abs(edge(s.from) - edge(to))
+  const share = Math.abs(edge(s.from) - stanceY(to)) / Math.abs(edge(s.from) - hit(to))
   return START_MS + Math.round(FLY_MS * share)
 }
 

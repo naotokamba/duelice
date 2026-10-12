@@ -1,8 +1,9 @@
-// ルール。読まなくても遊べることを目指すので、ふだんはヘッダーの「?」にしまっておく。
+// ルール。読まなくても遊べることを目指すので、ふだんはしまっておく。
+// タイトルでは右上の「?」から、対局中はメニューから開く。
 // カードの説明は文で書かず、対戦で使うカードをそのままの大きさで並べる。
 
 import { CircleHelp, X } from 'lucide-react'
-import { useRef } from 'react'
+import { type RefObject, useRef } from 'react'
 import { CARD_ORDER, type EffectPart, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
 import { closeOnBackdrop } from './dialog'
@@ -20,6 +21,7 @@ const MARKS: [EffectPart, string][] = [
   ],
 ]
 
+/** タイトルの右上の「?」。押すとルールを開く */
 export function RulesButton() {
   const dialog = useRef<HTMLDialogElement>(null)
   return (
@@ -33,6 +35,15 @@ export function RulesButton() {
       >
         <CircleHelp aria-hidden="true" />
       </button>
+      <RulesDialog ref={dialog} />
+    </>
+  )
+}
+
+/** ルールの窓。開くのは呼ぶ側で、ref の showModal を呼ぶ */
+export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement | null> }) {
+  return (
+    <>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
       <dialog ref={dialog} className="rules-dialog" aria-labelledby="rules-title" onClick={closeOnBackdrop}>
         <div className="rules-head">

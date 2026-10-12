@@ -65,6 +65,21 @@ async function place(user: User, value: number, card: string) {
   await user.click(myCard(card).getAllByRole('button', { name: `${card}に置く` })[0])
 }
 
+/** パスを押し、確かめる問いにパスすると答える */
+/** 対局中のメニューを開いて、項目を選ぶ */
+async function fromMenu(user: User, item: string) {
+  await user.click(button('メニュー'))
+  const menu = screen.getByRole('dialog', { name: 'メニュー' }) as HTMLDialogElement
+  await user.click(within(menu).getByRole('button', { name: item }))
+  expect(menu.open).toBe(false)
+}
+
+async function pass(user: User) {
+  await user.click(button('パス'))
+  const dialog = screen.getByRole('dialog', { name: 'パスしますか？' })
+  await user.click(within(dialog).getByRole('button', { name: 'パスする' }))
+}
+
 /** 指で el を target まで引きずって離す */
 function dragTo(el: Element, target: Element | null) {
   const spy = vi.spyOn(document, 'elementFromPoint').mockReturnValue(target)
@@ -147,7 +162,7 @@ describe('一ターンの流れ', () => {
     expect(myCard('火球').queryByRole('button', { name: '火球に置く' })).toBeNull()
     expect(mySeat().getAllByRole('img', { name: '6の目、使用済み' })).toHaveLength(2)
 
-    await user.click(button('パス'))
+    await pass(user)
     await advance(2400)
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
     expect(screen.getByText('Turn 2', { selector: '.banner span' })).toBeTruthy()
@@ -158,7 +173,7 @@ describe('一ターンの流れ', () => {
     // 中央には一つ前の結果だけが出る
     expect(latest().getAllByRole('listitem')).toHaveLength(1)
     expect(latest().getAllByRole('img', { name: 'パス' })).toHaveLength(2)
-    await user.click(latest().getByRole('button', { name: '戦闘履歴' }))
+    await user.click(button('戦闘履歴'))
     const dialog = screen.getByRole('dialog', { name: '戦闘履歴' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     const entries = within(dialog).getAllByRole('listitem')
@@ -269,7 +284,7 @@ describe('一ターンの流れ', () => {
       ]),
       opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
     })
-    await user.click(button('パス'))
+    await pass(user)
     expect(screen.getByText('相手の火球 6点')).toBeTruthy()
     const theirs = cardIn(cpuSeat(), '火球')
     expect(theirs.getAllByRole('img', { name: /^[56]の目$/ })).toHaveLength(2)
@@ -414,7 +429,7 @@ describe('狭い画面', () => {
       rng: roll([6, 5, 4]),
       opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
     })
-    await user.click(button('パス'))
+    await pass(user)
     expect(cardsShown(cpuSeat())).toHaveLength(0)
     expect(cpuSeat().getByRole('button', { name: '火球' }).classList.contains('is-placed')).toBe(true)
     await settle()
@@ -442,7 +457,7 @@ describe('狭い画面', () => {
 })
 
 describe('ルール', () => {
-  it('タイトルでも対局中でも「?」から開け、対局と同じカードが並ぶ', async () => {
+  it('タイトルでは「?」から、対局中はメニューから開け、対局と同じカードが並ぶ', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(
       <Game
@@ -453,8 +468,7 @@ describe('ルール', () => {
         opponent={passOpponent}
       />,
     )
-    const open = async () => {
-      await user.click(button('ルール'))
+    const check = async () => {
       const dialog = screen.getByRole('dialog', { name: 'ルール' }) as HTMLDialogElement
       expect(dialog.open).toBe(true)
       const cards = within(dialog).getAllByRole('listitem', { name: /./ })
@@ -464,9 +478,11 @@ describe('ルール', () => {
       await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
       expect(dialog.open).toBe(false)
     }
-    await open()
+    await user.click(button('ルール'))
+    await check()
     await user.click(button('決闘を始める'))
-    await open()
+    await fromMenu(user, 'ルール')
+    await check()
   })
 })
 
@@ -501,6 +517,29 @@ describe('モーダル', () => {
   })
 })
 
+describe('パス', () => {
+  it('確かめてからパスし、やめるを選べば何も起きない', async () => {
+    const user = await start({
+      rng: dice([
+        [1, 2, 3],
+        [1, 2, 3],
+      ]),
+      opponent: passOpponent,
+    })
+    await user.click(button('パス'))
+    const dialog = screen.getByRole('dialog', { name: 'パスしますか？' }) as HTMLDialogElement
+    expect(dialog.open).toBe(true)
+    await user.click(within(dialog).getByRole('button', { name: 'やめる' }))
+    expect(dialog.open).toBe(false)
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
+    expect(screen.queryByText('あなたは何もしなかった')).toBeNull()
+
+    await pass(user)
+    expect(dialog.open).toBe(false)
+    expect(screen.getByText('あなたは何もしなかった')).toBeTruthy()
+  })
+})
+
 describe('降参', () => {
   it('確認して降参するとタイトルに戻り、続けるを選べば対局が続く', async () => {
     const user = await start({
@@ -510,7 +549,7 @@ describe('降参', () => {
       ]),
       opponent: passOpponent,
     })
-    await user.click(button('降参'))
+    await fromMenu(user, '降参')
     const dialog = screen.getByRole('dialog', { name: '降参しますか？' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
 
@@ -518,7 +557,7 @@ describe('降参', () => {
     expect(dialog.open).toBe(false)
     expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
 
-    await user.click(button('降参'))
+    await fromMenu(user, '降参')
     await user.click(within(dialog).getByRole('button', { name: '降参する' }))
     expect(button('決闘を始める')).toBeTruthy()
   })
@@ -555,7 +594,12 @@ describe('決着', () => {
     // 決着したら、時間がたっても次へは進まない。降参もできない
     await settle()
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
-    expect(screen.queryByRole('button', { name: '降参' })).toBeNull()
+    await user.click(button('メニュー'))
+    const menu = screen.getByRole('dialog', { name: 'メニュー' }) as HTMLDialogElement
+    expect(within(menu).getByRole('button', { name: 'ルール' })).toBeTruthy()
+    expect(within(menu).queryByRole('button', { name: '降参' })).toBeNull()
+    // 偽の DOM は Esc でモーダルを閉じないので、直接閉じる
+    act(() => menu.close())
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
     expect((button('パス') as HTMLButtonElement).disabled).toBe(true)
@@ -596,7 +640,7 @@ describe('本物のCPUとの通し', () => {
   it('パスを続けても、CPUの手で最後まで進み決着する', async () => {
     const user = await start({ rng: seeded(42) }, 'つよい')
     for (let k = 0; k < 60 && !screen.queryByText(RESULT); k++) {
-      await user.click(button('パス'))
+      await pass(user)
       await settle()
     }
     expect(screen.getByText('相手の勝ち')).toBeTruthy()

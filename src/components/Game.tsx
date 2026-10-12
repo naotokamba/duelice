@@ -1,4 +1,4 @@
-import { Flag, SkipForward, X } from 'lucide-react'
+import { SkipForward, X } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
 import { ACTION_DEFS, CARD_ORDER } from '../game/cards'
 import {
@@ -29,7 +29,8 @@ import { Card, type CardPlay, CardTabs, type Shown } from './Card'
 import { Die } from './Die'
 import { closeOnBackdrop } from './dialog'
 import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
-import { History } from './History'
+import { HistoryButton, Recent } from './History'
+import { MatchMenu } from './MatchMenu'
 import { RulesButton } from './RulesButton'
 import { useDiceDrag } from './useDiceDrag'
 import { useNarrow } from './useNarrow'
@@ -81,6 +82,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const narrow = useNarrow()
   /** 降参の確認 */
   const surrenderDialog = useRef<HTMLDialogElement>(null)
+  /** パスの確認 */
+  const passDialog = useRef<HTMLDialogElement>(null)
   /** 狭い画面で、名前を押して大きく見ている相手のカード */
   const [peek, setPeek] = useState<CardId | null>(null)
   const peekDialog = useRef<HTMLDialogElement>(null)
@@ -307,7 +310,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       aria-label="パス"
       title="パス"
       disabled={!choosing}
-      onClick={() => commit({ kind: 'pass' })}
+      onClick={() => passDialog.current?.showModal()}
     >
       <SkipForward aria-hidden="true" />
     </button>
@@ -315,23 +318,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 
   return (
     <main className="table">
-      <header className="table-head">
-        <h1 className="logo">Duelice</h1>
-        <TurnLabel turn={showReveal ? last.turn : game.turn} step={showReveal ? last.step : game.step} />
-        <RulesButton />
-        {game.winner === null && (
-          <button
-            type="button"
-            className="surrender"
-            aria-label="降参"
-            title="降参"
-            onClick={() => surrenderDialog.current?.showModal()}
-          >
-            <Flag aria-hidden="true" />
-            <span className="surrender-text">降参</span>
-          </button>
-        )}
-      </header>
+      {/* 対局中はヘッダーを出さず、卓を広く使う。ルールと降参は中央の段の右端のメニューにしまう */}
+      <h1 className="sr-only">Duelice</h1>
 
       {/* 狭い画面では相手のカードは名前だけなので、名前を押すとカードを大きく出す */}
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
@@ -357,6 +345,29 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           </button>
         </div>
         {peek && <ul className="cards cards-one">{cardView(1, peek)}</ul>}
+      </dialog>
+
+      {/* パスは取り消せないので確かめる。誤って押したときのために、最初はやめるを選んでおく */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
+      <dialog ref={passDialog} className="confirm-dialog" aria-labelledby="pass-title" onClick={closeOnBackdrop}>
+        <p id="pass-title" className="dialog-title">
+          パスしますか？
+        </p>
+        <div className="dialog-actions">
+          <button type="button" className="btn" onClick={() => passDialog.current?.close()}>
+            やめる
+          </button>
+          <button
+            type="button"
+            className="btn btn-primary"
+            onClick={() => {
+              passDialog.current?.close()
+              commit({ kind: 'pass' })
+            }}
+          >
+            パスする
+          </button>
+        </div>
       </dialog>
 
       {/* 降参すると対局をやめてタイトルに戻る。誤って押したときのために、最初は続けるを選んでおく */}
@@ -416,28 +427,39 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             ))}
           </ul>
         )}
-        {!revealed && <History history={game.history} />}
+        {/* 左端に今のターンとステップ、中央に一つ前の結果や勝敗、右端にメニューを出す */}
+        <div className="arena-row">
+          <TurnLabel turn={showReveal ? last.turn : game.turn} step={showReveal ? last.step : game.step} />
+          <div className="arena-main">
+            {!revealed && <Recent history={game.history} />}
+            {over && (
+              <div className="result">
+                <p className="result-text">
+                  {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
+                </p>
+                <div className="result-actions">
+                  <button type="button" className="btn btn-primary" onClick={start}>
+                    もう一戦
+                  </button>
+                  <button type="button" className="btn" onClick={() => setGame(null)}>
+                    強さを選び直す
+                  </button>
+                </div>
+              </div>
+            )}
+            {over && <Recent history={game.history} />}
+          </div>
+          {/* 右端に履歴の印とメニューを縦に並べる。メニューは下に揃えて、履歴が出ても動かさない */}
+          <div className="arena-tools">
+            {(!revealed || over) && <HistoryButton history={game.history} />}
+            <MatchMenu onSurrender={game.winner === null ? () => surrenderDialog.current?.showModal() : undefined} />
+          </div>
+        </div>
         {banner && !revealed && (
           <p key={banner.text} className="banner">
             <span>{banner.text}</span>
           </p>
         )}
-        {over && (
-          <div className="result">
-            <p className="result-text">
-              {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
-            </p>
-            <div className="result-actions">
-              <button type="button" className="btn btn-primary" onClick={start}>
-                もう一戦
-              </button>
-              <button type="button" className="btn" onClick={() => setGame(null)}>
-                強さを選び直す
-              </button>
-            </div>
-          </div>
-        )}
-        {over && <History history={game.history} />}
       </section>
 
       <Seat
@@ -462,14 +484,16 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 }
 
 /**
- * 今のターンとステップ。ステップは2つに区切った札で見せ、終わったステップを埋め、今のステップを枠で強調する。
- * 押せるものではないので動かさない
+ * 今のターンとステップ。上下の席の間の左端に、ターンの下にステップの札を縦に並べる。
+ * 終わったステップを埋め、今のステップを枠で強調する。押せるものではないので動かさない
  */
 function TurnLabel({ turn, step }: { turn: number; step: 1 | 2 }) {
   return (
     <p className="turn-label">
       <span className="sr-only">{`Turn ${turn} - Step ${step}`}</span>
-      <span aria-hidden="true">Turn {turn}</span>
+      <span className="turn-num" aria-hidden="true">
+        Turn {turn}
+      </span>
       <span className="steps" aria-hidden="true">
         {([1, 2] as const).map((s) => (
           <span key={s} className={`step-pill${s < step ? ' is-done' : s === step ? ' is-now' : ''}`}>

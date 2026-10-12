@@ -1,4 +1,5 @@
 // 戦闘履歴。一つ前の結果は中央に常に出し、全ての履歴は履歴の印からモーダルで見る。
+// 履歴の印は、中央の段の右端にメニューと縦に並べるので、一つ前の結果とは別に置く。
 // 上下の並びは卓と同じで、上が相手、下が自分。
 
 import { History as HistoryIcon, SkipForward, X } from 'lucide-react'
@@ -8,27 +9,35 @@ import { actionLabel, type PlayerIndex, type StepReport } from '../game/rules'
 import { Die } from './Die'
 import { closeOnBackdrop } from './dialog'
 
-export function History({ history }: { history: StepReport[] }) {
+/** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
+export function Recent({ history }: { history: StepReport[] }) {
+  const last = history.at(-1)
+  if (!last) return null
+  return (
+    <section className="history" aria-label="一つ前の結果">
+      <ol className="history-list history-recent">
+        <Entry report={last} />
+      </ol>
+    </section>
+  )
+}
+
+/** 戦闘履歴を開く印と、全ての履歴のモーダル。履歴が無いうちは出さない */
+export function HistoryButton({ history }: { history: StepReport[] }) {
   const dialog = useRef<HTMLDialogElement>(null)
   if (history.length === 0) return null
   const items = [...history].reverse()
   return (
     <>
-      {/* 中央には一つ前の結果だけを出す。今どのステップかは見出しの札で分かる */}
-      <section className="history" aria-label="一つ前の結果">
-        <ol className="history-list history-recent">
-          <Entry report={items[0]} />
-        </ol>
-        <button
-          type="button"
-          className="history-open"
-          aria-label="戦闘履歴"
-          title="戦闘履歴"
-          onClick={() => dialog.current?.showModal()}
-        >
-          <HistoryIcon aria-hidden="true" />
-        </button>
-      </section>
+      <button
+        type="button"
+        className="history-open"
+        aria-label="戦闘履歴"
+        title="戦闘履歴"
+        onClick={() => dialog.current?.showModal()}
+      >
+        <HistoryIcon aria-hidden="true" />
+      </button>
       {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
       <dialog ref={dialog} className="history-dialog" aria-labelledby="history-title" onClick={closeOnBackdrop}>
         <div className="rules-head">

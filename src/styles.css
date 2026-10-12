@@ -132,8 +132,7 @@ button {
   top: 1rem;
   right: 1rem;
 }
-.title-logo,
-.logo {
+.title-logo {
   font-family: var(--font-spell);
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -187,32 +186,33 @@ button {
   flex-direction: column;
   gap: 0.6rem;
 }
-.table-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.25rem 0.75rem;
-}
-.logo {
-  font-size: 1.4rem;
-}
+/* 今のターンとステップ。中央の左端に縦に並べる。右端のメニューと同じ幅にして、間の結果を真ん中に置く */
 .turn-label {
+  flex: none;
+  min-width: var(--tap);
   margin: 0;
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
+  gap: 4px;
   font-weight: 700;
+}
+.turn-num {
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--ink-soft);
 }
 /* ステップの札。終わったステップを埋め、今のステップを枠で強調する。動かさない */
 .steps {
-  display: inline-flex;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
 }
 .step-pill {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 22px;
+  width: 30px;
+  height: 26px;
   border: 1px solid var(--line);
   border-radius: 6px;
   font-size: 0.75rem;
@@ -229,29 +229,71 @@ button {
   background: color-mix(in srgb, var(--me) 12%, transparent);
   color: var(--me);
 }
-/* 降参。対局中だけ右上に出す */
-.surrender {
-  align-self: center;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.3rem;
-  min-height: var(--tap);
-  padding: 0 1rem;
+/* 対局中のメニュー。中央の段の右端に置き、押すとボタンのすぐ下にルールと降参を出す */
+.menu-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
   border: 1px solid var(--line);
-  border-radius: 999px;
+  border-radius: 50%;
   background: var(--surface);
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-  font-weight: 700;
+  color: var(--ink);
   cursor: pointer;
 }
-.surrender svg {
+.menu-button svg {
   width: 22px;
   height: 22px;
 }
-.surrender:hover {
+.menu-button:hover {
   border-color: var(--ink-soft);
+}
+/* 位置は MatchMenu.tsx が開いたボタンに合わせて決める */
+.menu-dialog {
+  position: fixed;
+  inset: auto;
+  margin: 0;
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
   color: var(--ink);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.25);
+}
+.menu-dialog[open] {
+  display: flex;
+  flex-direction: column;
+  gap: var(--tap-gap);
+}
+.menu-dialog::backdrop {
+  background: transparent;
+}
+.menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 140px;
+  min-height: var(--tap);
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.menu-item svg {
+  width: 22px;
+  height: 22px;
+  color: var(--ink-soft);
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: var(--table);
 }
 .confirm-dialog {
   max-width: min(90vw, 360px);
@@ -887,6 +929,30 @@ button.tab {
 
 /* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
 /* 中央。選んでいる間は直近の結果の高さだけ取る。公開の舞台は、上下の席のダイスと体力の段に重ねて大きく描く */
+.arena-row {
+  width: 100%;
+  min-height: calc(var(--tap) * 2 + var(--tap-gap));
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* 右端の履歴の印とメニュー */
+.arena-tools {
+  flex: none;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--tap-gap);
+}
+.arena-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
 .arena {
   position: relative;
   z-index: 2;
@@ -1039,16 +1105,23 @@ button.tab {
   font-size: 0.9rem;
   color: var(--spell-ink, var(--ink));
 }
-/* 印は矢印の放った側寄りに付け、受ける側の構えの印と重ならないようにする */
+/* 技の札は矢印の始点に置き、そこから矢印が伸びる。誰が何を放ったかを、放った側の端で読めるようにする */
 .arrow.is-up .arrow-value {
-  top: 70%;
+  top: calc(100% - 18px);
 }
 .arrow.is-down .arrow-value {
-  top: 30%;
+  top: 18px;
 }
 /* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
   animation: fade 260ms ease var(--gone) both;
+}
+/* 障壁で止まった矢印の札は残し、何を止めたかを読めるようにする。
+   反射で返された矢印の札は、返る矢印が出たら消す。返る矢印が同じ札を付けて出るので、二つ並べない */
+.arrow.is-returned .arrow-value {
+  animation:
+    appear 200ms ease var(--delay) both,
+    gone 200ms ease var(--gone) both;
 }
 @keyframes shoot-up {
   from {
@@ -1293,13 +1366,12 @@ button.tab {
 }
 
 /* 戦闘履歴。上下の並びは卓と同じ */
-/* 一つ前の結果と履歴の印を一つのまとまりにして、中央に置く */
+/* 一つ前の結果。中央に置く */
 .history {
   width: 100%;
   max-width: 480px;
   display: flex;
   align-items: center;
-  gap: var(--tap-gap);
   text-align: left;
 }
 /* 一つ前の結果 */
@@ -1365,6 +1437,7 @@ button.tab {
   color: var(--who);
 }
 .history-act {
+  white-space: nowrap;
   font-family: var(--font-spell);
   font-weight: 800;
   font-size: 0.95rem;
@@ -1392,7 +1465,7 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
-/* 戦闘履歴を開く印。一つ前の結果の横に置く */
+/* 戦闘履歴を開く印。中央の段の右端に、メニューの上に置く */
 .history-open {
   flex: none;
   display: grid;
@@ -1506,10 +1579,8 @@ button.tab {
   justify-content: center;
 }
 
-/* ルール。ヘッダーの「?」から開く */
+/* ルール。タイトルでは右上の「?」から開く */
 .help {
-  margin-left: auto;
-  align-self: center;
   display: grid;
   place-items: center;
   width: var(--tap);
@@ -1609,27 +1680,46 @@ button.tab {
   :root {
     --die-tray-cpu: 36px;
   }
-  .table-head .help {
-    margin-left: auto;
-  }
   .seat-row {
     flex-wrap: wrap;
+  }
+  /* 狭い画面では、一つ前の結果がいちばん長くなる、5文字の技とダイス2個と2桁のダメージでも枠に収まるように詰める */
+  .arena-row {
+    gap: 6px;
+  }
+  .turn-label {
+    min-width: 0;
+  }
+  .history-entry {
+    padding: 0.4rem 0.45rem;
+    column-gap: 0.4rem;
+  }
+  /* 中央はいつも一つ前のステップで、今どこかは左のステップの箱で分かるので、何ターン目かの番号は履歴のモーダルだけに出す */
+  .history-recent > .history-entry {
+    grid-template-columns: 1fr;
+  }
+  .history-recent .history-when {
+    display: none;
+  }
+  .history-side {
+    gap: 0.3rem;
+    padding-left: 0.35rem;
+  }
+  .history-who {
+    width: 3em;
+  }
+  .history-act {
+    font-size: 0.88rem;
+  }
+  .history-dice .die-small {
+    width: 24px;
+    height: 24px;
   }
   .seat-status {
     flex-basis: 100%;
   }
   .seat-me .seat-status {
     order: -1;
-  }
-  /* 狭い画面では降参を旗の印だけにして、「?」と並べて右上に収める */
-  .surrender {
-    width: var(--tap);
-    height: var(--tap);
-    justify-content: center;
-    padding: 0;
-  }
-  .surrender-text {
-    display: none;
   }
   .rules-cards {
     justify-content: center;
