@@ -206,7 +206,10 @@ function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
  */
 export function EffectGlyph({ part, tip = true }: { part: EffectPart; tip?: boolean }) {
   if (!part.icon) return <span className="fx-text">{part.text}</span>
-  const { label, glyph } = effectIcon(part)
+  const icon = effectIcon(part)
+  const { glyph } = icon
+  // 点線の枠にも置くと値が増えるなら、その値も説明に添える
+  const label = part.full ? `${icon.label}。点線の枠にも置くと${part.full}` : icon.label
   const cls = `fx fx-${part.icon}`
   if (tip) {
     return (

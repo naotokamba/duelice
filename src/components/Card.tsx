@@ -4,7 +4,7 @@
 
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
-import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard } from '../game/cards'
+import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard, requiredSlots } from '../game/cards'
 import { effectParts, type Settled } from '../game/compose'
 import type { ActionKind, CardId } from '../game/types'
 import { Die } from './Die'
@@ -182,13 +182,18 @@ interface RowProps {
 function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
-  const needed = Math.min(...def.dice)
+  const needed = requiredSlots(def)
   const fixed = !shown && settled !== null
   const slots = shown?.slots ?? settled?.slots ?? []
   // 効果の値は置き場の順に並べた目から決める。火球なら X の枠の目が威力になる
   const vals = shown?.complete || fixed ? slots.filter((d): d is number => d !== null).map((i) => roll[i]) : undefined
+  /** 置き場の中に書く記号。最初の置き場には印、省いてもよい置き場には置くと増える量 */
+  const markOf = (k: number) => (k >= needed ? face.extra : k === 0 ? face.mark : undefined)
   /** 置き場の呼び名。記号を書いた置き場はその記号で、ほかは何番目かで呼ぶ */
-  const slotName = (k: number) => (k === 0 && face.mark ? `${name}の${face.mark}の枠` : `${name}の${k + 1}つ目の枠`)
+  const slotName = (k: number) => {
+    const mark = markOf(k)
+    return mark ? `${name}の${mark}の枠` : `${name}の${k + 1}つ目の枠`
+  }
 
   const slot = (k: number) => {
     const d = slots[k] ?? null
@@ -222,7 +227,7 @@ function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
         </span>
       )
     }
-    const mark = k === 0 ? face.mark : undefined
+    const mark = markOf(k)
     if (active) {
       return (
         <button

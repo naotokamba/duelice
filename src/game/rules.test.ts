@@ -7,7 +7,7 @@ import {
   type Action,
   actionLabel,
   breaksChant,
-  fillsMark,
+  fillsRequired,
   isLegal,
   legalActions,
   newGame,
@@ -78,22 +78,43 @@ describe('ターンの進行', () => {
     expect(isLegal(s, 0, { kind: 'bullet', dice: [0] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'bullet', dice: [null, null] })).toBe(false)
   })
-  it('行動はどの置き場に置いたかを記録する。印の無い置き場は、どこに置いても同じ効果になる', () => {
+  it('行動はどの置き場に置いたかを記録する', () => {
     const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
-    const back = resolveStep(s, [{ kind: 'bullet', dice: [null, 2] }, pass])
-    expect(back.history[0].actions[0]).toEqual({ kind: 'bullet', dice: [null, 2] })
-    expect(back.history[0].values[0]).toEqual([4])
-    expect(back.history[0].damage).toEqual([0, 2])
-    expect(back.players[0].usedDice).toEqual([2])
+    const back = resolveStep(s, [{ kind: 'bullet', dice: [2, 0] }, pass])
+    expect(back.history[0].actions[0]).toEqual({ kind: 'bullet', dice: [2, 0] })
+    expect(back.history[0].values[0]).toEqual([4, 6])
+    expect(back.history[0].damage).toEqual([0, 3])
+    expect(back.players[0].usedDice).toEqual([2, 0])
   })
-  it('印の置き場は空けられない。印の無い行動はどの置き場を空けてもよい', () => {
-    // 印の置き場のほかに省いてよい置き場を持つ、仮のカード
+  it('魔弾は左の枠に置けば2、点線の枠にも置けば3。点線の枠だけでは使えない', () => {
+    const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
+    expect(isLegal(s, 0, { kind: 'bullet', dice: [null, 2] })).toBe(false)
+    expect(resolveStep(s, [{ kind: 'bullet', dice: [2, null] }, pass]).history[0].damage).toEqual([0, 2])
+    expect(resolveStep(s, [{ kind: 'bullet', dice: [2, 1] }, pass]).history[0].damage).toEqual([0, 3])
+  })
+  it('置ける個数が飛び飛びなら、空けられない置き場が埋まっていても、間の個数は合法でない', () => {
+    // 1個か3個だけ置ける、仮の魔弾。置き場は三つで、空けられないのは最初の一つ
+    const saved = ACTION_DEFS.bullet
+    ACTION_DEFS.bullet = { ...saved, dice: [1, 3] }
+    try {
+      const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
+      expect(isLegal(s, 0, { kind: 'bullet', dice: [0, null, null] })).toBe(true)
+      expect(isLegal(s, 0, { kind: 'bullet', dice: [0, 1, null] })).toBe(false)
+      expect(isLegal(s, 0, { kind: 'bullet', dice: [0, 1, 2] })).toBe(true)
+    } finally {
+      ACTION_DEFS.bullet = saved
+    }
+  })
+  it('空けられない置き場は、行の前から dice の最小の数。省いてもよい置き場だけに置いても埋まったことにならない', () => {
+    expect(fillsRequired(ACTION_DEFS.bullet, [0, null])).toBe(true)
+    expect(fillsRequired(ACTION_DEFS.bullet, [null, 0])).toBe(false)
+    expect(fillsRequired(ACTION_DEFS.bullet, [null, null])).toBe(false)
+    expect(fillsRequired(ACTION_DEFS.fireball, [0, null])).toBe(false)
+    expect(fillsRequired(ACTION_DEFS.fireball, [0, 1])).toBe(true)
+    // 印の置き場のほかに省いてよい置き場を持つ、仮のカード。印の置き場は空けられない置き場に入る
     const optional = { ...ACTION_DEFS.fireball, dice: [1, 2] }
-    expect(fillsMark(optional, [0, null])).toBe(true)
-    expect(fillsMark(optional, [null, 0])).toBe(false)
-    expect(fillsMark(optional, [0, 1])).toBe(true)
-    expect(fillsMark(ACTION_DEFS.bullet, [null, 0])).toBe(true)
-    expect(fillsMark(ACTION_DEFS.bullet, [null, null])).toBe(true)
+    expect(fillsRequired(optional, [0, null])).toBe(true)
+    expect(fillsRequired(optional, [null, 0])).toBe(false)
   })
   it('X の枠を空けた火球は不正。X の枠に置いた目が威力になる', () => {
     const s = makeState({ roll: [2, 6, 4] }, { roll: [1, 2, 3] })

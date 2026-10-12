@@ -4,7 +4,7 @@
 // オンライン対戦では、この関数をそのままサーバ側で動かす想定。
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
 
-import { ACTION_DEFS, ACTION_KINDS, type ActionDef, CARD_DEFS, MARK_SLOT, readsMark, slotsOf } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, type ActionDef, CARD_DEFS, readsMark, requiredSlots, slotsOf } from './cards'
 import type { Action, ActionKind, CardId, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport } from './types'
 import { DEFAULT_CONFIG } from './types'
 
@@ -49,11 +49,11 @@ export function freeDice(p: PlayerState): number[] {
 }
 
 /**
- * 印の置き場の目を値にする行動なら、印の置き場が埋まっているか。印の無い行動はいつも true。
- * 今のカードでは個数の決まりでも同じになるが、印の置き場のほかに省いてよい置き場を持つカードを足したときに効く
+ * 空けられない置き場が全て埋まっているか。省いてもよい置き場は、置くと効果が増えるだけで、そこだけに置いても行動にならない。
+ * 印の置き場は行の最初の置き場なので、空けられない置き場に含まれる
  */
-export function fillsMark(def: ActionDef, dice: (number | null)[]): boolean {
-  return !readsMark(def) || dice[MARK_SLOT] !== null
+export function fillsRequired(def: ActionDef, dice: (number | null)[]): boolean {
+  return dice.slice(0, requiredSlots(def)).every((d) => d !== null)
 }
 
 /** 行動がこのステップで合法か */
@@ -64,7 +64,7 @@ export function isLegal(state: GameState, who: PlayerIndex, a: Action): boolean 
   const free = freeDice(p)
   const dice = actionDice(a)
   if (a.dice.length !== slotsOf(def)) return false
-  if (!fillsMark(def, a.dice)) return false
+  if (!fillsRequired(def, a.dice)) return false
   if (!def.dice.includes(dice.length)) return false
   if (new Set(dice).size !== dice.length) return false
   if (!dice.every((i) => free.includes(i))) return false

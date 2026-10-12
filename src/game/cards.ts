@@ -17,16 +17,22 @@ export interface CardDef {
  */
 export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'reflect' | 'chant'
 
-/** カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる */
+/**
+ * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
+ * mark も sum も無い行動では、値を書かない印に、置いた個数から決まる値を compose.ts の effectParts が入れる
+ */
 export interface EffectPart {
   icon?: EffectIcon
   value?: string
   text?: string
+  /** 省いてよい置き場まで全て埋めたときの値。value と違うときだけ effectParts が入れ、印の説明に添える */
+  full?: string
 }
 
 /**
  * カード面に描くダイス置き場と効果。行動1つが1行で、横に並ぶ置き場が1ステップぶん。
- * 置き場の数は dice の最大、dice の最小を超える置き場は省いてもよい置き場として描く
+ * 置き場の数は dice の最大。行の前から dice の最小の数の置き場は空けられず、残りは省いてもよい置き場として点線で描く。
+ * 省いてもよい置き場は、置くと効果が増える置き場で、そこだけに置いても行動にならない
  */
 export interface Face {
   /**
@@ -34,6 +40,8 @@ export interface Face {
    * ほかの置き場に置いたダイスは、払うだけのダイスになる
    */
   mark?: string
+  /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
+  extra?: string
   /** 置き場の間に書く記号 */
   join?: '+' | '='
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
@@ -106,11 +114,10 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     card: 'bullet',
     label: '魔弾',
     dice: [1, 2],
+    // 左の枠に置けば2、点線の枠にも置くと1増えて3
     power: (v) => (v.length === 1 ? 2 : 3),
     piercing: true,
-    face: {
-      effect: [{ text: '1個' }, { icon: 'pierce', value: '2' }, { text: '2個' }, { icon: 'pierce', value: '3' }],
-    },
+    face: { extra: '+1', effect: [{ icon: 'pierce' }] },
   },
   spearChant: {
     card: 'spear',
@@ -153,10 +160,15 @@ export function slotsOf(def: ActionDef): number {
   return Math.max(...def.dice)
 }
 
-/** face.mark を書く置き場。行の最初の置き場 */
+/** 空けられない置き場の数。行の前からこの数の置き場は必ず埋める。残りは省いてもよい置き場 */
+export function requiredSlots(def: ActionDef): number {
+  return Math.min(...def.dice)
+}
+
+/** face.mark を書く置き場。行の最初の置き場で、空けられない置き場に含まれる */
 export const MARK_SLOT = 0
 
-/** 印の置き場に置いた目を効果の値にする行動か。そうなら印の置き場は空けられない */
+/** 印の置き場に置いた目を効果の値にする行動か */
 export function readsMark(def: ActionDef): boolean {
   return def.face.mark !== undefined
 }

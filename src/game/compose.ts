@@ -5,8 +5,17 @@
 // 置く時点では目の組み合わせを問わない。行動にならない置き方なら、決定を押せない理由を返す。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
-import { ACTION_DEFS, type EffectPart, kindsOfCard } from './cards'
-import { fillsMark, freeDice, isLegal, legalActions } from './rules'
+import {
+  ACTION_DEFS,
+  type ActionDef,
+  type EffectPart,
+  kindsOfCard,
+  MARK_SLOT,
+  readsMark,
+  requiredSlots,
+  slotsOf,
+} from './cards'
+import { fillsRequired, freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
 
 /** カードに置いたダイス。置けるのは1ステップに1枚だけ。slots は置き場ごとのダイスで、空いた置き場は null */
@@ -125,10 +134,14 @@ export function missingDice(counts: readonly number[], placed: number): number |
 /** 決まった理由に当たらない置き方。カードを足して新しい条件が増えても、何かは伝える */
 export const CANNOT_USE = 'この置き方では使えない'
 
+/** 個数は足りているが、点線の枠にだけ置いて、空けられない置き場が空いているとき。空けられない置き場は行の前、左に並ぶ */
+export const FILL_LEFT = '左の枠に置く'
+
 /**
  * 置いたダイスが行動にならないとき、決定を押せない理由を短く返す。行動になるなら null。
  * 理由は定義表の性質から決めるので、カードを足しても追従する。
  * 印の置き場が空いていれば、そこに置くこと。個数が足りなければ、あと何個置くか。
+ * 個数は足りていても空けられない置き場が空いていれば、左の枠に置くこと。
  * 同じ目を揃える行動なら、目が揃っていないこと
  */
 export function placementIssue(state: GameState, who: PlayerIndex, placement: Placement): string | null {
@@ -137,10 +150,12 @@ export function placementIssue(state: GameState, who: PlayerIndex, placement: Pl
   const kind = kindsNow(state, who, placement.card)[0]
   if (kind === undefined) return CANNOT_USE
   const def = ACTION_DEFS[kind]
-  // 印の置き場の目が効果の値になるので、ほかの置き場が足りていても、まず印の置き場を埋めてもらう
-  if (!fillsMark(def, placement.slots)) return `${def.face.mark} の枠に置く`
+  // 印の置き場の目が効果の値になるので、ほかの置き場が足りていても、まず印の置き場を埋めてもらう。
+  // 置き場の名前で伝えられるので、左の枠より分かりやすい
+  if (readsMark(def) && placement.slots[MARK_SLOT] === null) return `${def.face.mark} の枠に置く`
   const missing = missingDice(def.dice, picked.length)
   if (missing !== null) return `${def.sameValues ? '同じ目を' : ''}あと${missing}個置く`
+  if (!fillsRequired(def, placement.slots)) return FILL_LEFT
   const vals = picked.map((i) => state.players[who].roll[i])
   if (def.sameValues && new Set(vals).size > 1) return `同じ目を${picked.length}個置く`
   return CANNOT_USE
@@ -161,19 +176,43 @@ export function placedKind(state: GameState, who: PlayerIndex, placement: Placem
   return kindsNow(state, who, placement.card)[0]
 }
 
+/** 効果の値。攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる置いた目 */
+function effectValue(def: ActionDef, vals: number[]): number {
+  return def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
+}
+
+/**
+ * n 個の置き場を埋めたときの目の代わり。記号を使わない行動は、目ではなく個数で値が決まるので、どの目でもよい。
+ * 目で値が変わる行動はカード面に記号が要るので、記号の無い行動ではこの決まりが成り立つ。invariants.test.ts で検査する
+ */
+const anyVals = (n: number) => Array<number>(n).fill(1)
+
 /**
  * カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。
- * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす
+ * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす。
+ * 記号を使わない行動は、値を書かない印に、置いた個数で決まる値を入れる。置く前は空けられない置き場だけを埋めた値にし、
+ * 省いてもよい置き場まで埋めると値が増えるなら、その値も添える
  */
 export function effectParts(kind: ActionKind, vals?: number[]): EffectPart[] {
-  const def = ACTION_DEFS[kind]
+  return faceParts(ACTION_DEFS[kind], vals)
+}
+
+/** effectParts を定義そのものから作る。定義表に無い仮のカードでも確かめられるように分けてある */
+export function faceParts(def: ActionDef, vals?: number[]): EffectPart[] {
   const sym = def.face.mark ?? def.face.sum
-  if (!vals || !sym) return [...def.face.effect]
-  // 記号の値は、攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる置いた目
-  const value = String(def.power?.(vals) ?? def.guard?.(vals) ?? vals[0])
-  return def.face.effect.map((p) => ({
-    ...p,
-    value: p.value?.replaceAll(sym, value),
-    text: p.text?.replaceAll(sym, value),
-  }))
+  if (sym) {
+    if (!vals) return [...def.face.effect]
+    const value = String(effectValue(def, vals))
+    return def.face.effect.map((p) => ({
+      ...p,
+      value: p.value?.replaceAll(sym, value),
+      text: p.text?.replaceAll(sym, value),
+    }))
+  }
+  if (!def.power && !def.guard) return [...def.face.effect]
+  const value = String(effectValue(def, vals ?? anyVals(requiredSlots(def))))
+  const full = String(effectValue(def, anyVals(slotsOf(def))))
+  return def.face.effect.map((p) =>
+    p.icon && p.value === undefined ? { ...p, value, ...(full !== value && { full }) } : p,
+  )
 }

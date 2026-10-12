@@ -256,7 +256,7 @@ describe('一ターンの流れ', () => {
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
   })
 
-  it('ダイスは押した置き場に入る。火球は X の枠に置いた目で撃ち、省ける置き場だけにも置ける', async () => {
+  it('ダイスは押した置き場に入る。火球は X の枠に置いた目で撃ち、魔弾は点線の枠だけでは撃てない', async () => {
     const user = await start({
       rng: dice(
         [
@@ -284,14 +284,19 @@ describe('一ターンの流れ', () => {
     await settle()
     expect(cpuSeat().getByLabelText('体力 18 / 20')).toBeTruthy()
 
-    // 魔弾の点線の置き場だけに置いても、1個として撃てる
+    // 魔弾の点線の枠だけに置いても撃てず、左の枠に置くよう伝える
     await user.click(mySeat().getByRole('button', { name: '1の目' }))
-    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の2つ目の枠に置く' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の+1の枠に置く' }))
+    expect(blockedReason()).toBe('左の枠に置く')
+    // 左の枠に置き直せば、1個で撃てる
+    await user.click(myCard('魔弾').getByRole('button', { name: '1の目を戻す' }))
+    await user.click(mySeat().getByRole('button', { name: '1の目' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の1つ目の枠に置く' }))
     await user.click(button('決定'))
     expect(screen.getByText('あなたの魔弾 2点')).toBeTruthy()
   })
 
-  it('魔弾を点線の枠だけに置くと、公開でも次のステップでも、その枠に残る', async () => {
+  it('魔弾は点線の枠にも置くと3点になり、公開でも次のステップでも置いた枠に残る', async () => {
     const user = await start({
       rng: dice([
         [6, 2, 1],
@@ -304,18 +309,25 @@ describe('一ターンの流れ', () => {
       [...mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot')].map((e) =>
         e.classList.contains('is-filled'),
       )
+    // 置く前は、左の枠だけの値と、点線の枠にも置いたときの値を説明する
+    expect(
+      myCard('魔弾').getByRole('button', { name: '障壁で減らない2ダメージを与える。点線の枠にも置くと3' }),
+    ).toBeTruthy()
     await user.click(mySeat().getByRole('button', { name: '1の目' }))
-    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の2つ目の枠に置く' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の+1の枠に置く' }))
     expect(filled()).toEqual([false, true])
+    await user.click(mySeat().getByRole('button', { name: '6の目' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の1つ目の枠に置く' }))
+    expect(myCard('魔弾').getByRole('button', { name: '障壁で減らない3ダメージを与える' })).toBeTruthy()
     await user.click(button('決定'))
     // 公開の間も、置いた枠のまま
-    expect(screen.getByText('あなたの魔弾 2点')).toBeTruthy()
-    expect(filled()).toEqual([false, true])
+    expect(screen.getByText('あなたの魔弾 3点')).toBeTruthy()
+    expect(filled()).toEqual([true, true])
     await settle()
     // 2ステップ目も、置いた枠に残り、押せない
     expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
-    expect(filled()).toEqual([false, true])
-    expect(mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot.is-settled')).toHaveLength(1)
+    expect(filled()).toEqual([true, true])
+    expect(mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot.is-settled')).toHaveLength(2)
     expect(emptySlots('魔弾')).toHaveLength(0)
     expect(myCard('魔弾').queryAllByRole('button', { name: /目/ })).toHaveLength(0)
   })
@@ -665,7 +677,9 @@ describe('狭い画面', () => {
     const dialog = screen.getByRole('dialog', { name: '相手のカード' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     expect(within(dialog).getByRole('listitem', { name: '魔弾' })).toBeTruthy()
-    expect(within(dialog).getByRole('button', { name: '障壁で減らない2ダメージを与える' })).toBeTruthy()
+    expect(
+      within(dialog).getByRole('button', { name: '障壁で減らない2ダメージを与える。点線の枠にも置くと3' }),
+    ).toBeTruthy()
     await user.click(within(dialog).getByRole('button', { name: '閉じる' }))
     expect(dialog.open).toBe(false)
   })

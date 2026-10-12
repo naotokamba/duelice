@@ -3,13 +3,15 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, rollArb, seeded } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, slotsOf } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, requiredSlots, slotsOf } from './cards'
 import {
   availableCards,
   CANNOT_USE,
   canPut,
   composeAction,
   effectParts,
+  FILL_LEFT,
+  faceParts,
   firstStepDice,
   kindsNow,
   missingDice,
@@ -184,11 +186,14 @@ describe('ダイスを置く', () => {
     expect(diceValues(s.players[0], a ?? { kind: 'pass' })).toEqual([2, 6])
     expect(effectParts('fireball', [2, 6])).toEqual([{ icon: 'damage', value: '2' }])
   })
-  it('省いてもよい置き場だけに置いても、置いた個数の行動になり、空けた置き場は空けたまま記録する', () => {
+  it('省いてもよい置き場だけに置いても行動にならない。空けられない置き場を埋めれば行動になり、空けた置き場は空けたまま記録する', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const pl = placeDie(s, 0, null, 'bullet', 2, 1)
     expect(pl).toEqual({ card: 'bullet', slots: [null, 2] })
-    expect(composeAction(s, 0, 'bullet', pl?.slots ?? [])).toEqual({ kind: 'bullet', dice: [null, 2] })
+    expect(composeAction(s, 0, 'bullet', pl?.slots ?? [])).toBeNull()
+    const both = placeDie(s, 0, pl, 'bullet', 0, 0)
+    expect(composeAction(s, 0, 'bullet', both?.slots ?? [])).toEqual({ kind: 'bullet', dice: [0, 2] })
+    expect(composeAction(s, 0, 'bullet', [2, null])).toEqual({ kind: 'bullet', dice: [2, null] })
   })
   it('X の枠を空けた火球は行動にならない', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
@@ -270,14 +275,49 @@ describe('カード面', () => {
     ['spearChant', [5], 'chant:5'],
     ['spearCast', [6, 5], 'damage:11'],
     ['reflect', [2, 2], 'reflect'],
-    ['bullet', [3], '1個 pierce:2 2個 pierce:3'],
+    ['bullet', [3], 'pierce:2'],
+    ['bullet', [3, 1], 'pierce:3'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
-  it('目が決まるまでは記号のまま', () => {
+  it('目が決まるまでは記号のまま。記号の無い行動は、空けられない置き場だけを埋めた値を出す', () => {
     expect(flat(effectParts('fireball'))).toBe('damage:X')
     expect(flat(effectParts('spearChant'))).toBe('chant:X')
     expect(flat(effectParts('spearCast'))).toBe('damage:Y')
+    expect(flat(effectParts('bullet'))).toBe('pierce:2')
+    expect(flat(effectParts('reflect'))).toBe('reflect')
+  })
+  it('点線の枠にも置くと値が増えるなら、増えた値を添える。点線の枠まで埋めたら添えない', () => {
+    expect(effectParts('bullet')).toEqual([{ icon: 'pierce', value: '2', full: '3' }])
+    expect(effectParts('bullet', [3])).toEqual([{ icon: 'pierce', value: '2', full: '3' }])
+    expect(effectParts('bullet', [3, 1])).toEqual([{ icon: 'pierce', value: '3' }])
+    // 点線の枠の無い行動には添えない
+    expect(effectParts('fireball', [6, 2])).toEqual([{ icon: 'damage', value: '6' }])
+  })
+  it('記号の無い行動は、値を書かない印にだけ値を入れる。文や、値を書いた印はそのまま', () => {
+    // 点線の枠を持ち、文と、値を書いた印も並べた仮のカード
+    const def = {
+      ...ACTION_DEFS.bullet,
+      face: { effect: [{ text: '追加' }, { icon: 'pierce' as const }, { icon: 'guard' as const, value: '1' }] },
+    }
+    expect(faceParts(def, [4])).toEqual([
+      { text: '追加' },
+      { icon: 'pierce', value: '2', full: '3' },
+      { icon: 'guard', value: '1' },
+    ])
+  })
+  it('点線の枠に書く記号は、そこに置くと増える量と揃う', () => {
+    for (const kind of ACTION_KINDS) {
+      const def = ACTION_DEFS[kind]
+      const optional = slotsOf(def) - requiredSlots(def)
+      if (def.face.extra === undefined) continue
+      // 点線の枠があるときだけ記号を書く
+      expect(optional, kind).toBeGreaterThan(0)
+      for (let n = requiredSlots(def); n < slotsOf(def); n++) {
+        const more = (def.power?.(Array(n + 1).fill(1)) ?? 0) - (def.power?.(Array(n).fill(1)) ?? 0)
+        expect(`+${more}`, kind).toBe(def.face.extra)
+      }
+    }
   })
   it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
     for (const card of CARD_ORDER) {
@@ -320,8 +360,13 @@ describe('決定を押せない理由', () => {
   it('行動になる置き方なら理由は無い', () => {
     expect(placementIssue(s, 0, { card: 'fireball', slots: [1, 0] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 2] })).toBeNull()
-    // 魔弾は1個でも2個でも行動になる。省いてよい置き場だけでもよい
-    expect(placementIssue(s, 0, { card: 'bullet', slots: [null, 1] })).toBeNull()
+    // 魔弾は1個でも2個でも行動になる
+    expect(placementIssue(s, 0, { card: 'bullet', slots: [1, null] })).toBeNull()
+    expect(placementIssue(s, 0, { card: 'bullet', slots: [1, 0] })).toBeNull()
+  })
+  it('点線の枠だけに置いて空けられない置き場が空いていれば、左の枠に置くよう伝える', () => {
+    expect(FILL_LEFT).toBe('左の枠に置く')
+    expect(placementIssue(s, 0, { card: 'bullet', slots: [null, 1] })).toBe(FILL_LEFT)
   })
   it('個数が足りなければ、あと何個置くかを出す', () => {
     expect(placementIssue(s, 0, { card: 'fireball', slots: [1, null] })).toBe('あと1個置く')
@@ -387,11 +432,9 @@ describe('1ステップ目のダイス', () => {
     expect(firstStepDice(nextTurn(after, seeded(1)), 0)).toBeNull()
   })
   it('省いた置き場は空いたまま残り、パスなら何も残らない', () => {
-    // 省いてもよい置き場だけに置いた魔弾は、その置き場に残る
-    const s = resolveStep(start, [{ kind: 'bullet', dice: [null, 2] }, { kind: 'pass' }])
-    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [null, 2] })
-    const front = resolveStep(start, [{ kind: 'bullet', dice: [2, null] }, { kind: 'pass' }])
-    expect(firstStepDice(front, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
+    // 点線の枠を省いた魔弾は、点線の枠が空いたまま残る
+    const s = resolveStep(start, [{ kind: 'bullet', dice: [2, null] }, { kind: 'pass' }])
+    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
     expect(firstStepDice(s, 1)).toBeNull()
   })
   it('詠唱のダイスは、詠唱の行に残る', () => {

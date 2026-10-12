@@ -4,7 +4,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { dieArb, makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, MARK_SLOT, readsMark, slotsOf } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, MARK_SLOT, readsMark, requiredSlots, slotsOf } from './cards'
 import {
   actionDice,
   actionKey,
@@ -156,12 +156,25 @@ describe('合法手の列挙', () => {
 })
 
 describe('置き場', () => {
-  it('印の置き場を持たない行動は、ダイスを置き場の間で動かしても、合法かどうかも効果も同じ手かどうかも変わらない', () => {
+  it('空けられない置き場が一つでも空なら合法でない。空けられない置き場は行の前にあり、印の置き場もそこに入る', () => {
+    fc.assert(
+      fc.property(placedArb, ([s, kind, dice]) => {
+        const def = ACTION_DEFS[kind]
+        if (readsMark(def)) expect(MARK_SLOT).toBeLessThan(requiredSlots(def))
+        fc.pre(dice.slice(0, requiredSlots(def)).includes(null))
+        for (const who of [0, 1] as const) expect(isLegal(s, who, { kind, dice })).toBe(false)
+      }),
+    )
+  })
+  it('印の置き場を持たない行動は、空けられない置き場を埋めたままダイスを置き場の間で動かせば、合法かどうかも効果も同じ手かどうかも変わらない', () => {
     fc.assert(
       fc.property(placedArb, ([s, kind, dice, order]) => {
-        fc.pre(!readsMark(ACTION_DEFS[kind]))
+        const def = ACTION_DEFS[kind]
+        fc.pre(!readsMark(def))
         const a: Action = { kind, dice }
         const b: Action = { kind, dice: order.map((k) => dice[k]) }
+        const filled = (xs: (number | null)[]) => xs.slice(0, requiredSlots(def)).every((d) => d !== null)
+        fc.pre(filled(a.dice) && filled(b.dice))
         for (const who of [0, 1] as const) {
           const p = s.players[who]
           expect(isLegal(s, who, b)).toBe(isLegal(s, who, a))
@@ -185,9 +198,12 @@ describe('置き場', () => {
           moved[k] = dice[others[i]]
         })
         const b: Action = { kind, dice: moved }
+        for (const who of [0, 1] as const) if (dice[MARK_SLOT] === null) expect(isLegal(s, who, a)).toBe(false)
+        // 点線の枠との間で動かすと、空けられない置き場が空くことがある。それは上の性質で見る
+        const filled = (xs: (number | null)[]) => xs.slice(0, requiredSlots(ACTION_DEFS[kind])).every((d) => d !== null)
+        fc.pre(filled(a.dice) && filled(b.dice))
         for (const who of [0, 1] as const) {
           const p = s.players[who]
-          if (dice[MARK_SLOT] === null) expect(isLegal(s, who, a)).toBe(false)
           expect(isLegal(s, who, b)).toBe(isLegal(s, who, a))
           if (!isLegal(s, who, a)) continue
           // 合法なら、置き場の順に並べた目の最初が印の置き場の目になる
@@ -195,6 +211,23 @@ describe('置き場', () => {
           expect(effectOf(kind, diceValues(p, b))).toEqual(effectOf(kind, diceValues(p, a)))
           expect(actionKey(p, b)).toBe(actionKey(p, a))
         }
+      }),
+    )
+  })
+})
+
+describe('カード面', () => {
+  it('カード面に X や Y の記号を書かない行動は、目ではなく置いた個数で値が決まる。カードに数で書けるのはこのため', () => {
+    fc.assert(
+      fc.property(kindWithValsArb, ([kind, vals]) => {
+        const { face } = ACTION_DEFS[kind]
+        fc.pre(face.mark === undefined && face.sum === undefined)
+        expect(effectOf(kind, vals)).toEqual(
+          effectOf(
+            kind,
+            vals.map(() => 1),
+          ),
+        )
       }),
     )
   })
