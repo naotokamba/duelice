@@ -1683,8 +1683,18 @@ button.tab {
     width: 24px;
     height: 24px;
   }
+  /* 名前、体力、詠唱の札を一行に収める。札が折り返すと席が一段高くなり、縦の画面に収まらない。足りないときは体力の帯を縮める */
   .seat-status {
     flex-basis: 100%;
+    flex-wrap: nowrap;
+  }
+  .seat-status .hp {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .badge {
+    flex: none;
+    white-space: nowrap;
   }
   .seat-me .seat-status {
     order: -1;
@@ -1715,5 +1725,20 @@ button.tab {
   /* カードを対局と同じ大きさで並べられるように、ルールの窓の余白を詰める */
   .modal-rules {
     padding: 1rem;
+  }
+}
+
+/* 幅 360 前後の端末は縦も短い。押せるものの大きさと間は保ったまま、押せないものの周りの余白だけを詰める */
+@media (max-width: 380px) {
+  .table {
+    gap: 6px;
+  }
+  .seat {
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+  /* 名前と体力の段と、ダイスの段の間。名前と体力は押せないので詰めてよい */
+  .seat-row {
+    row-gap: 4px;
   }
 }

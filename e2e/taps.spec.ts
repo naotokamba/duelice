@@ -92,6 +92,7 @@ async function holdDie(page: Page, narrow: boolean) {
 for (const { name, width, height, narrow } of [
   { name: 'デスクトップ', width: 1920, height: 940, narrow: false },
   { name: 'スマホ', width: 390, height: 664, narrow: true },
+  { name: '幅 360 のスマホ', width: 360, height: 640, narrow: true },
 ]) {
   test.describe(name, () => {
     test.use({ viewport: { width, height } })
