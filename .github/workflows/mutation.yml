@@ -1,0 +1,32 @@
+# 変異テスト。対局の中身 src/game にわざと小さな誤りを入れ、テストが見つけられるかを測る。
+# 数分かかるので push ごとには走らせず、毎週と、手で起動したときに走らせる。結果の一覧を残す
+name: mutation
+
+on:
+  workflow_dispatch:
+  schedule:
+    # 毎週月曜の朝 6 時 (日本時間)
+    - cron: '0 21 * * 0'
+
+permissions:
+  contents: read
+
+jobs:
+  mutation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm test:mutation
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: mutation-report
+          path: reports/mutation
+          retention-days: 30

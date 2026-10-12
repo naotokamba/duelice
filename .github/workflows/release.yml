@@ -1,4 +1,4 @@
-# v で始まるタグを push したら、検査を通したうえで本番に出す
+# v で始まるタグを push したら、確認を通したうえで本番に出す
 name: release
 
 on:
@@ -14,7 +14,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  checks:
+    uses: ./.github/workflows/checks.yml
+
   release:
+    needs: checks
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -25,7 +29,6 @@ jobs:
           node-version: 24
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm check
       - run: pnpm build
       - run: pnpm exec wrangler deploy
         env:
