@@ -1725,4 +1725,29 @@ button.tab {
   .rules-cards {
     justify-content: center;
   }
+  /* 狭い画面のカードは、効果の印を置き場の右に並べて背を低くし、卓が縦の画面に収まるようにする。対局、相手のカード、ルールのどれでも同じ形 */
+  /* 幅は一番長い魔弾の「□ □ 1個 ☆ 2個 ☆」がゆとりを持って一行に収まる幅。画面が狭ければ画面に合わせる */
+  /* どこに出しても同じ大きさになるように、入れ物ではなく画面の幅から決める。引く量は、一番狭いルールの窓の余白と、そのスクロールバーの分 */
+  /* 高さは二段ある雷槍に合わせ、どのカードも同じ大きさにする。置き場2段のほかは、名前と段の区切りと、決定のボタンが重なる分 */
+  .card {
+    width: min(330px, calc(100vw - 4.5rem));
+    height: calc(var(--die) * 2 + 5rem);
+  }
+  .face-row {
+    flex-direction: row;
+    justify-content: center;
+    gap: 10px;
+  }
+  /* 印と添える文の間は、押せる印どうしの間に文が挟まるので詰めてよい */
+  .effect {
+    flex-wrap: nowrap;
+    gap: 6px;
+  }
+  .fx-text {
+    white-space: nowrap;
+  }
+  /* カードを対局と同じ大きさで並べられるように、ルールの窓の余白を詰める */
+  .rules-dialog {
+    padding: 1rem;
+  }
 }
