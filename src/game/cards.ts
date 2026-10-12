@@ -49,11 +49,16 @@ export interface ActionDef {
   step?: 1 | 2
   /** 置くダイスが全て同じ目である必要がある */
   sameValues?: boolean
+  /**
+   * 置き場の順に意味がある。最初の置き場の目が効果の値になり、残りの置き場は支払うだけのダイスになる。
+   * 合法手は、どの目を最初の置き場に置くかで別の手として数える
+   */
+  ordered?: boolean
   /** 詠唱。置いた目以上のダメージをそのステップに受けると崩れる */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
   needsCharge?: boolean
-  /** 攻撃の威力。障壁や反射の前の値 */
+  /** 攻撃の威力。障壁や反射の前の値。vals は置き場の順に並んだ目 */
   power?: (vals: number[]) => number
   /** 障壁を無視する */
   piercing?: boolean
@@ -83,7 +88,8 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     card: 'fireball',
     label: '火球',
     dice: [2],
-    power: (v) => Math.max(...v),
+    ordered: true,
+    power: (v) => v[0],
     face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
   },
   barrier: {

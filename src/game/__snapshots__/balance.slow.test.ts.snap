@@ -8,7 +8,7 @@ exports[`バランス > HP満タンの一ステップ目で、つよいCPUが各
     "bullet": 0.259,
     "spearChant": 0.115,
     "spearCast": 0,
-    "reflect": 0.094,
+    "reflect": 0.093,
     "pass": 0.004
   },
   "pureStrategyRate": 0.024,

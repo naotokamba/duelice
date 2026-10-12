@@ -67,6 +67,7 @@ export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement 
           <li>
             カードの置き場は、横に並んだ一段がステップ1つぶん。二段あるカードは、ステップ1で上の段、ステップ2で下の段を使う
           </li>
+          <li>ダイスは置き場を選んで置く。X と書いた置き場に置いた目が X になる</li>
           <li>体力が先に0になった方の負け。同時なら引き分け</li>
         </ul>
         <h3 className="rules-cards-title">印</h3>

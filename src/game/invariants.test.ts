@@ -3,9 +3,10 @@
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
-import { ACTION_DEFS, CARD_ORDER } from './cards'
+import { dieArb, makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
 import {
+  actionKey,
   diceValues,
   isLegal,
   legalActions,
@@ -47,6 +48,15 @@ const stateArb: fc.Arbitrary<GameState> = fc
     return makeState(seat(r.r0, r.hp0, r.used0, r.card0, r.chant0), seat(r.r1, r.hp1, r.used1, r.card1, r.chant1), 2)
   })
 
+/** 行動の種類と、その行動に置ける個数の目 */
+const kindWithValsArb = fc
+  .constantFrom(...ACTION_KINDS)
+  .chain((kind) =>
+    fc
+      .constantFrom(...ACTION_DEFS[kind].dice)
+      .chain((n) => fc.tuple(fc.constant(kind), fc.array(dieArb, { minLength: n, maxLength: n }))),
+  )
+
 /** 局面と、その局面の双方の合法手から一つずつ */
 const stateWithActsArb = stateArb.chain((s) =>
   fc
@@ -66,35 +76,44 @@ describe('合法手の列挙', () => {
       }),
     )
   })
-  it('同じ種類と同じ目の組み合わせは重複しない', () => {
+  it('同じ種類と同じ目の組み合わせは重複しない。置き場の順に意味のある行動は、最初の目も見て区別する', () => {
     fc.assert(
       fc.property(stateArb, (s) => {
         for (const who of [0, 1] as const) {
-          const keys = legalActions(s, who).map(
-            (a) => `${a.kind}:${diceValues(s.players[who], a).sort((x, y) => x - y)}`,
-          )
+          const keys = legalActions(s, who).map((a) => actionKey(s.players[who], a))
           expect(new Set(keys).size).toBe(keys.length)
         }
       }),
     )
   })
-  it('列挙から漏れた合法手は無い。全てのダイスの組を試して、合法なら同じ目の手が列挙にある', () => {
+  it('列挙から漏れた合法手は無い。全てのダイスの並びを試して、合法なら同じ手が列挙にある', () => {
     fc.assert(
       fc.property(stateArb, (s) => {
         for (const who of [0, 1] as const) {
           const p = s.players[who]
-          const listed = new Set(legalActions(s, who).map((a) => `${a.kind}:${diceValues(p, a).sort((x, y) => x - y)}`))
-          for (const kind of Object.keys(ACTION_DEFS) as (keyof typeof ACTION_DEFS)[]) {
+          const listed = new Set(legalActions(s, who).map((a) => actionKey(p, a)))
+          for (const kind of ACTION_KINDS) {
             for (const i of [0, 1, 2])
               for (const j of [0, 1, 2]) {
                 for (const dice of [[i], [i, j]]) {
                   const a: Action = { kind, dice }
                   if (!isLegal(s, who, a)) continue
-                  expect(listed.has(`${kind}:${diceValues(p, a).sort((x, y) => x - y)}`)).toBe(true)
+                  expect(listed.has(actionKey(p, a))).toBe(true)
                 }
               }
           }
         }
+      }),
+    )
+  })
+  it('同じ手とみなした行動は効果も同じ。順に意味の無い行動は目を並べ替えても、順に意味のある行動は最初の目を残して並べ替えても変わらない', () => {
+    fc.assert(
+      fc.property(kindWithValsArb, ([kind, vals]) => {
+        const def = ACTION_DEFS[kind]
+        const keep = def.ordered ? 1 : 0
+        const moved = [...vals.slice(0, keep), ...vals.slice(keep).reverse()]
+        const effect = (v: number[]) => [def.power?.(v), def.guard?.(v)]
+        expect(effect(moved)).toEqual(effect(vals))
       }),
     )
   })

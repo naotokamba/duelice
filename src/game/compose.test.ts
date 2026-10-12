@@ -6,15 +6,16 @@ import { makeState, rollArb } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
 import {
   availableCards,
-  canPlace,
+  canHold,
   composeAction,
   effectParts,
   kindsNow,
   type Placement,
   placeDie,
+  placedDice,
   placedKind,
   removeDie,
-  slotOrder,
+  slotCount,
 } from './compose'
 import { diceValues, isLegal, legalActions } from './rules'
 import type { CardId, GameState } from './types'
@@ -96,11 +97,11 @@ describe('ステップごとの行動', () => {
   })
 })
 
-/** dice を順に card へ置いていく。途中で置けなければ null */
+/** dice を card の最初の置き場から順に置いていく。途中で置けなければ null */
 function placeAll(s: GameState, card: CardId, dice: number[]): Placement | null {
   let pl: Placement | null = null
-  for (const d of dice) {
-    pl = placeDie(s, 0, pl, card, d)
+  for (const [k, d] of dice.entries()) {
+    pl = placeDie(s, 0, pl, card, d, k)
     if (pl === null) return null
   }
   return pl
@@ -113,17 +114,18 @@ function supersets(free: number[], picked: number[]): number[][] {
 }
 
 describe('ダイスを置く', () => {
-  it('合法手は全て、ダイスを一つずつどの順で置いても組み立てられる', () => {
+  it('合法手は全て、ダイスをそれぞれの置き場へどの順で置いても、置き場の順のまま組み立てられる', () => {
     fc.assert(
       fc.property(rollArb, fc.boolean(), fc.boolean(), (roll, step2, reversed) => {
         const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
         for (const a of legalActions(s, 0)) {
           if (a.kind === 'pass') continue
           const card = ACTION_DEFS[a.kind].card
-          const order = reversed ? [...a.dice].reverse() : a.dice
-          const pl = placeAll(s, card, order)
-          expect(pl?.dice).toEqual(order)
-          expect(composeAction(s, 0, card, pl?.dice ?? [])?.kind).toBe(a.kind)
+          const steps = [...a.dice.entries()]
+          let pl: Placement | null = null
+          for (const [k, d] of reversed ? steps.reverse() : steps) pl = placeDie(s, 0, pl, card, d, k)
+          expect(placedDice(pl)).toEqual(a.dice)
+          expect(composeAction(s, 0, card, placedDice(pl))).toEqual(a)
         }
       }),
     )
@@ -139,72 +141,113 @@ describe('ダイスを置く', () => {
           const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
           const pl = placeAll(s, card, order)
           if (pl === null) return
-          const made = supersets([0, 1, 2], pl.dice).some((dice) => composeAction(s, 0, card, dice) !== null)
+          const made = supersets([0, 1, 2], placedDice(pl)).some((dice) => composeAction(s, 0, card, dice) !== null)
           expect(made).toBe(true)
         },
       ),
     )
   })
-  it('使用済みのダイスや、置いてあるダイスは置けない', () => {
+  it('使用済みのダイスや、同じダイスを二つは置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(canPlace(s, 0, 'bullet', [], 2)).toBe(false)
-    expect(canPlace(s, 0, 'bullet', [0], 0)).toBe(false)
-    expect(canPlace(s, 0, 'bullet', [0], 1)).toBe(true)
+    expect(canHold(s, 0, 'bullet', [2])).toBe(false)
+    expect(canHold(s, 0, 'bullet', [0, 0])).toBe(false)
+    expect(canHold(s, 0, 'bullet', [0, 1])).toBe(true)
+    // 使用済みのダイスは、空いたダイスと同じ目でも置けない
+    const same = makeState({ roll: [6, 6, 6], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
+    expect(canHold(same, 0, 'bullet', [0, 2])).toBe(false)
   })
-  it('置き場より多くは置けない', () => {
+  it('置き場の外には置けない', () => {
     const s = makeState({ roll: [6, 6, 2] }, { roll: [1, 2, 3] })
-    expect(placeAll(s, 'barrier', [0])).toEqual({ card: 'barrier', dice: [0] })
-    expect(placeAll(s, 'barrier', [0, 1])).toBeNull()
+    expect(slotCount(s, 0, 'barrier')).toBe(1)
+    expect(placeAll(s, 'barrier', [0])).toEqual({ card: 'barrier', slots: [0] })
+    expect(placeDie(s, 0, null, 'barrier', 0, 1)).toBeNull()
+    expect(placeDie(s, 0, null, 'barrier', 0, -1)).toBeNull()
     expect(placeAll(s, 'bullet', [0, 1, 2])).toBeNull()
+  })
+  it('置き場の無いカードには置けない', () => {
+    const s = makeState({ roll: [6, 5, 4], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
+    expect(slotCount(s, 0, 'spear')).toBe(0)
+    expect(placeDie(s, 0, null, 'spear', 0, 0)).toBeNull()
+  })
+  it('置いた置き場の順が行動のダイスの順になる。火球は X の枠に置いた目が威力になる', () => {
+    const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
+    const pl = placeDie(s, 0, placeDie(s, 0, null, 'fireball', 0, 1), 'fireball', 1, 0)
+    expect(pl).toEqual({ card: 'fireball', slots: [1, 0] })
+    expect(composeAction(s, 0, 'fireball', placedDice(pl))).toEqual({ kind: 'fireball', dice: [1, 0] })
+  })
+  it('省いてもよい置き場だけに置いても、置いた個数の行動になる', () => {
+    const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
+    const pl = placeDie(s, 0, null, 'bullet', 2, 1)
+    expect(pl).toEqual({ card: 'bullet', slots: [null, 2] })
+    expect(composeAction(s, 0, 'bullet', placedDice(pl))).toEqual({ kind: 'bullet', dice: [2] })
   })
   it('反射には同じ目しか並べられない', () => {
     const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
-    expect(placeAll(s, 'reflect', [0, 2])).toEqual({ card: 'reflect', dice: [0, 2] })
-    expect(canPlace(s, 0, 'reflect', [0], 1)).toBe(false)
+    expect(placeAll(s, 'reflect', [0, 2])).toEqual({ card: 'reflect', slots: [0, 2] })
+    expect(canHold(s, 0, 'reflect', [0, 1])).toBe(false)
     // ゾロ目の無い目は、最初の一個から置けない
-    expect(canPlace(s, 0, 'reflect', [], 1)).toBe(false)
+    expect(canHold(s, 0, 'reflect', [1])).toBe(false)
+    // 埋まった置き場に違う目を置こうとしても置けない
+    expect(placeDie(s, 0, { card: 'reflect', slots: [0, 2] }, 'reflect', 1, 0)).toBeNull()
     expect(composeAction(s, 0, 'reflect', [0, 1])).toBeNull()
     expect(composeAction(s, 0, 'reflect', [0, 2])).toEqual({ kind: 'reflect', dice: [0, 2] })
   })
   it('使えないカードには置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedCards: ['fireball'] }, { roll: [1, 2, 3] }, 2)
-    expect(canPlace(s, 0, 'fireball', [], 0)).toBe(false)
-    expect(canPlace(s, 0, 'spear', [], 0)).toBe(false)
+    expect(canHold(s, 0, 'fireball', [0])).toBe(false)
+    expect(canHold(s, 0, 'spear', [0])).toBe(false)
   })
   it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
     const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
-    const fire: Placement = { card: 'fireball', dice: [0, 1] }
-    expect(placeDie(s, 0, fire, 'barrier', 1)).toEqual({ card: 'barrier', dice: [1] })
-    // 同じカードに置き直しても、ダイスは増えない
-    expect(placeDie(s, 0, fire, 'fireball', 0)).toEqual({ card: 'fireball', dice: [1, 0] })
-    expect(placeDie(s, 0, fire, 'fireball', 2)).toBeNull()
+    const fire: Placement = { card: 'fireball', slots: [0, 1] }
+    expect(placeDie(s, 0, fire, 'barrier', 1, 0)).toEqual({ card: 'barrier', slots: [1] })
   })
-  it('ダイスを手元に戻す', () => {
-    const fire: Placement = { card: 'fireball', dice: [0, 1] }
-    expect(removeDie(fire, 0)).toEqual({ card: 'fireball', dice: [1] })
+  it('埋まった置き場に手元のダイスを置くと、あったダイスは手元に戻る', () => {
+    const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
+    const fire: Placement = { card: 'fireball', slots: [0, 1] }
+    expect(placeDie(s, 0, fire, 'fireball', 2, 0)).toEqual({ card: 'fireball', slots: [2, 1] })
+  })
+  it('同じカードの別の置き場へ移すと、移した先のダイスと入れ替わる。空いた置き場へは、そのまま移る', () => {
+    const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
+    expect(placeDie(s, 0, { card: 'fireball', slots: [0, 1] }, 'fireball', 0, 1)).toEqual({
+      card: 'fireball',
+      slots: [1, 0],
+    })
+    expect(placeDie(s, 0, { card: 'fireball', slots: [null, 1] }, 'fireball', 1, 0)).toEqual({
+      card: 'fireball',
+      slots: [1, null],
+    })
+    // 同じ置き場に置き直しても変わらない
+    expect(placeDie(s, 0, { card: 'fireball', slots: [0, 1] }, 'fireball', 0, 0)).toEqual({
+      card: 'fireball',
+      slots: [0, 1],
+    })
+  })
+  it('ダイスを手元に戻すと、その置き場だけが空く', () => {
+    const fire: Placement = { card: 'fireball', slots: [0, 1] }
+    expect(removeDie(fire, 0)).toEqual({ card: 'fireball', slots: [null, 1] })
     expect(removeDie(fire, 2)).toEqual(fire)
-    expect(removeDie({ card: 'barrier', dice: [2] }, 2)).toBeNull()
+    expect(removeDie({ card: 'barrier', slots: [2] }, 2)).toBeNull()
     expect(removeDie(null, 0)).toBeNull()
+    expect(placedDice(null)).toEqual([])
   })
   it('雷槍は一ステップ目は詠唱、二ステップ目は発動の行に置く', () => {
     const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
-    expect(placedKind(s1, 0, { card: 'spear', dice: [0] })).toBe('spearChant')
+    expect(placedKind(s1, 0, { card: 'spear', slots: [0] })).toBe('spearChant')
+    expect(slotCount(s1, 0, 'spear')).toBe(1)
     const s2 = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
-    expect(placedKind(s2, 0, { card: 'spear', dice: [0] })).toBe('spearCast')
-    expect(placedKind(s2, 0, { card: 'spear', dice: [0, 1] })).toBe('spearCast')
+    expect(placedKind(s2, 0, { card: 'spear', slots: [0, null] })).toBe('spearCast')
+    expect(slotCount(s2, 0, 'spear')).toBe(2)
   })
 })
 
 describe('カード面', () => {
-  it('置き場には高い目から並べ、同じ目は置いた位置の順にする', () => {
-    expect(slotOrder([2, 6, 4], [0, 1, 2])).toEqual([1, 2, 0])
-    expect(slotOrder([6, 2, 6], [2, 0])).toEqual([0, 2])
-  })
   /** 効果の部品を、読み比べやすい一行にする */
   const flat = (parts: ReturnType<typeof effectParts>) =>
     parts.map((p) => [p.icon, p.value, p.text].filter(Boolean).join(':')).join(' ')
   it.each([
     ['fireball', [6, 2], 'damage:6'],
+    ['fireball', [2, 6], 'damage:2'],
     ['barrier', [4], 'guard:4'],
     ['spearChant', [5], 'chant:5'],
     ['spearCast', [6, 5], 'damage:11'],

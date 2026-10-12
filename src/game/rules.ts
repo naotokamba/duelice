@@ -4,7 +4,7 @@
 // オンライン対戦では、この関数をそのままサーバ側で動かす想定。
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
 
-import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, type ActionDef, CARD_DEFS } from './cards'
 import type { Action, ActionKind, CardId, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport } from './types'
 import { DEFAULT_CONFIG } from './types'
 
@@ -67,6 +67,23 @@ function combinations(items: number[], k: number): number[][] {
   return out
 }
 
+/** ダイスの組の並べ方。置き場の順に意味のある行動は、どのダイスも最初の置き場に置ける。残りの順は効果に関わらない */
+function orderings(def: ActionDef, dice: number[]): number[][] {
+  if (!def.ordered) return [dice]
+  return dice.map((d) => [d, ...dice.filter((x) => x !== d)])
+}
+
+/**
+ * 同じ手かどうかを見分ける鍵。目の組が同じなら同じ手とみなす。
+ * 置き場の順に意味のある行動は、最初の置き場の目も同じときだけ同じ手になる
+ */
+export function actionKey(p: PlayerState, a: Action): string {
+  if (a.kind === 'pass') return a.kind
+  const vals = diceValues(p, a)
+  const set = [...vals].sort((x, y) => x - y).join(',')
+  return `${a.kind}:${ACTION_DEFS[a.kind].ordered ? `${vals[0]}|${set}` : set}`
+}
+
 /** このステップで選べる行動を全て列挙する。同じ値のダイスの入れ替えは一つにまとめる */
 export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   const p = state.players[who]
@@ -74,13 +91,12 @@ export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   const out: Action[] = [{ kind: 'pass' }]
   const seen = new Set<string>()
   for (const kind of ACTION_KINDS) {
-    for (const k of ACTION_DEFS[kind].dice) {
-      for (const dice of combinations(free, k)) {
+    const def = ACTION_DEFS[kind]
+    for (const k of def.dice) {
+      for (const dice of combinations(free, k).flatMap((c) => orderings(def, c))) {
         const a: Action = { kind, dice }
         if (!isLegal(state, who, a)) continue
-        const key = `${kind}:${diceValues(p, a)
-          .sort((x, y) => x - y)
-          .join(',')}`
+        const key = actionKey(p, a)
         if (seen.has(key)) continue
         seen.add(key)
         out.push(a)

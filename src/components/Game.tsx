@@ -7,8 +7,10 @@ import {
   kindsNow,
   type Placement,
   placeDie,
+  placedDice,
   placedKind,
   removeDie,
+  slotCount,
 } from '../game/compose'
 import { LEVEL_NAMES, type Level, Thinker } from '../game/cpu'
 import {
@@ -25,7 +27,7 @@ import {
   strikes,
   turnOver,
 } from '../game/rules'
-import { Card, type CardPlay, CardTabs, type Shown } from './Card'
+import { Card, type CardPlay, CardTabs, readSlotDrop, type Shown } from './Card'
 import { Die } from './Die'
 import { closeOnBackdrop } from './dialog'
 import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
@@ -47,7 +49,7 @@ interface GameProps {
 /** 公開した行動を、カードに置いたダイスとして見せる */
 function shownOf(a: Action | undefined): (Shown & { card: CardId }) | null {
   if (!a || a.kind === 'pass') return null
-  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, dice: a.dice, complete: true }
+  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, slots: a.dice, complete: true }
 }
 
 function isCardId(s: string | null): s is CardId {
@@ -68,7 +70,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const [game, setGame] = useState<GameState | null>(null)
   const [revealed, setRevealed] = useState(false)
   const [placement, setPlacement] = useState<Placement | null>(null)
-  /** タップで持ち上げたダイス。次にタップした置き場に置く */
+  /** タップで持ち上げたダイス。次に押した置き場に置く */
   const [held, setHeld] = useState<number | null>(null)
   /** 狭い画面で大きく出しているカード */
   const [focus, setFocus] = useState<CardId | null>(null)
@@ -144,7 +146,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const last = game.history[game.history.length - 1]
   const showReveal = revealed && last !== undefined
   const choosing = !revealed && game.winner === null
-  const action = placement ? composeAction(game, 0, placement.card, placement.dice) : null
+  const action = placement ? composeAction(game, 0, placement.card, placedDice(placement)) : null
 
   const commit = (mine: Action) => {
     const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)
@@ -167,14 +169,23 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   /** 詠唱の結果は、矢印が当たるまで伏せる */
   const quiet = showReveal && landed < IMPACT_MS
 
-  const put = (card: CardId, die: number) => {
-    const next = placeDie(game, 0, placement, card, die)
+  /** die をカードの slot 番目の置き場に置く */
+  const put = (card: CardId, die: number, slot: number) => {
+    const next = placeDie(game, 0, placement, card, die, slot)
     if (next) {
       setPlacement(next)
       setFocus(card)
     }
     setHeld(null)
   }
+
+  /** 持っているダイスを置ける、そのカードの置き場の番号 */
+  const targetsOf = (c: CardId): number[] =>
+    held === null
+      ? []
+      : Array.from({ length: slotCount(game, 0, c) }, (_, k) => k).filter(
+          (k) => placeDie(game, 0, placement, c, held, k) !== null,
+        )
 
   const takeBack = (die: number) => {
     setPlacement(removeDie(placement, die))
@@ -185,8 +196,11 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     drag.bind(die, {
       start: () => setHeld(die),
       drop: (target) => {
+        const slot = readSlotDrop(target)
         if (target === 'tray') takeBack(die)
-        else if (isCardId(target)) put(target, die)
+        else if (slot) put(slot.card, die, slot.slot)
+        // 狭い画面でカードの名前に落としたら、そのカードを出すだけで置かない。名前は置き場ではない
+        else if (isCardId(target)) pick(target)
         else setHeld(null)
       },
     })
@@ -201,18 +215,20 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     : placement && {
         card: placement.card,
         kind: placedKind(game, 0, placement),
-        dice: placement.dice,
+        slots: placement.slots,
         complete: action !== null,
       }
   const cpuShown = showReveal ? shownOf(last.actions[1]) : null
 
   const playFor = (c: CardId): CardPlay | undefined => {
     if (!choosing) return undefined
+    const targets = targetsOf(c)
     return {
-      target: held !== null && placeDie(game, 0, placement, c, held) !== null,
+      targets,
       hint: held === null,
-      onSlot: () => held !== null && put(c, held),
-      onTakeBack: (die) => tap(() => takeBack(die))(),
+      onSlot: (k) => held !== null && put(c, held, k),
+      // ダイスのある置き場を押したとき、持っているダイスを置けるなら入れ替え、置けなければそのダイスを手元に戻す
+      onPlaced: (k, die) => tap(() => (held !== null && targets.includes(k) ? put(c, held, k) : takeBack(die)))(),
       drag: dragDie,
       lifted: drag.view?.die ?? null,
       onConfirm: action && placement?.card === c ? () => commit(action) : undefined,
@@ -241,16 +257,22 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     const usable = availableCards(game, who)
     if (!narrow) return <ul className="cards">{CARD_ORDER.map((c) => cardView(who, c, shown))}</ul>
 
-    // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す
+    // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す。
+    // 公開の間は使ったカードを、選んでいる間は名前を押したカードを出す。ダイスを置いた後でも、ほかのカードを見られる
     const current =
-      who === 0 ? (shown?.card ?? focus ?? CARD_ORDER.find((c) => usable.has(c)) ?? CARD_ORDER[0]) : shown?.card
+      who === 0
+        ? ((showReveal ? shown?.card : undefined) ??
+          focus ??
+          shown?.card ??
+          CARD_ORDER.find((c) => usable.has(c)) ??
+          CARD_ORDER[0])
+        : shown?.card
     const tabs = (
       <CardTabs
         tabs={CARD_ORDER.map((c) => ({
           card: c,
           off: !usable.has(c) && shown?.card !== c,
           current: c === current,
-          target: who === 0 && choosing && held !== null && placeDie(game, 0, placement, c, held) !== null,
           hint: who === 0 && choosing && held === null && usable.has(c),
           placed: shown?.card === c,
         }))}
@@ -267,10 +289,13 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     )
   }
 
-  /** 狭い画面でカードの名前を押した。持っているダイスを置けるなら置き、そのカードを出す */
+  /**
+   * 狭い画面でカードの名前を押した。ダイスを持っていても、いつもそのカードを出す。
+   * 名前は置き場ではないので、持っているダイスは置かずに手元へ戻し、置いてあるダイスはそのままにする
+   */
   const pick = (c: CardId) => {
-    if (held !== null && placeDie(game, 0, placement, c, held)) put(c, held)
-    else setFocus(c)
+    setFocus(c)
+    setHeld(null)
   }
 
   const trayOf = (who: PlayerIndex, shown: Shown | null) => {
@@ -284,7 +309,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         data-drop={who === 0 && choosing ? 'tray' : undefined}
       >
         {p.roll.map((v, i) => {
-          if (shown?.dice.includes(i)) return <span key={i} className="socket" aria-hidden="true" />
+          if (shown?.slots.includes(i)) return <span key={i} className="socket" aria-hidden="true" />
           const used = !free.includes(i)
           if (who === 1 || !choosing || used) return <Die key={i} value={v} used={used} />
           return (

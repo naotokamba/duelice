@@ -1,15 +1,21 @@
 // 画面の操作から行動を組み立てる処理。
-// プレイヤーは手元のダイスをカードの置き場に置いていくので、その途中経過を扱う。
+// プレイヤーは手元のダイスを、カードの置き場を一つずつ選んで置いていくので、その途中経過を扱う。
+// ダイスは選んだ置き場にそのまま入り、並べ替えたり空いた置き場へ詰めたりはしない。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
 import { ACTION_DEFS, type EffectPart, kindsOfCard } from './cards'
 import { diceValues, freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
 
-/** カードに置いたダイス。置けるのは1ステップに1枚だけ */
+/** カードに置いたダイス。置けるのは1ステップに1枚だけ。slots は置き場ごとのダイスで、空いた置き場は null */
 export interface Placement {
   card: CardId
-  dice: number[]
+  slots: (number | null)[]
+}
+
+/** 置いたダイスを置き場の順に並べる。空いた置き場は飛ばす。行動のダイスはこの順になる */
+export function placedDice(placement: Placement | null): number[] {
+  return placement?.slots.filter((d): d is number => d !== null) ?? []
 }
 
 /** 今のステップで、そのカードが取りうる行動の種類 */
@@ -52,34 +58,53 @@ function containsValues(all: number[], vals: number[]): boolean {
 }
 
 /**
- * picked を置いたカードに、さらに die を置けるか。置いた後に、足りないダイスを足せば合法な行動になるなら置ける。
- * 合法かどうかは目の値だけで決まるので、合法手の目に含まれるかで判定する
+ * dice を全てカードに置いた状態が、足りないダイスを足せば合法な行動になるか。
+ * 合法かどうかは目の値だけで決まり、置き場の順には左右されないので、合法手の目に含まれるかで判定する
  */
-export function canPlace(state: GameState, who: PlayerIndex, card: CardId, picked: number[], die: number): boolean {
+export function canHold(state: GameState, who: PlayerIndex, card: CardId, dice: number[]): boolean {
   const p = state.players[who]
-  if (picked.includes(die) || !freeDice(p).includes(die)) return false
-  const vals = [...picked, die].map((i) => p.roll[i])
+  const free = freeDice(p)
+  if (new Set(dice).size !== dice.length || !dice.every((d) => free.includes(d))) return false
+  const vals = dice.map((i) => p.roll[i])
   return legalActions(state, who).some(
     (a) => a.kind !== 'pass' && ACTION_DEFS[a.kind].card === card && containsValues(diceValues(p, a), vals),
   )
 }
 
-/** die をカードに置いた後の配置。置けなければ null。別のカードに置いてあったダイスは手元に戻る */
+/** そのカードに今のステップで並べる置き場の数。使える行動が無ければ 0 */
+export function slotCount(state: GameState, who: PlayerIndex, card: CardId): number {
+  const kind = kindsNow(state, who, card)[0]
+  return kind ? Math.max(...ACTION_DEFS[kind].dice) : 0
+}
+
+/**
+ * die をカードの slot 番目の置き場に置いた後の配置。置けなければ null。
+ * 置き場にあったダイスは手元に戻る。同じカードの別の置き場から移したときは、二つを入れ替える。
+ * 別のカードに置いてあったダイスは手元に戻る
+ */
 export function placeDie(
   state: GameState,
   who: PlayerIndex,
   placement: Placement | null,
   card: CardId,
   die: number,
+  slot: number,
 ): Placement | null {
-  const base = placement?.card === card ? placement.dice.filter((d) => d !== die) : []
-  return canPlace(state, who, card, base, die) ? { card, dice: [...base, die] } : null
+  const n = slotCount(state, who, card)
+  if (!(slot >= 0 && slot < n)) return null
+  const slots = placement?.card === card ? [...placement.slots] : Array<number | null>(n).fill(null)
+  const from = slots.indexOf(die)
+  if (from >= 0) slots[from] = slots[slot]
+  slots[slot] = die
+  const next = { card, slots }
+  return canHold(state, who, card, placedDice(next)) ? next : null
 }
 
-/** die を手元に戻した後の配置 */
+/** die を手元に戻した後の配置。どの置き場も空になったら null */
 export function removeDie(placement: Placement | null, die: number): Placement | null {
-  const dice = placement?.dice.filter((d) => d !== die) ?? []
-  return placement && dice.length > 0 ? { card: placement.card, dice } : null
+  if (!placement) return null
+  const slots = placement.slots.map((d) => (d === die ? null : d))
+  return slots.some((d) => d !== null) ? { card: placement.card, slots } : null
 }
 
 /**
@@ -90,12 +115,7 @@ export function placedKind(state: GameState, who: PlayerIndex, placement: Placem
   return kindsNow(state, who, placement.card)[0]
 }
 
-/** 置き場に並べる順。高い目から並べるので、最初の置き場には一番高い目が入る */
-export function slotOrder(roll: number[], dice: number[]): number[] {
-  return [...dice].sort((a, b) => roll[b] - roll[a] || a - b)
-}
-
-/** カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える */
+/** カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。vals は置き場の順に並んだ目 */
 export function effectParts(kind: ActionKind, vals?: number[]): EffectPart[] {
   const def = ACTION_DEFS[kind]
   const sym = def.face.mark ?? def.face.sum

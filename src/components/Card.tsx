@@ -1,10 +1,11 @@
 // カード面。置き場の数や記号は定義表の face から描くので、カードを足しても追従する。
 // 行動1つが1行で、横に並ぶ置き場が1ステップぶん。
+// ダイスは置き場を一つずつ選んで置く。カードの置き場の外を押しても、引きずって落としても置かない。
 
 import { Check } from 'lucide-react'
-import { Fragment, type MouseEvent } from 'react'
-import { ACTION_DEFS, CARD_DEFS, kindsOfCard } from '../game/cards'
-import { effectParts, slotOrder } from '../game/compose'
+import { Fragment } from 'react'
+import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard } from '../game/cards'
+import { effectParts } from '../game/compose'
 import type { ActionKind, CardId } from '../game/types'
 import { Die } from './Die'
 import { EffectGlyph } from './glyphs'
@@ -13,19 +14,34 @@ import type { DragHandlers } from './useDiceDrag'
 /** カードに置いて見せるダイス */
 export interface Shown {
   kind: ActionKind
-  dice: number[]
+  /** 置き場ごとのダイス。空いた置き場は null */
+  slots: (number | null)[]
   /** 行動として組み上がっている。効果の記号を値に置き換える */
   complete: boolean
 }
 
+/** 引きずって落とした先の置き場を、data-drop に書く名前にする */
+export function slotDrop(card: CardId, slot: number): string {
+  return `${card}:${slot}`
+}
+
+/** data-drop に書いた名前から、落とした先の置き場を読む。置き場でなければ null */
+export function readSlotDrop(target: string | null): { card: CardId; slot: number } | null {
+  const [card, slot] = target?.split(':') ?? []
+  if (!CARD_ORDER.includes(card as CardId) || !/^\d+$/.test(slot ?? '')) return null
+  return { card: card as CardId, slot: Number(slot) }
+}
+
 /** 自分の席で選んでいる間だけ渡す操作 */
 export interface CardPlay {
-  /** 持っているダイスをこのカードに置ける */
-  target: boolean
+  /** 持っているダイスを置ける置き場の番号。押せる置き場だけを光らせる */
+  targets: number[]
   /** 何も持っていないとき。使えるカードの置き場を薄く光らせる */
   hint: boolean
-  onSlot: () => void
-  onTakeBack: (die: number) => void
+  /** 空いた置き場か、ダイスのある置き場を押した。持っているダイスをそこに置く */
+  onSlot: (slot: number) => void
+  /** 置き場のダイスを押した。持っているダイスを置けなければ、そのダイスを手元に戻す */
+  onPlaced: (slot: number, die: number) => void
   drag: (die: number) => DragHandlers
   /** 引きずっている途中のダイス */
   lifted: number | null
@@ -51,21 +67,14 @@ export function Card({ card, roll, active, used, shown, casting, play }: Props) 
     'card',
     `card-${card}`,
     active.length === 0 && !shown && 'is-off',
-    play?.target && 'is-target',
     play?.hint && active.length > 0 && 'is-hint',
     play?.onConfirm && 'is-ready',
     casting && 'is-casting',
   ]
     .filter(Boolean)
     .join(' ')
-  // 指で狙いやすいように、置き場の外でもカードを押せば持っているダイスを置く。
-  // キーボードでは置き場のボタンで同じ操作ができる
-  const onCardClick = (e: MouseEvent<HTMLLIElement>) => {
-    if (play && !(e.target as Element).closest('button')) play.onSlot()
-  }
   return (
-    // biome-ignore lint/a11y/useKeyWithClickEvents: キーボードでは中の置き場のボタンで操作する
-    <li className={cls} data-drop={play ? card : undefined} aria-label={name} onClick={onCardClick}>
+    <li className={cls} aria-label={name}>
       <div className="card-head">
         <span className="card-name">{name}</span>
         {used && !shown && <span className="card-used">使用済み</span>}
@@ -73,6 +82,7 @@ export function Card({ card, roll, active, used, shown, casting, play }: Props) 
       {kindsOfCard(card).map((kind) => (
         <Row
           key={kind}
+          card={card}
           kind={kind}
           name={name}
           roll={roll}
@@ -91,15 +101,13 @@ export function Card({ card, roll, active, used, shown, casting, play }: Props) 
   )
 }
 
-/** 狭い画面で並べるカードの名前 */
+/** 狭い画面で並べるカードの名前。押すとそのカードを出す。名前は置き場ではないので、ダイスは置けない */
 export interface Tab {
   card: CardId
   /** 今は使えない */
   off: boolean
   /** 大きく出しているカード */
   current: boolean
-  /** 持っているダイスを置ける */
-  target: boolean
   /** 何も持っていないとき、使えることを薄く光らせて知らせる */
   hint: boolean
   /** ダイスが置いてある */
@@ -115,7 +123,6 @@ export function CardTabs({ tabs, onPick }: { tabs: Tab[]; onPick?: (c: CardId) =
           `card-${t.card}`,
           t.off && 'is-off',
           t.current && 'is-current',
-          t.target && 'is-target',
           t.hint && 'is-hint',
           t.placed && 'is-placed',
         ]
@@ -145,6 +152,7 @@ export function CardTabs({ tabs, onPick }: { tabs: Tab[]; onPick?: (c: CardId) =
 }
 
 interface RowProps {
+  card: CardId
   kind: ActionKind
   name: string
   roll: number[]
@@ -153,25 +161,31 @@ interface RowProps {
   play?: CardPlay
 }
 
-function Row({ kind, name, roll, on, shown, play }: RowProps) {
+function Row({ card, kind, name, roll, on, shown, play }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = Math.min(...def.dice)
-  const dice = shown ? slotOrder(roll, shown.dice) : []
-  const vals = shown?.complete ? dice.map((i) => roll[i]) : undefined
+  const slots = shown?.slots ?? []
+  // 効果の値は置き場の順に並べた目から決める。火球なら X の枠の目が威力になる
+  const vals = shown?.complete ? slots.filter((d): d is number => d !== null).map((i) => roll[i]) : undefined
+  /** 置き場の呼び名。記号を書いた置き場はその記号で、ほかは何番目かで呼ぶ */
+  const slotName = (k: number) => (k === 0 && face.mark ? `${name}の${face.mark}の枠` : `${name}の${k + 1}つ目の枠`)
 
   const slot = (k: number) => {
-    const d = dice[k]
+    const d = slots[k] ?? null
     const optional = k >= needed ? ' is-optional' : ''
-    if (d !== undefined) {
+    const active = play && on
+    const target = active && play.targets.includes(k) ? ' is-target' : ''
+    const drop = active ? slotDrop(card, k) : undefined
+    if (d !== null) {
       return (
-        <span className="slot is-filled">
+        <span className={`slot is-filled${target}`} data-drop={drop}>
           {play ? (
             <Die
               value={roll[d]}
               size="slot"
-              label={`${roll[d]}の目を戻す`}
-              onClick={() => play.onTakeBack(d)}
+              label={target ? `${roll[d]}の目と入れ替える` : `${roll[d]}の目を戻す`}
+              onClick={() => play.onPlaced(k, d)}
               drag={play.drag(d)}
               lifted={play.lifted === d}
             />
@@ -182,14 +196,15 @@ function Row({ kind, name, roll, on, shown, play }: RowProps) {
       )
     }
     const mark = k === 0 ? face.mark : undefined
-    if (play && on) {
+    if (active) {
       return (
         <button
           type="button"
-          className={`slot${optional}`}
-          aria-label={`${name}に置く`}
-          disabled={!play.target}
-          onClick={play.onSlot}
+          className={`slot${optional}${target}`}
+          aria-label={`${slotName(k)}に置く`}
+          data-drop={drop}
+          disabled={!target}
+          onClick={() => play.onSlot(k)}
         >
           {mark}
         </button>

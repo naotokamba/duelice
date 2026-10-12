@@ -72,6 +72,36 @@ describe('ターンの進行', () => {
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0, 3] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0] })).toBe(false)
   })
+  it('火球はどの目を X の枠に置くかで別の手になり、同じ目の入れ替えは一つにまとめる', () => {
+    const fireballs = (roll: number[]) =>
+      legalActions(makeState({ roll }, { roll: [1, 2, 3] }), 0)
+        .filter((a) => a.kind === 'fireball')
+        .map((a) => (a.kind === 'pass' ? [] : a.dice.map((i) => roll[i])))
+    expect(fireballs([6, 4, 1])).toEqual([
+      [6, 4],
+      [4, 6],
+      [6, 1],
+      [1, 6],
+      [4, 1],
+      [1, 4],
+    ])
+    expect(fireballs([4, 4, 1])).toEqual([
+      [4, 4],
+      [4, 1],
+      [1, 4],
+    ])
+    // 順に意味の無い行動は、並べ替えを別の手にしない
+    expect(
+      legalActions(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), 0).filter((a) => a.kind === 'bullet'),
+    ).toHaveLength(6)
+  })
+  it('火球の X の枠の目は、置いた順のまま公開の文に出る', () => {
+    const s = makeState({ roll: [2, 6, 1] }, { roll: [1, 2, 3] })
+    const next = resolveStep(s, [{ kind: 'fireball', dice: [0, 1] }, pass])
+    expect(next.history[0].values[0]).toEqual([2, 6])
+    expect(next.history[0].damage).toEqual([0, 2])
+    expect(next.history[0].lines[0]).toBe('あなたの火球 2点')
+  })
   it('反射はゾロ目でしか置けない', () => {
     const s = makeState({ roll: [2, 2, 5] }, { roll: [1, 3, 5] })
     expect(legalActions(s, 0).some((a) => a.kind === 'reflect')).toBe(true)

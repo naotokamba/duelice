@@ -57,12 +57,16 @@ const myCard = (name: string) => cardIn(mySeat(), name)
 
 type User = ReturnType<typeof userEvent.setup>
 
-/** 手元から value の目のダイスを一つ選び、カードの置き場に置く */
+/** カードの空いた置き場のボタン。置き場の順に並ぶ */
+const emptySlots = (card: string) =>
+  myCard(card).queryAllByRole('button', { name: new RegExp(`^${card}の.+枠に置く$`) })
+
+/** 手元から value の目のダイスを一つ選び、カードの空いた最初の置き場に置く */
 async function place(user: User, value: number, card: string) {
   await user.click(
     within(mySeat().getByRole('group', { name: 'ダイス' })).getAllByRole('button', { name: `${value}の目` })[0],
   )
-  await user.click(myCard(card).getAllByRole('button', { name: `${card}に置く` })[0])
+  await user.click(emptySlots(card)[0])
 }
 
 /** パスを押し、確かめる問いにパスすると答える */
@@ -159,14 +163,17 @@ describe('一ターンの流れ', () => {
     expect(latest().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
     // 使ったカードには置けず、使ったダイスは手元で薄くなる
     expect(myCard('火球').getByText('使用済み')).toBeTruthy()
-    expect(myCard('火球').queryByRole('button', { name: '火球に置く' })).toBeNull()
+    expect(emptySlots('火球')).toHaveLength(0)
     expect(mySeat().getAllByRole('img', { name: '6の目、使用済み' })).toHaveLength(2)
 
     await pass(user)
     await advance(2400)
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
     expect(screen.getByText('Turn 2', { selector: '.banner span' })).toBeTruthy()
-    expect(myCard('火球').getAllByRole('button', { name: '火球に置く' })).toHaveLength(2)
+    expect(emptySlots('火球').map((b) => b.getAttribute('aria-label'))).toEqual([
+      '火球のXの枠に置く',
+      '火球の2つ目の枠に置く',
+    ])
 
     // 中央には一つ前だけを出し、全ての履歴は履歴の印からモーダルで見る
     await advance(BANNER_MS)
@@ -191,7 +198,7 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     // 何も持っていなければ置き場は押せない
-    const slot = myCard('障壁').getByRole('button', { name: '障壁に置く' }) as HTMLButtonElement
+    const slot = myCard('障壁').getByRole('button', { name: '障壁のXの枠に置く' }) as HTMLButtonElement
     expect(slot.disabled).toBe(true)
     await user.click(mySeat().getByRole('listitem', { name: '障壁' }))
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
@@ -206,22 +213,60 @@ describe('一ターンの流れ', () => {
     expect(myCard('障壁').getByRole('button', { name: '受けるダメージを4減らす' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
 
-    // 埋まったカードには置けない。カードを押しても何も起きない
+    // カードの置き場の外を押しても置かない
     await user.click(mySeat().getByRole('button', { name: '5の目' }))
-    expect(myCard('障壁').queryByRole('button', { name: '障壁に置く' })).toBeNull()
     await user.click(mySeat().getByRole('listitem', { name: '障壁' }))
-    expect(myCard('障壁').getAllByRole('button', { name: /を戻す$/ })).toHaveLength(1)
+    await user.click(mySeat().getByRole('listitem', { name: '魔弾' }))
+    expect(myCard('魔弾').queryByRole('button', { name: /を戻す$/ })).toBeNull()
     expect(mySeat().getByRole('button', { name: '5の目' })).toBeTruthy()
 
-    // カードの置き場の外を押しても置ける。別のカードに置くと前のダイスは手元に戻る
-    await user.click(mySeat().getByRole('button', { name: '5の目' }))
-    await user.click(mySeat().getByRole('listitem', { name: '魔弾' }))
-    expect(myCard('魔弾').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
+    // ダイスのある置き場に置くと、あったダイスは手元に戻る
+    await user.click(myCard('障壁').getByRole('button', { name: '4の目と入れ替える' }))
+    expect(myCard('障壁').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
     expect(mySeat().getByRole('button', { name: '4の目' })).toBeTruthy()
 
-    await user.click(myCard('魔弾').getByRole('button', { name: '5の目を戻す' }))
+    // 別のカードに置くと、前のカードのダイスは手元に戻る
+    await user.click(mySeat().getByRole('button', { name: '4の目' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の1つ目の枠に置く' }))
+    expect(myCard('魔弾').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
     expect(mySeat().getByRole('button', { name: '5の目' })).toBeTruthy()
+
+    await user.click(myCard('魔弾').getByRole('button', { name: '4の目を戻す' }))
+    expect(mySeat().getByRole('button', { name: '4の目' })).toBeTruthy()
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
+  })
+
+  it('ダイスは押した置き場に入る。火球は X の枠に置いた目で撃ち、省ける置き場だけにも置ける', async () => {
+    const user = await start({
+      rng: dice(
+        [
+          [6, 2, 1],
+          [1, 2, 3],
+        ],
+        [
+          [6, 2, 1],
+          [1, 2, 3],
+        ],
+      ),
+      opponent: passOpponent,
+    })
+    // 2つ目の枠から先に置いても、そのまま2つ目に入る
+    await user.click(mySeat().getByRole('button', { name: '6の目' }))
+    await user.click(myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }))
+    expect(emptySlots('火球').map((b) => b.getAttribute('aria-label'))).toEqual(['火球のXの枠に置く'])
+    // X の枠に小さい目を置けば、その目が威力になる
+    await place(user, 2, '火球')
+    expect(myCard('火球').getByRole('button', { name: '2ダメージを与える' })).toBeTruthy()
+    await user.click(button('決定'))
+    expect(screen.getByText('あなたの火球 2点')).toBeTruthy()
+    await settle()
+    expect(cpuSeat().getByLabelText('体力 18 / 20')).toBeTruthy()
+
+    // 魔弾の点線の置き場だけに置いても、1個として撃てる
+    await user.click(mySeat().getByRole('button', { name: '1の目' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の2つ目の枠に置く' }))
+    await user.click(button('決定'))
+    expect(screen.getByText('あなたの魔弾 2点')).toBeTruthy()
   })
 
   it('ゾロ目が無いと反射には置けない', async () => {
@@ -232,7 +277,7 @@ describe('一ターンの流れ', () => {
       ]),
       opponent: passOpponent,
     })
-    expect(myCard('反射').queryAllByRole('button', { name: '反射に置く' })).toHaveLength(0)
+    expect(emptySlots('反射')).toHaveLength(0)
   })
 
   it('反射には同じ目しか並べられない', async () => {
@@ -245,7 +290,7 @@ describe('一ターンの流れ', () => {
     })
     await place(user, 3, '反射')
     await user.click(mySeat().getByRole('button', { name: '5の目' }))
-    const rest = myCard('反射').getByRole('button', { name: '反射に置く' }) as HTMLButtonElement
+    const rest = myCard('反射').getByRole('button', { name: '反射の2つ目の枠に置く' }) as HTMLButtonElement
     expect(rest.disabled).toBe(true)
     await place(user, 3, '反射')
     expect(button('決定')).toBeTruthy()
@@ -306,10 +351,13 @@ describe('引きずって置く', () => {
     opponent: passOpponent,
   })
 
-  it('手元のダイスをカードへ、カードのダイスを手元へ引きずって動かせる', async () => {
+  it('手元のダイスを置き場へ、置き場のダイスを手元へ引きずって動かせる', async () => {
     const user = await start(six())
     const tray = mySeat().getByRole('group', { name: 'ダイス' })
-    dragTo(within(tray).getByRole('button', { name: '2の目' }), mySeat().getByRole('listitem', { name: '魔弾' }))
+    dragTo(
+      within(tray).getByRole('button', { name: '2の目' }),
+      myCard('魔弾').getByRole('button', { name: '魔弾の1つ目の枠に置く' }),
+    )
     expect(myCard('魔弾').getByRole('button', { name: '2の目を戻す' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
 
@@ -326,13 +374,43 @@ describe('引きずって置く', () => {
     expect(within(tray).getByRole('button', { name: '2の目' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('置けない場所や何も無い所で離すと、ダイスは手元に残る', async () => {
+  it('置き場の外や何も無い所で離すと、ダイスは手元に残る', async () => {
     await start(six())
     const tray = mySeat().getByRole('group', { name: 'ダイス' })
     dragTo(within(tray).getByRole('button', { name: '2の目' }), mySeat().getByRole('listitem', { name: '反射' }))
+    dragTo(within(tray).getByRole('button', { name: '2の目' }), mySeat().getByRole('listitem', { name: '魔弾' }))
     dragTo(within(tray).getByRole('button', { name: '2の目' }), null)
     expect(within(tray).getAllByRole('button', { name: /の目$/ })).toHaveLength(3)
     expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
+  })
+
+  it('置いたダイスを同じカードの別の置き場へ引きずると、入れ替わる', async () => {
+    await start({
+      rng: dice([
+        [6, 2, 1],
+        [1, 2, 3],
+      ]),
+      opponent: passOpponent,
+    })
+    const tray = mySeat().getByRole('group', { name: 'ダイス' })
+    dragTo(
+      within(tray).getByRole('button', { name: '6の目' }),
+      myCard('火球').getByRole('button', { name: '火球のXの枠に置く' }),
+    )
+    dragTo(
+      within(tray).getByRole('button', { name: '2の目' }),
+      myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }),
+    )
+    expect(myCard('火球').getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
+    const six = myCard('火球').getByRole('button', { name: '6の目を戻す' })
+    const two = myCard('火球').getByRole('button', { name: '2の目を戻す' })
+    dragTo(two, six.closest('[data-drop]'))
+    expect(myCard('火球').getByRole('button', { name: '2ダメージを与える' })).toBeTruthy()
+    expect(
+      myCard('火球')
+        .getAllByRole('button', { name: /の目を戻す$/ })
+        .map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['2の目を戻す', '6の目を戻す'])
   })
 
   it('引きずっている間はダイスが指についてきて、取り消せば元に戻る', async () => {
@@ -394,34 +472,49 @@ describe('狭い画面', () => {
     expect(mySeat().getByRole('button', { name: '障壁' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('ダイスを持って名前を押すと、置けるカードなら置いて出す', async () => {
+  it('ダイスを持っていても、名前を押せばそのカードを出す。持っていたダイスは置かずに手元へ戻る', async () => {
     const user = await start({ rng: roll(), opponent: passOpponent })
     const four = mySeat().getByRole('button', { name: '4の目' })
     await user.click(four)
-    // 置けないカードは出すだけで、ダイスは持ったまま
-    await user.click(mySeat().getByRole('button', { name: '反射' }))
-    expect(mySeat().getByRole('listitem', { name: '反射' })).toBeTruthy()
     expect(four.getAttribute('aria-pressed')).toBe('true')
-
     await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['障壁'])
+    expect(four.getAttribute('aria-pressed')).toBe('false')
+    expect(myCard('障壁').queryByRole('button', { name: /を戻す$/ })).toBeNull()
+    expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
+
+    // 置き場を押して置く
+    await place(user, 4, '障壁')
     expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
     expect(button('決定')).toBeTruthy()
+
+    // ダイスを置いた後でも、ほかのカードを見られる。置いたダイスはそのまま残る
+    await user.click(mySeat().getByRole('button', { name: '5の目' }))
+    await user.click(mySeat().getByRole('button', { name: '火球' }))
+    expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
+    expect(mySeat().getByRole('button', { name: '5の目' }).getAttribute('aria-pressed')).toBe('false')
+    expect(mySeat().getByRole('button', { name: '障壁' }).classList.contains('is-placed')).toBe(true)
+    await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    expect(myCard('障壁').getByRole('button', { name: '4の目を戻す' })).toBeTruthy()
   })
 
   it('次のステップへ進むと、使い終わったカードではなく使える最初のカードを出す', async () => {
     const user = await start({ rng: roll(), opponent: passOpponent })
-    await user.click(mySeat().getByRole('button', { name: '4の目' }))
     await user.click(mySeat().getByRole('button', { name: '障壁' }))
+    await place(user, 4, '障壁')
     await user.click(button('決定'))
     await settle()
     expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['火球'])
     expect(mySeat().getByRole('button', { name: '火球' }).getAttribute('aria-pressed')).toBe('true')
   })
 
-  it('名前へ引きずって置ける', async () => {
+  it('名前へ引きずって離すと、そのカードを出すだけで置かない', async () => {
     await start({ rng: roll(), opponent: passOpponent })
-    dragTo(mySeat().getByRole('button', { name: '5の目' }), mySeat().getByRole('button', { name: '魔弾' }))
-    expect(myCard('魔弾').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
+    const five = mySeat().getByRole('button', { name: '5の目' })
+    dragTo(five, mySeat().getByRole('button', { name: '魔弾' }))
+    expect(cardsShown(mySeat()).map((c) => c.getAttribute('aria-label'))).toEqual(['魔弾'])
+    expect(five.getAttribute('aria-pressed')).toBe('false')
+    expect(myCard('魔弾').queryByRole('button', { name: '5の目を戻す' })).toBeNull()
   })
 
   it('相手が公開したカードは席には出さず、名前の札で示す', async () => {
@@ -565,7 +658,7 @@ describe('降参', () => {
 
 describe('決着', () => {
   /** 火球がまだ使えるか */
-  const fireballReady = () => myCard('火球').queryAllByRole('button', { name: '火球に置く' }).length > 0
+  const fireballReady = () => emptySlots('火球').length > 0
 
   /** 毎ターン 6,6,6 を振り、火球と魔弾で攻め続ける */
   async function attackUntilEnd(user: User) {

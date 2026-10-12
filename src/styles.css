@@ -602,9 +602,6 @@ button.die:disabled {
   font-weight: 700;
   color: var(--ink-soft);
 }
-.card.is-target {
-  border-color: var(--spell);
-}
 .card.is-casting {
   border-color: var(--spell);
   box-shadow:
@@ -724,10 +721,18 @@ button.slot:disabled {
     box-shadow: 0 0 9px color-mix(in srgb, var(--spell) 40%, transparent);
   }
 }
-.card.is-target .face-row.is-on .slot:not(.is-filled) {
+/* 持っているダイスを置ける置き場。カード全体ではなく、押せる置き場だけを強調する */
+.slot.is-target:not(.is-filled) {
   border-style: solid;
   background: color-mix(in srgb, var(--spell) 16%, transparent);
   box-shadow: 0 0 12px 1px color-mix(in srgb, var(--spell) 55%, transparent);
+}
+/* ダイスのある置き場にも置ける。置くと、あったダイスと入れ替わる */
+.slot.is-filled.is-target {
+  border-radius: 18%;
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--spell) 70%, transparent),
+    0 0 12px 1px color-mix(in srgb, var(--spell) 55%, transparent);
 }
 .sym {
   font-family: var(--font-spell);
@@ -920,11 +925,6 @@ button.tab {
 }
 .tab.is-hint {
   animation: slot-hint 2.4s ease-in-out infinite;
-}
-.tab.is-target {
-  border-color: var(--spell, var(--ink));
-  background: color-mix(in srgb, var(--spell, var(--ink)) 16%, var(--surface));
-  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--spell, var(--ink)) 55%, transparent);
 }
 
 /* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
