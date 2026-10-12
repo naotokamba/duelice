@@ -2,10 +2,12 @@
 
 import { describe, expect, it } from 'vitest'
 import { makeState } from '../test/helpers'
+import { ACTION_DEFS } from './cards'
 import {
   type Action,
   actionLabel,
   breaksChant,
+  fillsMark,
   isLegal,
   legalActions,
   newGame,
@@ -57,26 +59,56 @@ describe('ターンの進行', () => {
   })
   it('同じカードは1ターンに1回まで', () => {
     let s = makeState({ roll: [6, 5, 4] }, { roll: [1, 1, 1] })
-    s = resolveStep(s, [{ kind: 'bullet', dice: [0] }, pass])
+    s = resolveStep(s, [{ kind: 'bullet', dice: [0, null] }, pass])
     expect(legalActions(s, 0).some((a) => a.kind === 'bullet')).toBe(false)
   })
   it('使ったダイスは二ステップ目に使えない', () => {
     let s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
-    s = resolveStep(s, [{ kind: 'bullet', dice: [0] }, pass])
+    s = resolveStep(s, [{ kind: 'bullet', dice: [0, null] }, pass])
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0, 1] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'fireball', dice: [1, 2] })).toBe(true)
   })
-  it('同じダイスを二度選ぶ行動や、範囲外のダイスは不正', () => {
+  it('同じダイスを二度選ぶ行動や、範囲外のダイスや、置き場の数に合わない行動は不正', () => {
     const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0, 0] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0, 3] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'fireball', dice: [0] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'fireball', dice: [0, 1, null] })).toBe(false)
+    // 魔弾は置き場が二つなので、1個でも空いた置き場を書く
+    expect(isLegal(s, 0, { kind: 'bullet', dice: [0] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'bullet', dice: [null, null] })).toBe(false)
+  })
+  it('行動はどの置き場に置いたかを記録する。印の無い置き場は、どこに置いても同じ効果になる', () => {
+    const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
+    const back = resolveStep(s, [{ kind: 'bullet', dice: [null, 2] }, pass])
+    expect(back.history[0].actions[0]).toEqual({ kind: 'bullet', dice: [null, 2] })
+    expect(back.history[0].values[0]).toEqual([4])
+    expect(back.history[0].damage).toEqual([0, 2])
+    expect(back.players[0].usedDice).toEqual([2])
+  })
+  it('印の置き場は空けられない。印の無い行動はどの置き場を空けてもよい', () => {
+    // 印の置き場のほかに省いてよい置き場を持つ、仮のカード
+    const optional = { ...ACTION_DEFS.fireball, dice: [1, 2] }
+    expect(fillsMark(optional, [0, null])).toBe(true)
+    expect(fillsMark(optional, [null, 0])).toBe(false)
+    expect(fillsMark(optional, [0, 1])).toBe(true)
+    expect(fillsMark(ACTION_DEFS.bullet, [null, 0])).toBe(true)
+    expect(fillsMark(ACTION_DEFS.bullet, [null, null])).toBe(true)
+  })
+  it('X の枠を空けた火球は不正。X の枠に置いた目が威力になる', () => {
+    const s = makeState({ roll: [2, 6, 4] }, { roll: [1, 2, 3] })
+    expect(isLegal(s, 0, { kind: 'fireball', dice: [null, 1] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'fireball', dice: [1, null] })).toBe(false)
+    const low = resolveStep(s, [{ kind: 'fireball', dice: [0, 1] }, pass])
+    expect(low.history[0].damage).toEqual([0, 2])
+    const high = resolveStep(s, [{ kind: 'fireball', dice: [1, 0] }, pass])
+    expect(high.history[0].damage).toEqual([0, 6])
   })
   it('火球はどの目を X の枠に置くかで別の手になり、同じ目の入れ替えは一つにまとめる', () => {
     const fireballs = (roll: number[]) =>
       legalActions(makeState({ roll }, { roll: [1, 2, 3] }), 0)
         .filter((a) => a.kind === 'fireball')
-        .map((a) => (a.kind === 'pass' ? [] : a.dice.map((i) => roll[i])))
+        .map((a) => (a.kind === 'pass' ? [] : a.dice.map((i) => (i === null ? 0 : roll[i]))))
     expect(fireballs([6, 4, 1])).toEqual([
       [6, 4],
       [4, 6],
@@ -90,12 +122,20 @@ describe('ターンの進行', () => {
       [4, 1],
       [1, 4],
     ])
-    // 順に意味の無い行動は、並べ替えを別の手にしない
-    expect(
-      legalActions(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), 0).filter((a) => a.kind === 'bullet'),
-    ).toHaveLength(6)
+    // 印の無い行動は、置き場の違いを別の手にせず、前の置き場から詰めて置く
+    const bullets = legalActions(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), 0).filter(
+      (a) => a.kind === 'bullet',
+    )
+    expect(bullets).toEqual([
+      { kind: 'bullet', dice: [0, null] },
+      { kind: 'bullet', dice: [1, null] },
+      { kind: 'bullet', dice: [2, null] },
+      { kind: 'bullet', dice: [0, 1] },
+      { kind: 'bullet', dice: [0, 2] },
+      { kind: 'bullet', dice: [1, 2] },
+    ])
   })
-  it('火球の X の枠の目は、置いた順のまま公開の文に出る', () => {
+  it('火球の X の枠の目は、置いた置き場のまま公開の文に出る', () => {
     const s = makeState({ roll: [2, 6, 1] }, { roll: [1, 2, 3] })
     const next = resolveStep(s, [{ kind: 'fireball', dice: [0, 1] }, pass])
     expect(next.history[0].values[0]).toEqual([2, 6])
@@ -127,7 +167,7 @@ describe('ターンの進行', () => {
   })
   it('次のターンでダイスと使用記録がリセットされる', () => {
     let s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
-    s = resolveStep(s, [{ kind: 'bullet', dice: [0] }, pass])
+    s = resolveStep(s, [{ kind: 'bullet', dice: [0, null] }, pass])
     s = resolveStep(s, [{ kind: 'fireball', dice: [1, 2] }, pass])
     s = nextTurn(s, () => 0.5)
     expect(s.turn).toBe(2)
@@ -172,7 +212,7 @@ describe('攻撃の行方', () => {
     [
       '魔弾は障壁をすり抜ける',
       [1],
-      { kind: 'bullet', dice: [0] },
+      { kind: 'bullet', dice: [0, null] },
       [6],
       { kind: 'barrier', dice: [0] },
       { outcome: 'pierced', to: 1, dealt: 2 },
@@ -191,7 +231,7 @@ describe('攻撃の行方', () => {
     expect(x).toMatchObject({ from: 0, ...want })
   })
   it('撃ち合いは二つの攻撃になり、攻撃しない側からは何も飛ばない', () => {
-    expect(strikes([[6, 2], [5]], [fire, { kind: 'bullet', dice: [0] }]).map((x) => [x.from, x.to])).toEqual([
+    expect(strikes([[6, 2], [5]], [fire, { kind: 'bullet', dice: [0, null] }]).map((x) => [x.from, x.to])).toEqual([
       [0, 1],
       [1, 0],
     ])
@@ -226,7 +266,7 @@ describe('公開の文', () => {
     ])
   })
   it('障壁をすり抜けた攻撃', () => {
-    expect(lines([1, 2, 3], [6, 2, 1], { kind: 'bullet', dice: [0] }, { kind: 'barrier', dice: [0] })).toEqual([
+    expect(lines([1, 2, 3], [6, 2, 1], { kind: 'bullet', dice: [0, null] }, { kind: 'barrier', dice: [0] })).toEqual([
       'あなたの魔弾 2点、障壁をすり抜けた',
       '相手は 6 で障壁を張った',
     ])

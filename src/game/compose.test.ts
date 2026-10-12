@@ -3,7 +3,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, rollArb, seeded } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, slotsOf } from './cards'
 import {
   availableCards,
   CANNOT_USE,
@@ -36,11 +36,12 @@ describe('行動の組み立て', () => {
         def.step ?? 1,
       )
       for (const n of def.dice) {
+        // 前の置き場から n 個を埋め、残りの置き場は空ける
         const a = composeAction(
           s,
           0,
           def.card,
-          Array.from({ length: n }, (_, i) => i),
+          Array.from({ length: slotsOf(def) }, (_, i) => (i < n ? i : null)),
         )
         if (a && a.kind !== 'pass') made.add(a.kind)
       }
@@ -56,8 +57,9 @@ describe('行動の組み立て', () => {
         fc.boolean(),
         (roll, card, picked, step2) => {
           const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
-          const a = composeAction(s, 0, card, picked)
-          if (a === null) return
+          const pl = placeAll(s, card, picked)
+          const a = pl && composeAction(s, 0, card, pl.slots)
+          if (!a) return
           expect(isLegal(s, 0, a)).toBe(true)
           expect(a.kind !== 'pass' && ACTION_DEFS[a.kind].card).toBe(card)
         },
@@ -112,18 +114,18 @@ function placeAll(s: GameState, card: CardId, dice: number[]): Placement | null 
 }
 
 describe('ダイスを置く', () => {
-  it('合法手は全て、ダイスをそれぞれの置き場へどの順で置いても、置き場の順のまま組み立てられる', () => {
+  it('合法手は全て、ダイスをそれぞれの置き場へどの順で置いても、置いた置き場のまま組み立てられる', () => {
     fc.assert(
       fc.property(rollArb, fc.boolean(), fc.boolean(), (roll, step2, reversed) => {
         const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
         for (const a of legalActions(s, 0)) {
           if (a.kind === 'pass') continue
           const card = ACTION_DEFS[a.kind].card
-          const steps = [...a.dice.entries()]
+          const steps = [...a.dice.entries()].filter((e): e is [number, number] => e[1] !== null)
           let pl: Placement | null = null
           for (const [k, d] of reversed ? steps.reverse() : steps) pl = placeDie(s, 0, pl, card, d, k)
-          expect(placedDice(pl)).toEqual(a.dice)
-          expect(composeAction(s, 0, card, placedDice(pl))).toEqual(a)
+          expect(pl?.slots).toEqual(a.dice)
+          expect(composeAction(s, 0, card, pl?.slots ?? [])).toEqual(a)
         }
       }),
     )
@@ -143,7 +145,7 @@ describe('ダイスを置く', () => {
           expect(pl !== null).toBe(fits)
           if (pl === null) return
           // 理由が出ないのは、行動になるときだけ
-          const made = composeAction(s, 0, card, placedDice(pl))
+          const made = composeAction(s, 0, card, pl.slots)
           expect(placementIssue(s, 0, pl) === null).toBe(made !== null)
         },
       ),
@@ -173,17 +175,25 @@ describe('ダイスを置く', () => {
     expect(slotCount(s, 0, 'spear')).toBe(0)
     expect(placeDie(s, 0, null, 'spear', 0, 0)).toBeNull()
   })
-  it('置いた置き場の順が行動のダイスの順になる。火球は X の枠に置いた目が威力になる', () => {
+  it('行動は置いた置き場をそのまま記録する。火球は X の枠に置いた目が威力になる', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const pl = placeDie(s, 0, placeDie(s, 0, null, 'fireball', 0, 1), 'fireball', 1, 0)
     expect(pl).toEqual({ card: 'fireball', slots: [1, 0] })
-    expect(composeAction(s, 0, 'fireball', placedDice(pl))).toEqual({ kind: 'fireball', dice: [1, 0] })
+    const a = composeAction(s, 0, 'fireball', pl?.slots ?? [])
+    expect(a).toEqual({ kind: 'fireball', dice: [1, 0] })
+    expect(diceValues(s.players[0], a ?? { kind: 'pass' })).toEqual([2, 6])
+    expect(effectParts('fireball', [2, 6])).toEqual([{ icon: 'damage', value: '2' }])
   })
-  it('省いてもよい置き場だけに置いても、置いた個数の行動になる', () => {
+  it('省いてもよい置き場だけに置いても、置いた個数の行動になり、空けた置き場は空けたまま記録する', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const pl = placeDie(s, 0, null, 'bullet', 2, 1)
     expect(pl).toEqual({ card: 'bullet', slots: [null, 2] })
-    expect(composeAction(s, 0, 'bullet', placedDice(pl))).toEqual({ kind: 'bullet', dice: [2] })
+    expect(composeAction(s, 0, 'bullet', pl?.slots ?? [])).toEqual({ kind: 'bullet', dice: [null, 2] })
+  })
+  it('X の枠を空けた火球は行動にならない', () => {
+    const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
+    expect(composeAction(s, 0, 'fireball', [null, 0])).toBeNull()
+    expect(composeAction(s, 0, 'fireball', [0, null])).toBeNull()
   })
   it('反射には違う目も置けるが、同じ目が揃うまで行動にならない', () => {
     const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
@@ -193,7 +203,7 @@ describe('ダイスを置く', () => {
     // 違う目の置き場に同じ目を置き直せば、行動になる
     const fixed = placeDie(s, 0, mixed, 'reflect', 2, 1)
     expect(fixed).toEqual({ card: 'reflect', slots: [0, 2] })
-    expect(composeAction(s, 0, 'reflect', placedDice(fixed))).toEqual({ kind: 'reflect', dice: [0, 2] })
+    expect(composeAction(s, 0, 'reflect', fixed?.slots ?? [])).toEqual({ kind: 'reflect', dice: [0, 2] })
   })
   it('使えないカードには置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedCards: ['fireball'] }, { roll: [1, 2, 3] }, 2)
@@ -315,9 +325,13 @@ describe('決定を押せない理由', () => {
   })
   it('個数が足りなければ、あと何個置くかを出す', () => {
     expect(placementIssue(s, 0, { card: 'fireball', slots: [1, null] })).toBe('あと1個置く')
-    expect(placementIssue(s, 0, { card: 'fireball', slots: [null, 0] })).toBe('あと1個置く')
     const charged = makeState({ roll: [3, 5, 3], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
     expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 1] })).toBe('あと1個置く')
+  })
+  it('印の置き場が空いていれば、ほかの置き場が足りていても、まず印の置き場に置くよう伝える', () => {
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [null, 0] })).toBe('X の枠に置く')
+    // 印の無い行動は、どの置き場が空いていても印のことは言わない
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [null, 0] })).toBe('同じ目をあと1個置く')
   })
   it('同じ目を揃える行動は、揃える目の数で伝える', () => {
     expect(placementIssue(s, 0, { card: 'reflect', slots: [1, null] })).toBe('同じ目をあと1個置く')
@@ -359,7 +373,7 @@ describe('1ステップ目のダイス', () => {
     expect(firstStepDice(start, 0)).toBeNull()
     expect(firstStepDice(start, 1)).toBeNull()
   })
-  it('2ステップ目には、双方が1ステップ目に使ったダイスが、置き場の順にカードに残る', () => {
+  it('2ステップ目には、双方が1ステップ目に使ったダイスが、置いた置き場のままカードに残る', () => {
     const s = resolveStep(start, [
       { kind: 'fireball', dice: [1, 0] },
       { kind: 'reflect', dice: [0, 1] },
@@ -373,8 +387,11 @@ describe('1ステップ目のダイス', () => {
     expect(firstStepDice(nextTurn(after, seeded(1)), 0)).toBeNull()
   })
   it('省いた置き場は空いたまま残り、パスなら何も残らない', () => {
-    const s = resolveStep(start, [{ kind: 'bullet', dice: [2] }, { kind: 'pass' }])
-    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
+    // 省いてもよい置き場だけに置いた魔弾は、その置き場に残る
+    const s = resolveStep(start, [{ kind: 'bullet', dice: [null, 2] }, { kind: 'pass' }])
+    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [null, 2] })
+    const front = resolveStep(start, [{ kind: 'bullet', dice: [2, null] }, { kind: 'pass' }])
+    expect(firstStepDice(front, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
     expect(firstStepDice(s, 1)).toBeNull()
   })
   it('詠唱のダイスは、詠唱の行に残る', () => {

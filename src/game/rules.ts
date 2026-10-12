@@ -4,7 +4,7 @@
 // オンライン対戦では、この関数をそのままサーバ側で動かす想定。
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
 
-import { ACTION_DEFS, ACTION_KINDS, type ActionDef, CARD_DEFS } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, type ActionDef, CARD_DEFS, MARK_SLOT, readsMark, slotsOf } from './cards'
 import type { Action, ActionKind, CardId, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport } from './types'
 import { DEFAULT_CONFIG } from './types'
 
@@ -34,12 +34,26 @@ export function newGame(rng: Rng, config: Config = DEFAULT_CONFIG): GameState {
   return { config, turn: 1, step: 1, players: [fresh(), fresh()], history: [], winner: null }
 }
 
+/** 行動が使うダイスの番号。空けた置き場を飛ばし、置き場の順に並べる */
+export function actionDice(a: Action): number[] {
+  return a.kind === 'pass' ? [] : a.dice.filter((d): d is number => d !== null)
+}
+
+/** 行動が使う目。空けた置き場を飛ばし、置き場の順に並べる。効果の計算はこの目から行う */
 export function diceValues(p: PlayerState, a: Action): number[] {
-  return a.kind === 'pass' ? [] : a.dice.map((i) => p.roll[i])
+  return actionDice(a).map((i) => p.roll[i])
 }
 
 export function freeDice(p: PlayerState): number[] {
   return p.roll.map((_, i) => i).filter((i) => !p.usedDice.includes(i))
+}
+
+/**
+ * 印の置き場の目を値にする行動なら、印の置き場が埋まっているか。印の無い行動はいつも true。
+ * 今のカードでは個数の決まりでも同じになるが、印の置き場のほかに省いてよい置き場を持つカードを足したときに効く
+ */
+export function fillsMark(def: ActionDef, dice: (number | null)[]): boolean {
+  return !readsMark(def) || dice[MARK_SLOT] !== null
 }
 
 /** 行動がこのステップで合法か */
@@ -48,9 +62,12 @@ export function isLegal(state: GameState, who: PlayerIndex, a: Action): boolean 
   const def = ACTION_DEFS[a.kind]
   const p = state.players[who]
   const free = freeDice(p)
-  if (!def.dice.includes(a.dice.length)) return false
-  if (new Set(a.dice).size !== a.dice.length) return false
-  if (!a.dice.every((i) => free.includes(i))) return false
+  const dice = actionDice(a)
+  if (a.dice.length !== slotsOf(def)) return false
+  if (!fillsMark(def, a.dice)) return false
+  if (!def.dice.includes(dice.length)) return false
+  if (new Set(dice).size !== dice.length) return false
+  if (!dice.every((i) => free.includes(i))) return false
   if (def.step !== undefined && def.step !== state.step) return false
   if (def.needsCharge) return p.chant === 'charged'
   if (p.usedCards.includes(def.card)) return false
@@ -67,24 +84,32 @@ function combinations(items: number[], k: number): number[][] {
   return out
 }
 
-/** ダイスの組の並べ方。置き場の順に意味のある行動は、どのダイスも最初の置き場に置ける。残りの順は効果に関わらない */
-function orderings(def: ActionDef, dice: number[]): number[][] {
-  if (!def.ordered) return [dice]
-  return dice.map((d) => [d, ...dice.filter((x) => x !== d)])
+/**
+ * ダイスの組を置き場に置く形。効果の変わらない置き方は一つにまとめ、前の置き場から詰めて空きを後ろに残す。
+ * 印の置き場の目を値にする行動は、どのダイスを印の置き場に置くかで効果が変わるので、それぞれを別の置き方にする
+ */
+function placements(def: ActionDef, dice: number[]): (number | null)[][] {
+  const fill = (xs: number[]) => Array.from({ length: slotsOf(def) }, (_, k) => xs[k] ?? null)
+  if (!readsMark(def)) return [fill(dice)]
+  return dice.map((d) => fill([d, ...dice.filter((x) => x !== d)]))
 }
 
 /**
- * 同じ手かどうかを見分ける鍵。目の組が同じなら同じ手とみなす。
- * 置き場の順に意味のある行動は、最初の置き場の目も同じときだけ同じ手になる
+ * 同じ手かどうかを見分ける鍵。どの置き場に置いたかは問わず、目の組が同じなら同じ手とみなす。
+ * 印の置き場の目を値にする行動は、印の置き場の目も同じときだけ同じ手になる。
+ * 合法な手なら印の置き場は埋まっていて、置き場の順に並べた目の最初がその目になる
  */
 export function actionKey(p: PlayerState, a: Action): string {
   if (a.kind === 'pass') return a.kind
   const vals = diceValues(p, a)
   const set = [...vals].sort((x, y) => x - y).join(',')
-  return `${a.kind}:${ACTION_DEFS[a.kind].ordered ? `${vals[0]}|${set}` : set}`
+  return `${a.kind}:${readsMark(ACTION_DEFS[a.kind]) ? `${vals[0]}|${set}` : set}`
 }
 
-/** このステップで選べる行動を全て列挙する。同じ値のダイスの入れ替えは一つにまとめる */
+/**
+ * このステップで選べる行動を全て列挙する。効果の同じ手は一つにまとめる。
+ * 同じ値のダイスの入れ替えや、効果の変わらない置き場の違いは、前から詰めた置き方だけを残す
+ */
 export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   const p = state.players[who]
   const free = freeDice(p)
@@ -93,7 +118,7 @@ export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   for (const kind of ACTION_KINDS) {
     const def = ACTION_DEFS[kind]
     for (const k of def.dice) {
-      for (const dice of combinations(free, k).flatMap((c) => orderings(def, c))) {
+      for (const dice of combinations(free, k).flatMap((c) => placements(def, c))) {
         const a: Action = { kind, dice }
         if (!isLegal(state, who, a)) continue
         const key = actionKey(p, a)
@@ -204,7 +229,7 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     return {
       ...p,
       hp: p.hp - dmg[i],
-      usedDice: [...p.usedDice, ...a.dice],
+      usedDice: [...p.usedDice, ...actionDice(a)],
       usedCards: p.usedCards.includes(def.card) ? p.usedCards : [...p.usedCards, def.card],
       chant,
     }

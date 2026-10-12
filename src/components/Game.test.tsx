@@ -274,6 +274,8 @@ describe('一ターンの流れ', () => {
     await user.click(mySeat().getByRole('button', { name: '6の目' }))
     await user.click(myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }))
     expect(emptySlots('火球').map((b) => b.getAttribute('aria-label'))).toEqual(['火球のXの枠に置く'])
+    // X の枠が空いている間は決定を押せず、X の枠に置くよう伝える
+    expect(blockedReason()).toBe('X の枠に置く')
     // X の枠に小さい目を置けば、その目が威力になる
     await place(user, 2, '火球')
     expect(myCard('火球').getByRole('button', { name: '2ダメージを与える' })).toBeTruthy()
@@ -287,6 +289,35 @@ describe('一ターンの流れ', () => {
     await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の2つ目の枠に置く' }))
     await user.click(button('決定'))
     expect(screen.getByText('あなたの魔弾 2点')).toBeTruthy()
+  })
+
+  it('魔弾を点線の枠だけに置くと、公開でも次のステップでも、その枠に残る', async () => {
+    const user = await start({
+      rng: dice([
+        [6, 2, 1],
+        [1, 2, 3],
+      ]),
+      opponent: passOpponent,
+    })
+    /** 魔弾の置き場ごとに、ダイスが載っているか */
+    const filled = () =>
+      [...mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot')].map((e) =>
+        e.classList.contains('is-filled'),
+      )
+    await user.click(mySeat().getByRole('button', { name: '1の目' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '魔弾の2つ目の枠に置く' }))
+    expect(filled()).toEqual([false, true])
+    await user.click(button('決定'))
+    // 公開の間も、置いた枠のまま
+    expect(screen.getByText('あなたの魔弾 2点')).toBeTruthy()
+    expect(filled()).toEqual([false, true])
+    await settle()
+    // 2ステップ目も、置いた枠に残り、押せない
+    expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
+    expect(filled()).toEqual([false, true])
+    expect(mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot.is-settled')).toHaveLength(1)
+    expect(emptySlots('魔弾')).toHaveLength(0)
+    expect(myCard('魔弾').queryAllByRole('button', { name: /目/ })).toHaveLength(0)
   })
 
   it('ゾロ目が無いと反射には置けない', async () => {
@@ -813,7 +844,7 @@ describe('決着', () => {
     const mirror: Opponent = (s) => {
       const p = s.players[1]
       if (!p.usedCards.includes('fireball')) return { kind: 'fireball', dice: [0, 1] }
-      return { kind: 'bullet', dice: [2] }
+      return { kind: 'bullet', dice: [2, null] }
     }
     const user = await start({ rng: dice(six, six, six, six, six, six, six, six), opponent: mirror })
     // 毎ターン火球 6 と魔弾 2 を撃ち合う。相手と同じ手を指す

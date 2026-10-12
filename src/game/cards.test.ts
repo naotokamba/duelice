@@ -20,7 +20,7 @@ const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals 
 
 const SPEC: Case[] = [
   // 火球
-  // 目は置き場の順に並べる。火球は X の枠、つまり最初の置き場に置いた目が威力で、もう一つは支払うだけ
+  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。火球は X の枠、つまり最初の置き場に置いた目が威力で、もう一つは支払うだけ
   { name: '火球は X の枠に置いた目', a: s('fireball', 6, 2), b: s('pass'), expect: [0, 6] },
   { name: '火球は X の枠に小さい目を置けば、その目', a: s('fireball', 2, 6), b: s('pass'), expect: [0, 2] },
   { name: '火球は X の枠の目が障壁で減る', a: s('fireball', 3, 6), b: s('barrier', 2), expect: [0, 1] },

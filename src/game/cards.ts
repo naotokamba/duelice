@@ -29,7 +29,10 @@ export interface EffectPart {
  * 置き場の数は dice の最大、dice の最小を超える置き場は省いてもよい置き場として描く
  */
 export interface Face {
-  /** 最初の置き場の中に書く記号。置いた目が効果の値になる */
+  /**
+   * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
+   * ほかの置き場に置いたダイスは、払うだけのダイスになる
+   */
   mark?: string
   /** 置き場の間に書く記号 */
   join?: '+' | '='
@@ -49,20 +52,19 @@ export interface ActionDef {
   step?: 1 | 2
   /** 置くダイスが全て同じ目である必要がある */
   sameValues?: boolean
-  /**
-   * 置き場の順に意味がある。最初の置き場の目が効果の値になり、残りの置き場は支払うだけのダイスになる。
-   * 合法手は、どの目を最初の置き場に置くかで別の手として数える
-   */
-  ordered?: boolean
   /** 詠唱。置いた目以上のダメージをそのステップに受けると崩れる */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
   needsCharge?: boolean
-  /** 攻撃の威力。障壁や反射の前の値。vals は置き場の順に並んだ目 */
+  /**
+   * 攻撃の威力。障壁や反射の前の値。
+   * vals はダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす。
+   * face.mark のある行動では印の置き場が必ず埋まっているので、vals[0] が印の置き場の目になる
+   */
   power?: (vals: number[]) => number
   /** 障壁を無視する */
   piercing?: boolean
-  /** 受ける攻撃を減らす量 */
+  /** 受ける攻撃を減らす量。vals は power と同じ */
   guard?: (vals: number[]) => number
   /** 受ける攻撃を無効化して相手に返す */
   reflects?: boolean
@@ -88,7 +90,7 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     card: 'fireball',
     label: '火球',
     dice: [2],
-    ordered: true,
+    // X の枠に置いた目が威力になる。もう一つの枠は払うだけのダイス
     power: (v) => v[0],
     face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
   },
@@ -144,4 +146,17 @@ export const ACTION_KINDS = Object.keys(ACTION_DEFS) as ActionKind[]
 /** そのカードに属する行動の種類 */
 export function kindsOfCard(card: CardId): ActionKind[] {
   return ACTION_KINDS.filter((k) => ACTION_DEFS[k].card === card)
+}
+
+/** 行に並べる置き場の数 */
+export function slotsOf(def: ActionDef): number {
+  return Math.max(...def.dice)
+}
+
+/** face.mark を書く置き場。行の最初の置き場 */
+export const MARK_SLOT = 0
+
+/** 印の置き場に置いた目を効果の値にする行動か。そうなら印の置き場は空けられない */
+export function readsMark(def: ActionDef): boolean {
+  return def.face.mark !== undefined
 }

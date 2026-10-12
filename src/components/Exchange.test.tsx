@@ -51,7 +51,7 @@ describe('公開の舞台', () => {
     expect(s.bursts).toEqual([])
   })
   it('すり抜けられた障壁は薄くなる', () => {
-    const s = stage([2, 1, 1], { kind: 'bullet', dice: [0] }, [6, 1, 1], { kind: 'barrier', dice: [0] })
+    const s = stage([2, 1, 1], { kind: 'bullet', dice: [0, null] }, [6, 1, 1], { kind: 'barrier', dice: [0] })
     // 貫通する攻撃の矢印には、カードと同じ串刺しの星が付く
     expect(s.one('.stance.is-pierced')).not.toBeNull()
     expect(s.one('.arrow .glyph-pierce')).not.toBeNull()
@@ -66,7 +66,7 @@ describe('公開の舞台', () => {
     expect(s.bursts).toEqual(['−6'])
   })
   it('撃ち合いでは二本の矢印が左右にずれてすれ違う', () => {
-    const s = stage([6, 4, 1], fire, [5, 1, 1], { kind: 'bullet', dice: [0] })
+    const s = stage([6, 4, 1], fire, [5, 1, 1], { kind: 'bullet', dice: [0, null] })
     const lefts = s.arrows.map((e) => (e as HTMLElement).style.left)
     expect(new Set(lefts).size).toBe(2)
     expect(s.bursts).toEqual(['−6', '−2'])

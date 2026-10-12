@@ -1,11 +1,12 @@
 // 画面の操作から行動を組み立てる処理。
 // プレイヤーは手元のダイスを、カードの置き場を一つずつ選んで置いていくので、その途中経過を扱う。
 // ダイスは選んだ置き場にそのまま入り、並べ替えたり空いた置き場へ詰めたりはしない。
+// 行動も置き場ごとにダイスを記録するので、決定した後も、公開でも次のステップでも、置いた置き場にそのまま残る。
 // 置く時点では目の組み合わせを問わない。行動にならない置き方なら、決定を押せない理由を返す。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
 import { ACTION_DEFS, type EffectPart, kindsOfCard } from './cards'
-import { freeDice, isLegal, legalActions } from './rules'
+import { fillsMark, freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
 
 /** カードに置いたダイス。置けるのは1ステップに1枚だけ。slots は置き場ごとのダイスで、空いた置き場は null */
@@ -25,19 +26,17 @@ export interface Settled {
 /**
  * このターンの1ステップ目に who が使ったダイス。盤の上の駒のように、ターンが変わるまでカードの置き場に残す。
  * 1ステップ目を解決してから次のターンまで返し、パスしたときや、まだ1ステップ目を解決していなければ null。
- * 行動には置いた置き場の位置は残らないので、ダイスは置き場の順に前から詰めて置く
+ * 行動は置き場ごとにダイスを記録しているので、置いた置き場にそのまま残る
  */
 export function firstStepDice(state: GameState, who: PlayerIndex): Settled | null {
   // 履歴はステップの順に並ぶので、このターンの最初の記録が1ステップ目になる
   const report = state.history.find((r) => r.turn === state.turn)
   const a = report?.actions[who]
   if (!a || a.kind === 'pass') return null
-  const def = ACTION_DEFS[a.kind]
-  const slots = Array.from({ length: Math.max(...def.dice) }, (_, k) => a.dice[k] ?? null)
-  return { card: def.card, kind: a.kind, slots }
+  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, slots: [...a.dice] }
 }
 
-/** 置いたダイスを置き場の順に並べる。空いた置き場は飛ばす。行動のダイスはこの順になる */
+/** 置いたダイスを置き場の順に並べる。空いた置き場は飛ばす */
 export function placedDice(placement: Placement | null): number[] {
   return placement?.slots.filter((d): d is number => d !== null) ?? []
 }
@@ -60,11 +59,18 @@ export function availableCards(state: GameState, who: PlayerIndex): Set<CardId> 
   return set
 }
 
-/** カードと置いたダイスから合法な行動を組み立てる。足りなければ null */
-export function composeAction(state: GameState, who: PlayerIndex, card: CardId, picked: number[]): Action | null {
+/**
+ * カードと置き場ごとのダイスから合法な行動を組み立てる。行動にならなければ null。
+ * 行動は置き場ごとのダイスをそのまま持ち、空けた置き場も空けたまま記録する
+ */
+export function composeAction(
+  state: GameState,
+  who: PlayerIndex,
+  card: CardId,
+  slots: (number | null)[],
+): Action | null {
   for (const kind of kindsNow(state, who, card)) {
-    if (!ACTION_DEFS[kind].dice.includes(picked.length)) continue
-    const a: Action = { kind, dice: picked }
+    const a: Action = { kind, dice: [...slots] }
     if (isLegal(state, who, a)) return a
   }
   return null
@@ -122,14 +128,17 @@ export const CANNOT_USE = 'この置き方では使えない'
 /**
  * 置いたダイスが行動にならないとき、決定を押せない理由を短く返す。行動になるなら null。
  * 理由は定義表の性質から決めるので、カードを足しても追従する。
- * 個数が足りなければ、あと何個置くか。同じ目を揃える行動なら、目が揃っていないこと
+ * 印の置き場が空いていれば、そこに置くこと。個数が足りなければ、あと何個置くか。
+ * 同じ目を揃える行動なら、目が揃っていないこと
  */
 export function placementIssue(state: GameState, who: PlayerIndex, placement: Placement): string | null {
   const picked = placedDice(placement)
-  if (composeAction(state, who, placement.card, picked)) return null
+  if (composeAction(state, who, placement.card, placement.slots)) return null
   const kind = kindsNow(state, who, placement.card)[0]
   if (kind === undefined) return CANNOT_USE
   const def = ACTION_DEFS[kind]
+  // 印の置き場の目が効果の値になるので、ほかの置き場が足りていても、まず印の置き場を埋めてもらう
+  if (!fillsMark(def, placement.slots)) return `${def.face.mark} の枠に置く`
   const missing = missingDice(def.dice, picked.length)
   if (missing !== null) return `${def.sameValues ? '同じ目を' : ''}あと${missing}個置く`
   const vals = picked.map((i) => state.players[who].roll[i])
@@ -152,7 +161,10 @@ export function placedKind(state: GameState, who: PlayerIndex, placement: Placem
   return kindsNow(state, who, placement.card)[0]
 }
 
-/** カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。vals は置き場の順に並んだ目 */
+/**
+ * カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。
+ * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす
+ */
 export function effectParts(kind: ActionKind, vals?: number[]): EffectPart[] {
   const def = ACTION_DEFS[kind]
   const sym = def.face.mark ?? def.face.sum

@@ -1,7 +1,7 @@
 // テスト用の道具。本番コードからは使わない
 
 import fc from 'fast-check'
-import { ACTION_DEFS } from '../game/cards'
+import { ACTION_DEFS, slotsOf } from '../game/cards'
 import { legalActions, newGame, nextTurn, resolveStep, turnOver } from '../game/rules'
 import type { Action, ActionKind, ChantState, GameState, PlayerState, Rng } from '../game/types'
 import { DEFAULT_CONFIG } from '../game/types'
@@ -37,10 +37,12 @@ export function makeState(a: SeatSetup, b: SeatSetup, step: 1 | 2 = 1): GameStat
   return { config: DEFAULT_CONFIG, turn: 1, step, players: [seat(a), seat(b)], history: [], winner: null }
 }
 
-/** 値だけで行動を作る。dice の位置は 0 から順に振る */
+/** 値だけで行動を作る。ダイス 0 から順に n 個を、前の置き場から詰めて置く */
 export function act(kind: ActionKind | 'pass', n = 0): Action {
   if (kind === 'pass') return { kind: 'pass' }
-  return { kind, dice: Array.from({ length: n || ACTION_DEFS[kind].dice[0] }, (_, i) => i) }
+  const def = ACTION_DEFS[kind]
+  const count = n || def.dice[0]
+  return { kind, dice: Array.from({ length: slotsOf(def) }, (_, i) => (i < count ? i : null)) }
 }
 
 export const dieArb = fc.integer({ min: 1, max: 6 })

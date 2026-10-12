@@ -8,7 +8,6 @@ import {
   kindsNow,
   type Placement,
   placeDie,
-  placedDice,
   placedKind,
   placementIssue,
   removeDie,
@@ -148,7 +147,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const last = game.history[game.history.length - 1]
   const showReveal = revealed && last !== undefined
   const choosing = !revealed && game.winner === null
-  const action = placement ? composeAction(game, 0, placement.card, placedDice(placement)) : null
+  const action = placement ? composeAction(game, 0, placement.card, placement.slots) : null
 
   const commit = (mine: Action) => {
     const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)

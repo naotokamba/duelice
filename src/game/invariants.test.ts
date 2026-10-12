@@ -4,8 +4,9 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { dieArb, makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, MARK_SLOT, readsMark, slotsOf } from './cards'
 import {
+  actionDice,
   actionKey,
   diceValues,
   isLegal,
@@ -17,7 +18,7 @@ import {
   strikes,
   turnOver,
 } from './rules'
-import type { Action, CardId, ChantState, GameState } from './types'
+import type { Action, ActionKind, CardId, ChantState, GameState } from './types'
 
 const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
 
@@ -57,6 +58,29 @@ const kindWithValsArb = fc
       .chain((n) => fc.tuple(fc.constant(kind), fc.array(dieArb, { minLength: n, maxLength: n }))),
   )
 
+/**
+ * 局面と、行動の種類と、その行の置き場ごとのダイスと、置き場の並べ替え。
+ * 空けた置き場、使い終わったダイス、同じダイスの重複も混ぜて、合法でない置き方も作る
+ */
+const placedArb = stateArb.chain((s) =>
+  fc.constantFrom(...ACTION_KINDS).chain((kind) => {
+    const n = slotsOf(ACTION_DEFS[kind])
+    const slots = [...Array(n).keys()]
+    return fc.tuple(
+      fc.constant(s),
+      fc.constant(kind),
+      fc.array(fc.constantFrom(null, 0, 1, 2), { minLength: n, maxLength: n }),
+      fc.shuffledSubarray(slots, { minLength: n, maxLength: n }),
+    )
+  }),
+)
+
+/** 威力と、障壁が減らす量 */
+const effectOf = (kind: ActionKind, vals: number[]) => [
+  ACTION_DEFS[kind].power?.(vals),
+  ACTION_DEFS[kind].guard?.(vals),
+]
+
 /** 局面と、その局面の双方の合法手から一つずつ */
 const stateWithActsArb = stateArb.chain((s) =>
   fc
@@ -76,7 +100,7 @@ describe('合法手の列挙', () => {
       }),
     )
   })
-  it('同じ種類と同じ目の組み合わせは重複しない。置き場の順に意味のある行動は、最初の目も見て区別する', () => {
+  it('同じ種類と同じ目の組み合わせは重複しない。印の置き場の目を値にする行動は、印の置き場の目も見て区別する', () => {
     fc.assert(
       fc.property(stateArb, (s) => {
         for (const who of [0, 1] as const) {
@@ -86,34 +110,91 @@ describe('合法手の列挙', () => {
       }),
     )
   })
-  it('列挙から漏れた合法手は無い。全てのダイスの並びを試して、合法なら同じ手が列挙にある', () => {
+  it('列挙から漏れた合法手は無い。全ての置き場に、空けるかどのダイスを置くかを全て試して、合法なら同じ手が列挙にある', () => {
+    /** n 個の置き場の、空けるかダイス 0 から 2 を置くかの全ての組 */
+    const allSlots = (n: number): (number | null)[][] =>
+      n === 0 ? [[]] : allSlots(n - 1).flatMap((rest) => [null, 0, 1, 2].map((d) => [d, ...rest]))
     fc.assert(
       fc.property(stateArb, (s) => {
         for (const who of [0, 1] as const) {
           const p = s.players[who]
           const listed = new Set(legalActions(s, who).map((a) => actionKey(p, a)))
           for (const kind of ACTION_KINDS) {
-            for (const i of [0, 1, 2])
-              for (const j of [0, 1, 2]) {
-                for (const dice of [[i], [i, j]]) {
-                  const a: Action = { kind, dice }
-                  if (!isLegal(s, who, a)) continue
-                  expect(listed.has(actionKey(p, a))).toBe(true)
-                }
-              }
+            for (const dice of allSlots(slotsOf(ACTION_DEFS[kind]))) {
+              const a: Action = { kind, dice }
+              if (!isLegal(s, who, a)) continue
+              expect(listed.has(actionKey(p, a))).toBe(true)
+            }
           }
         }
       }),
     )
   })
-  it('同じ手とみなした行動は効果も同じ。順に意味の無い行動は目を並べ替えても、順に意味のある行動は最初の目を残して並べ替えても変わらない', () => {
+  it('同じ手とみなした行動は効果も同じ。印の置き場の目を値にする行動は印の目を残して、ほかの行動は目を全て並べ替えても変わらない', () => {
     fc.assert(
       fc.property(kindWithValsArb, ([kind, vals]) => {
-        const def = ACTION_DEFS[kind]
-        const keep = def.ordered ? 1 : 0
+        const keep = readsMark(ACTION_DEFS[kind]) ? 1 : 0
         const moved = [...vals.slice(0, keep), ...vals.slice(keep).reverse()]
-        const effect = (v: number[]) => [def.power?.(v), def.guard?.(v)]
-        expect(effect(moved)).toEqual(effect(vals))
+        expect(effectOf(kind, moved)).toEqual(effectOf(kind, vals))
+      }),
+    )
+  })
+  it('行動の長さはその行の置き場の数。合わなければ合法でない', () => {
+    fc.assert(
+      fc.property(stateArb, (s) => {
+        for (const who of [0, 1] as const) {
+          for (const a of legalActions(s, who)) {
+            if (a.kind === 'pass') continue
+            expect(a.dice.length).toBe(slotsOf(ACTION_DEFS[a.kind]))
+            expect(isLegal(s, who, { kind: a.kind, dice: [...a.dice, null] })).toBe(false)
+            expect(isLegal(s, who, { kind: a.kind, dice: a.dice.slice(1) })).toBe(false)
+          }
+        }
+      }),
+    )
+  })
+})
+
+describe('置き場', () => {
+  it('印の置き場を持たない行動は、ダイスを置き場の間で動かしても、合法かどうかも効果も同じ手かどうかも変わらない', () => {
+    fc.assert(
+      fc.property(placedArb, ([s, kind, dice, order]) => {
+        fc.pre(!readsMark(ACTION_DEFS[kind]))
+        const a: Action = { kind, dice }
+        const b: Action = { kind, dice: order.map((k) => dice[k]) }
+        for (const who of [0, 1] as const) {
+          const p = s.players[who]
+          expect(isLegal(s, who, b)).toBe(isLegal(s, who, a))
+          if (!isLegal(s, who, a)) continue
+          expect(effectOf(kind, diceValues(p, b))).toEqual(effectOf(kind, diceValues(p, a)))
+          expect(actionKey(p, b)).toBe(actionKey(p, a))
+        }
+      }),
+    )
+  })
+  it('印の置き場を持つ行動は、印の置き場が空なら合法でなく、印の置き場の目を残してほかを動かしても、合法かどうかも効果も変わらない', () => {
+    fc.assert(
+      fc.property(placedArb, ([s, kind, dice, order]) => {
+        fc.pre(readsMark(ACTION_DEFS[kind]))
+        const a: Action = { kind, dice }
+        // 印の置き場はそのままにして、ほかの置き場の中だけで並べ替える
+        const others = order.filter((k) => k !== MARK_SLOT)
+        const rest = dice.map((_, k) => k).filter((k) => k !== MARK_SLOT)
+        const moved = [...dice]
+        rest.forEach((k, i) => {
+          moved[k] = dice[others[i]]
+        })
+        const b: Action = { kind, dice: moved }
+        for (const who of [0, 1] as const) {
+          const p = s.players[who]
+          if (dice[MARK_SLOT] === null) expect(isLegal(s, who, a)).toBe(false)
+          expect(isLegal(s, who, b)).toBe(isLegal(s, who, a))
+          if (!isLegal(s, who, a)) continue
+          // 合法なら、置き場の順に並べた目の最初が印の置き場の目になる
+          expect(diceValues(p, a)[0]).toBe(p.roll[dice[MARK_SLOT] ?? -1])
+          expect(effectOf(kind, diceValues(p, b))).toEqual(effectOf(kind, diceValues(p, a)))
+          expect(actionKey(p, b)).toBe(actionKey(p, a))
+        }
       }),
     )
   })
@@ -195,7 +276,7 @@ describe('状態の更新', () => {
           expect(new Set(after.usedCards).size).toBe(after.usedCards.length)
           const a = acts[i]
           if (a.kind !== 'pass') {
-            expect(after.usedDice).toEqual(expect.arrayContaining(a.dice))
+            expect(after.usedDice).toEqual(expect.arrayContaining(actionDice(a)))
             expect(after.usedCards).toContain(ACTION_DEFS[a.kind].card)
           }
           expect(after.roll).toEqual(before.roll)

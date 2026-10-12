@@ -8,8 +8,12 @@ export type CardId = 'fireball' | 'barrier' | 'bullet' | 'spear' | 'reflect'
 /** 行動の種類。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
 export type ActionKind = 'fireball' | 'barrier' | 'bullet' | 'spearChant' | 'spearCast' | 'reflect'
 
-/** dice はそのターンに振ったダイスの位置。値は roll から引く */
-export type Action = { kind: 'pass' } | { kind: ActionKind; dice: number[] }
+/**
+ * dice はカードの行の置き場ごとに、置いたダイスの番号を書く。空けた置き場は null。
+ * 長さはその行の置き場の数。ダイスの番号はそのターンに振ったダイスの位置で、値は roll から引く。
+ * 盤の上と同じく、どの置き場に何を置いたかだけを記録し、置いた順は持たない
+ */
+export type Action = { kind: 'pass' } | { kind: ActionKind; dice: (number | null)[] }
 
 export type ChantState = 'none' | 'charged' | 'broken'
 
