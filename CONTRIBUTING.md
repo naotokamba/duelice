@@ -27,7 +27,7 @@ git push origin v0.6.0
 
 ## 決めたことと、決まっていないこと
 
-ルールや画面の設計で決めたことは「ダイス対戦ゲーム 確定ルール」 https://claude.ai/artifact/PQCZKHmHFyKFYyekdjU1q8 に残している。まだ決まっていないことや直したいことは GitHub の issue に置く。
+決めたことは、コードとテストがそのまま記録になっている。まだ決まっていないことや直したいことは GitHub の issue に置く。
 
 ## 書き方
 
