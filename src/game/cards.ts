@@ -1,8 +1,7 @@
 // カードの定義表。カードに関する知識はここに集める。
-// ルール本体と画面はこの表を読むだけなので、カードを足すときは原則ここに書けば追従する。
-// 既存の性質で表せない新しい仕組みが必要なときだけ、ActionDef に性質を足し、rules.ts でその性質を処理する。
-
-import type { ActionKind, CardId } from './types'
+// カードと行動の種類の名前もこの表から決まり、ほかのファイルはカードを名前で呼ばずに表の性質だけを読む。
+// カードを足すときは原則ここに書けば、ルールも画面も追従する。
+// 既存の性質で表せない新しい仕組みが必要なときだけ ActionDef に性質を足し、その性質で分岐する。
 
 /** カードの効果は文で書かず、ActionDef の face から置き場と短い文で描く */
 export interface CardDef {
@@ -15,7 +14,7 @@ export interface CardDef {
  * reflect は受けた攻撃を返す、chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'reflect' | 'chant'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'bounce' | 'chant'
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -82,18 +81,25 @@ export interface ActionDef {
   face: Face
 }
 
-/** 画面に並べる順 */
-export const CARD_ORDER: readonly CardId[] = ['fireball', 'barrier', 'bullet', 'spear', 'reflect']
-
-export const CARD_DEFS: Record<CardId, CardDef> = {
+/** カードの表。並びは画面に並べる順 */
+const CARDS = {
   fireball: { name: '火球' },
   barrier: { name: '障壁' },
   bullet: { name: '魔弾' },
   spear: { name: '雷槍' },
   reflect: { name: '反射' },
-}
+} satisfies Record<string, CardDef>
 
-export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
+/** カードの種類。表に足すと増える */
+export type CardId = keyof typeof CARDS
+
+export const CARD_DEFS: Record<CardId, CardDef> = CARDS
+
+/** 画面に並べる順 */
+export const CARD_ORDER = Object.keys(CARDS) as readonly CardId[]
+
+/** 行動の表。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
+const ACTIONS = {
   fireball: {
     card: 'fireball',
     label: '火球',
@@ -144,31 +150,29 @@ export const ACTION_DEFS: Record<ActionKind, ActionDef> = {
     sameValues: true,
     reflects: true,
     done: '反射を構えた',
-    face: { join: '=', effect: [{ icon: 'reflect' }] },
+    face: { join: '=', effect: [{ icon: 'bounce' }] },
   },
-}
+} satisfies Record<string, ActionDef>
 
-export const ACTION_KINDS = Object.keys(ACTION_DEFS) as ActionKind[]
+/** 行動の種類。表に足すと増える */
+export type ActionKind = keyof typeof ACTIONS
+
+export const ACTION_DEFS: Record<ActionKind, ActionDef> = ACTIONS
+
+export const ACTION_KINDS = Object.keys(ACTIONS) as ActionKind[]
 
 /** そのカードに属する行動の種類 */
 export function kindsOfCard(card: CardId): ActionKind[] {
   return ACTION_KINDS.filter((k) => ACTION_DEFS[k].card === card)
 }
 
-/** 行に並べる置き場の数 */
-export function slotsOf(def: ActionDef): number {
-  return Math.max(...def.dice)
+/**
+ * 効果の値。攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる印の置き場の目。
+ * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの
+ */
+export function effectValue(def: ActionDef, vals: number[]): number {
+  return def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
 }
 
-/** 空けられない置き場の数。行の前からこの数の置き場は必ず埋める。残りは省いてもよい置き場 */
-export function requiredSlots(def: ActionDef): number {
-  return Math.min(...def.dice)
-}
-
-/** face.mark を書く置き場。行の最初の置き場で、空けられない置き場に含まれる */
-export const MARK_SLOT = 0
-
-/** 印の置き場に置いた目を効果の値にする行動か */
-export function readsMark(def: ActionDef): boolean {
-  return def.face.mark !== undefined
-}
+/** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */
+export const GUARD_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.guard)?.label ?? ''

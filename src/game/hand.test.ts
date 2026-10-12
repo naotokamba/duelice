@@ -1,30 +1,34 @@
-// 画面の操作から行動を組み立てる処理のテスト
+// 手元の操作のテスト。決定するまでの、カードに置きかけたダイスと持ち上げたダイスの扱い
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { makeState, rollArb, seeded } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, requiredSlots, slotsOf } from './cards'
+import { makeState, rollArb, stateArb } from '../test/helpers'
+import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, type CardId } from './cards'
+import { effectParts } from './face'
 import {
-  availableCards,
-  CANNOT_USE,
   canPut,
   composeAction,
-  effectParts,
-  FILL_LEFT,
-  faceParts,
-  firstStepDice,
+  draftAction,
+  draftIssue,
+  draftRow,
+  EMPTY_HAND,
+  type Hand,
+  type HandEvent,
+  type Issue,
   kindsNow,
   missingDice,
   type Placement,
   placeDie,
-  placedDice,
-  placedKind,
   placementIssue,
+  reduceHand,
   removeDie,
-  slotCount,
-} from './compose'
-import { diceValues, isLegal, legalActions, nextTurn, resolveStep } from './rules'
-import type { CardId, GameState } from './types'
+  rowNow,
+  targets,
+  usableCards,
+} from './hand'
+import { diceValues, freeDice, isLegal, legalActions } from './rules'
+import { slotsOf } from './slots'
+import type { GameState } from './types'
 
 describe('行動の組み立て', () => {
   it('画面の操作で全ての行動を作れる', () => {
@@ -88,7 +92,7 @@ describe('行動の組み立て', () => {
         const fromLegal = new Set(
           legalActions(s, 0).flatMap((a) => (a.kind === 'pass' ? [] : [ACTION_DEFS[a.kind].card])),
         )
-        expect(availableCards(s, 0)).toEqual(fromLegal)
+        expect(usableCards(s, 0)).toEqual(fromLegal)
       }),
     )
   })
@@ -104,6 +108,12 @@ describe('ステップごとの行動', () => {
     expect(kindsNow(broken, 0, 'spear')).toEqual([])
   })
 })
+
+/** 今のステップにそのカードへ並べる置き場の数。置ける行が無ければ 0 */
+function slotsNow(s: GameState, card: CardId): number {
+  const kind = rowNow(s, 0, card)
+  return kind ? slotsOf(ACTION_DEFS[kind]) : 0
+}
 
 /** dice を card の最初の置き場から順に置いていく。途中で置けなければ null */
 function placeAll(s: GameState, card: CardId, dice: number[]): Placement | null {
@@ -141,9 +151,9 @@ describe('ダイスを置く', () => {
         fc.boolean(),
         (roll, card, order, step2) => {
           const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
-          const n = slotCount(s, 0, card)
+          const n = slotsNow(s, card)
           const pl = placeAll(s, card, order)
-          const fits = availableCards(s, 0).has(card) && order.length <= n
+          const fits = usableCards(s, 0).has(card) && order.length <= n
           expect(pl !== null).toBe(fits)
           if (pl === null) return
           // 理由が出ないのは、行動になるときだけ
@@ -166,7 +176,7 @@ describe('ダイスを置く', () => {
   })
   it('置き場の外には置けない', () => {
     const s = makeState({ roll: [6, 6, 2] }, { roll: [1, 2, 3] })
-    expect(slotCount(s, 0, 'barrier')).toBe(1)
+    expect(slotsNow(s, 'barrier')).toBe(1)
     expect(placeAll(s, 'barrier', [0])).toEqual({ card: 'barrier', slots: [0] })
     expect(placeDie(s, 0, null, 'barrier', 0, 1)).toBeNull()
     expect(placeDie(s, 0, null, 'barrier', 0, -1)).toBeNull()
@@ -174,7 +184,7 @@ describe('ダイスを置く', () => {
   })
   it('置き場の無いカードには置けない', () => {
     const s = makeState({ roll: [6, 5, 4], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
-    expect(slotCount(s, 0, 'spear')).toBe(0)
+    expect(slotsNow(s, 'spear')).toBe(0)
     expect(placeDie(s, 0, null, 'spear', 0, 0)).toBeNull()
   })
   it('行動は置いた置き場をそのまま記録する。火球は X の枠に置いた目が威力になる', () => {
@@ -252,111 +262,21 @@ describe('ダイスを置く', () => {
     expect(removeDie(fire, 2)).toEqual(fire)
     expect(removeDie({ card: 'barrier', slots: [2] }, 2)).toBeNull()
     expect(removeDie(null, 0)).toBeNull()
-    expect(placedDice(null)).toEqual([])
   })
   it('雷槍は一ステップ目は詠唱、二ステップ目は発動の行に置く', () => {
     const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
-    expect(placedKind(s1, 0, { card: 'spear', slots: [0] })).toBe('spearChant')
-    expect(slotCount(s1, 0, 'spear')).toBe(1)
+    expect(rowNow(s1, 0, 'spear')).toBe('spearChant')
+    expect(slotsNow(s1, 'spear')).toBe(1)
     const s2 = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
-    expect(placedKind(s2, 0, { card: 'spear', slots: [0, null] })).toBe('spearCast')
-    expect(slotCount(s2, 0, 'spear')).toBe(2)
-  })
-})
-
-describe('カード面', () => {
-  /** 効果の部品を、読み比べやすい一行にする */
-  const flat = (parts: ReturnType<typeof effectParts>) =>
-    parts.map((p) => [p.icon, p.value, p.text].filter(Boolean).join(':')).join(' ')
-  it.each([
-    ['fireball', [6, 2], 'damage:6'],
-    ['fireball', [2, 6], 'damage:2'],
-    ['barrier', [4], 'guard:4'],
-    ['spearChant', [5], 'chant:5'],
-    ['spearCast', [6, 5], 'damage:11'],
-    ['reflect', [2, 2], 'reflect'],
-    ['bullet', [3], 'pierce:2'],
-    ['bullet', [3, 1], 'pierce:3'],
-  ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
-    expect(flat(effectParts(kind, [...vals]))).toBe(want)
-  })
-  it('目が決まるまでは記号のまま。記号の無い行動は、空けられない置き場だけを埋めた値を出す', () => {
-    expect(flat(effectParts('fireball'))).toBe('damage:X')
-    expect(flat(effectParts('spearChant'))).toBe('chant:X')
-    expect(flat(effectParts('spearCast'))).toBe('damage:Y')
-    expect(flat(effectParts('bullet'))).toBe('pierce:2')
-    expect(flat(effectParts('reflect'))).toBe('reflect')
-  })
-  it('点線の枠にも置くと値が増えるなら、増えた値を添える。点線の枠まで埋めたら添えない', () => {
-    expect(effectParts('bullet')).toEqual([{ icon: 'pierce', value: '2', full: '3' }])
-    expect(effectParts('bullet', [3])).toEqual([{ icon: 'pierce', value: '2', full: '3' }])
-    expect(effectParts('bullet', [3, 1])).toEqual([{ icon: 'pierce', value: '3' }])
-    // 点線の枠の無い行動には添えない
-    expect(effectParts('fireball', [6, 2])).toEqual([{ icon: 'damage', value: '6' }])
-  })
-  it('記号の無い行動は、値を書かない印にだけ値を入れる。文や、値を書いた印はそのまま', () => {
-    // 点線の枠を持ち、文と、値を書いた印も並べた仮のカード
-    const def = {
-      ...ACTION_DEFS.bullet,
-      face: { effect: [{ text: '追加' }, { icon: 'pierce' as const }, { icon: 'guard' as const, value: '1' }] },
-    }
-    expect(faceParts(def, [4])).toEqual([
-      { text: '追加' },
-      { icon: 'pierce', value: '2', full: '3' },
-      { icon: 'guard', value: '1' },
-    ])
-  })
-  it('点線の枠に書く記号は、そこに置くと増える量と揃う', () => {
-    for (const kind of ACTION_KINDS) {
-      const def = ACTION_DEFS[kind]
-      const optional = slotsOf(def) - requiredSlots(def)
-      if (def.face.extra === undefined) continue
-      // 点線の枠があるときだけ記号を書く
-      expect(optional, kind).toBeGreaterThan(0)
-      for (let n = requiredSlots(def); n < slotsOf(def); n++) {
-        const more = (def.power?.(Array(n + 1).fill(1)) ?? 0) - (def.power?.(Array(n).fill(1)) ?? 0)
-        expect(`+${more}`, kind).toBe(def.face.extra)
-      }
-    }
-  })
-  it('1枚のカードが1つのステップに使える行動は1つ。カード面の1行が1ステップぶんになる', () => {
-    for (const card of CARD_ORDER) {
-      for (const step of [1, 2] as const) {
-        const s = makeState({ roll: [6, 6, 6], chant: 'charged' }, { roll: [1, 2, 3] }, step)
-        expect(kindsNow(s, 0, card).length).toBeLessThanOrEqual(1)
-      }
-    }
-  })
-  it('同じ目を求める行動は置き場を = でつなぎ、合計を名付ける行動は + でつなぐ', () => {
-    for (const kind of ACTION_KINDS) {
-      const def = ACTION_DEFS[kind]
-      if (def.sameValues) expect(def.face.join).toBe('=')
-      if (def.face.sum) expect(def.face.join).toBe('+')
-    }
-  })
-  it('効果の印は行動の性質と食い違わない', () => {
-    for (const kind of ACTION_KINDS) {
-      const def = ACTION_DEFS[kind]
-      const icons = new Set(def.face.effect.map((p) => p.icon).filter(Boolean))
-      // 攻撃は、貫通するかどうかで星の印を使い分ける
-      expect(icons.has('damage'), kind).toBe(!!def.power && !def.piercing)
-      expect(icons.has('pierce'), kind).toBe(!!def.power && !!def.piercing)
-      expect(icons.has('guard'), kind).toBe(!!def.guard)
-      expect(icons.has('reflect'), kind).toBe(!!def.reflects)
-      expect(icons.has('chant'), kind).toBe(!!def.chant)
-    }
-  })
-  it('置き場の記号は、どの行動でも効果に現れる', () => {
-    for (const kind of ACTION_KINDS) {
-      const { face } = ACTION_DEFS[kind]
-      const written = face.effect.map((p) => `${p.value ?? ''}${p.text ?? ''}`).join(' ')
-      for (const sym of [face.mark, face.sum]) if (sym) expect(written).toContain(sym)
-    }
+    expect(rowNow(s2, 0, 'spear')).toBe('spearCast')
+    expect(slotsNow(s2, 'spear')).toBe(2)
   })
 })
 
 describe('決定を押せない理由', () => {
   const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
+  const more = (count: number, same = false): Issue => ({ type: 'more', count, same })
+  const UNUSABLE: Issue = { type: 'unusable' }
   it('行動になる置き方なら理由は無い', () => {
     expect(placementIssue(s, 0, { card: 'fireball', slots: [1, 0] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 2] })).toBeNull()
@@ -365,22 +285,21 @@ describe('決定を押せない理由', () => {
     expect(placementIssue(s, 0, { card: 'bullet', slots: [1, 0] })).toBeNull()
   })
   it('点線の枠だけに置いて空けられない置き場が空いていれば、左の枠に置くよう伝える', () => {
-    expect(FILL_LEFT).toBe('左の枠に置く')
-    expect(placementIssue(s, 0, { card: 'bullet', slots: [null, 1] })).toBe(FILL_LEFT)
+    expect(placementIssue(s, 0, { card: 'bullet', slots: [null, 1] })).toEqual({ type: 'left' })
   })
   it('個数が足りなければ、あと何個置くかを出す', () => {
-    expect(placementIssue(s, 0, { card: 'fireball', slots: [1, null] })).toBe('あと1個置く')
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [1, null] })).toEqual(more(1))
     const charged = makeState({ roll: [3, 5, 3], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 1] })).toBe('あと1個置く')
+    expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 1] })).toEqual(more(1))
   })
   it('印の置き場が空いていれば、ほかの置き場が足りていても、まず印の置き場に置くよう伝える', () => {
-    expect(placementIssue(s, 0, { card: 'fireball', slots: [null, 0] })).toBe('X の枠に置く')
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [null, 0] })).toEqual({ type: 'mark', mark: 'X' })
     // 印の無い行動は、どの置き場が空いていても印のことは言わない
-    expect(placementIssue(s, 0, { card: 'reflect', slots: [null, 0] })).toBe('同じ目をあと1個置く')
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [null, 0] })).toEqual(more(1, true))
   })
   it('同じ目を揃える行動は、揃える目の数で伝える', () => {
-    expect(placementIssue(s, 0, { card: 'reflect', slots: [1, null] })).toBe('同じ目をあと1個置く')
-    expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 1] })).toBe('同じ目を2個置く')
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [1, null] })).toEqual(more(1, true))
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 1] })).toEqual({ type: 'same', count: 2 })
   })
   it('置ける個数になるまでの残りを数える。個数を選べるなら、一番近い個数を目指す', () => {
     expect(missingDice([2], 1)).toBe(1)
@@ -396,49 +315,219 @@ describe('決定を押せない理由', () => {
   it('同じ目が揃っていても、ほかの理由で使えなければ同じ目のことは言わない', () => {
     // 使用済みのダイスで、同じ目が揃っている
     const used = makeState({ roll: [3, 3, 3], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(used, 0, { card: 'reflect', slots: [0, 2] })).toBe(CANNOT_USE)
+    expect(placementIssue(used, 0, { card: 'reflect', slots: [0, 2] })).toEqual(UNUSABLE)
     // 同じ目を求めない行動は、違う目でも同じ目のことは言わない
     const mixed = makeState({ roll: [3, 5, 6], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(mixed, 0, { card: 'fireball', slots: [0, 2] })).toBe(CANNOT_USE)
+    expect(placementIssue(mixed, 0, { card: 'fireball', slots: [0, 2] })).toEqual(UNUSABLE)
   })
   it('決まった理由に当たらなければ、使えないとだけ伝える', () => {
-    expect(CANNOT_USE).toBe('この置き方では使えない')
     // 使用済みのダイスが置き場に残っている
     const used = makeState({ roll: [3, 5, 3], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(used, 0, { card: 'barrier', slots: [2] })).toBe(CANNOT_USE)
+    expect(placementIssue(used, 0, { card: 'barrier', slots: [2] })).toEqual(UNUSABLE)
     // 今のステップで使える行の無いカード
     const broken = makeState({ roll: [3, 5, 3], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(broken, 0, { card: 'spear', slots: [0] })).toBe(CANNOT_USE)
+    expect(placementIssue(broken, 0, { card: 'spear', slots: [0] })).toEqual(UNUSABLE)
   })
 })
 
-describe('1ステップ目のダイス', () => {
-  const start = makeState({ roll: [6, 2, 5] }, { roll: [3, 3, 1] })
-  it('1ステップ目を解決するまでは、カードに残るダイスは無い', () => {
-    expect(firstStepDice(start, 0)).toBeNull()
-    expect(firstStepDice(start, 1)).toBeNull()
+describe('手元への操作', () => {
+  const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
+  /** 操作を順に受けた後の手元 */
+  const run = (state: GameState, ...events: HandEvent[]): Hand =>
+    events.reduce((h, e) => reduceHand(state, 0, h, e), EMPTY_HAND)
+
+  it('手元のダイスを押すと持ち上げ、もう一度押すと下ろす。別のダイスを押せば持ち替える', () => {
+    expect(run(s, { type: 'tapTray', die: 0 }).held).toBe(0)
+    expect(run(s, { type: 'tapTray', die: 0 }, { type: 'tapTray', die: 0 }).held).toBeNull()
+    expect(run(s, { type: 'tapTray', die: 0 }, { type: 'tapTray', die: 1 }).held).toBe(1)
   })
-  it('2ステップ目には、双方が1ステップ目に使ったダイスが、置いた置き場のままカードに残る', () => {
-    const s = resolveStep(start, [
-      { kind: 'fireball', dice: [1, 0] },
-      { kind: 'reflect', dice: [0, 1] },
-    ])
-    expect(firstStepDice(s, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
-    expect(firstStepDice(s, 1)).toEqual({ card: 'reflect', kind: 'reflect', slots: [0, 1] })
-    // 2ステップ目を解決しても、ターンが変わるまでは残る
-    const after = resolveStep(s, [{ kind: 'pass' }, { kind: 'pass' }])
-    expect(firstStepDice(after, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
-    // ターンが変わると片付く
-    expect(firstStepDice(nextTurn(after, seeded(1)), 0)).toBeNull()
+  it('使用済みのダイスは持ち上げられない', () => {
+    const used = makeState({ roll: [6, 4, 2], usedDice: [0] }, { roll: [1, 2, 3] }, 2)
+    expect(run(used, { type: 'tapTray', die: 0 }).held).toBeNull()
+    expect(run(used, { type: 'grab', die: 0 }).held).toBeNull()
   })
-  it('省いた置き場は空いたまま残り、パスなら何も残らない', () => {
-    // 点線の枠を省いた魔弾は、点線の枠が空いたまま残る
-    const s = resolveStep(start, [{ kind: 'bullet', dice: [2, null] }, { kind: 'pass' }])
-    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
-    expect(firstStepDice(s, 1)).toBeNull()
+  it('持っているダイスを置き場に置く。何も持っていなければ置き場を押しても何も起きない', () => {
+    const h = run(s, { type: 'tapTray', die: 1 }, { type: 'put', card: 'fireball', slot: 1 })
+    expect(h).toEqual({ draft: { card: 'fireball', slots: [null, 1] }, held: null })
+    expect(run(s, { type: 'put', card: 'fireball', slot: 0 })).toEqual(EMPTY_HAND)
   })
-  it('詠唱のダイスは、詠唱の行に残る', () => {
-    const s = resolveStep(start, [{ kind: 'spearChant', dice: [0] }, { kind: 'pass' }])
-    expect(firstStepDice(s, 0)).toEqual({ card: 'spear', kind: 'spearChant', slots: [0] })
+  it('引きずって落とした置き場には、引きずったダイスが入る', () => {
+    const h = run(s, { type: 'grab', die: 2 }, { type: 'put', card: 'barrier', slot: 0, die: 2 })
+    expect(h).toEqual({ draft: { card: 'barrier', slots: [2] }, held: null })
+  })
+  it('置けない置き場に置こうとしても配置は変わらず、持っていたダイスは下ろす', () => {
+    const before = run(s, { type: 'put', card: 'fireball', slot: 0, die: 0 })
+    // ゾロ目が無いので反射は使えない
+    const after = reduceHand(s, 0, { ...before, held: 1 }, { type: 'put', card: 'reflect', slot: 0 })
+    expect(after).toEqual({ draft: before.draft, held: null })
+  })
+  it('置き場のダイスを押すと、ダイスを持っていれば入れ替え、持っていなければ手元に戻す', () => {
+    const placed = run(
+      s,
+      { type: 'put', card: 'fireball', slot: 0, die: 0 },
+      { type: 'put', card: 'fireball', slot: 1, die: 1 },
+    )
+    expect(placed.draft).toEqual({ card: 'fireball', slots: [0, 1] })
+    const swapped = run(
+      s,
+      { type: 'put', card: 'fireball', slot: 0, die: 0 },
+      { type: 'tapTray', die: 2 },
+      {
+        type: 'tapPlaced',
+        card: 'fireball',
+        slot: 0,
+        die: 0,
+      },
+    )
+    // 埋まった置き場に手元のダイスを置くと、あったダイスは手元に戻る
+    expect(swapped).toEqual({ draft: { card: 'fireball', slots: [2, null] }, held: null })
+    const back = reduceHand(s, 0, placed, { type: 'tapPlaced', card: 'fireball', slot: 0, die: 0 })
+    expect(back).toEqual({ draft: { card: 'fireball', slots: [null, 1] }, held: null })
+  })
+  it('置いたダイスを同じカードの別の置き場へ引きずると、移した先のダイスと入れ替わる', () => {
+    const placed: Hand = { draft: { card: 'fireball', slots: [0, 1] }, held: null }
+    const moved = run(
+      s,
+      { type: 'put', card: 'fireball', slot: 0, die: 0 },
+      { type: 'put', card: 'fireball', slot: 1, die: 1 },
+      { type: 'grab', die: 0 },
+      { type: 'put', card: 'fireball', slot: 1, die: 0 },
+    )
+    expect(moved).toEqual({ draft: { card: 'fireball', slots: [1, 0] }, held: null })
+    expect(reduceHand(s, 0, placed, { type: 'takeBack', die: 1 })).toEqual({
+      draft: { card: 'fireball', slots: [0, null] },
+      held: null,
+    })
+  })
+  it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
+    const h = run(
+      s,
+      { type: 'put', card: 'fireball', slot: 0, die: 0 },
+      { type: 'put', card: 'barrier', slot: 0, die: 1 },
+    )
+    expect(h.draft).toEqual({ card: 'barrier', slots: [1] })
+  })
+  it('カードの名前を押すと、持っていたダイスは置かずに下ろす。別のカードなら置いたダイスも戻し、同じカードならそのまま', () => {
+    const placed = run(s, { type: 'put', card: 'barrier', slot: 0, die: 0 }, { type: 'tapTray', die: 1 })
+    expect(reduceHand(s, 0, placed, { type: 'consider', card: 'barrier' })).toEqual({
+      draft: { card: 'barrier', slots: [0] },
+      held: null,
+    })
+    expect(reduceHand(s, 0, placed, { type: 'consider', card: 'fireball' })).toEqual(EMPTY_HAND)
+  })
+  it('どこにも落とさなければダイスを下ろすだけで、決定すると手元は空になる', () => {
+    const placed = run(s, { type: 'put', card: 'barrier', slot: 0, die: 0 }, { type: 'grab', die: 1 })
+    expect(reduceHand(s, 0, placed, { type: 'release' })).toEqual({ draft: placed.draft, held: null })
+    expect(reduceHand(s, 0, placed, { type: 'clear' })).toEqual(EMPTY_HAND)
+  })
+  it('持っているダイスを置ける置き場は、使えるカードの今の行の全ての置き場。持っていなければ無い', () => {
+    const held: Hand = { draft: null, held: 0 }
+    expect(targets(s, 0, held, 'fireball')).toEqual([0, 1])
+    expect(targets(s, 0, held, 'barrier')).toEqual([0])
+    expect(targets(s, 0, held, 'reflect')).toEqual([])
+    expect(targets(s, 0, EMPTY_HAND, 'fireball')).toEqual([])
+  })
+  it('置いたダイスから、カードの行と、行動か決定できない理由を読む', () => {
+    const half: Hand = { draft: { card: 'fireball', slots: [null, 1] }, held: null }
+    expect(draftRow(s, 0, half)).toEqual({ card: 'fireball', kind: 'fireball', slots: [null, 1] })
+    expect(draftAction(s, 0, half)).toBeNull()
+    expect(draftIssue(s, 0, half)).toEqual({ type: 'mark', mark: 'X' })
+    const full: Hand = { draft: { card: 'fireball', slots: [0, 1] }, held: null }
+    expect(draftAction(s, 0, full)).toEqual({ kind: 'fireball', dice: [0, 1] })
+    expect(draftIssue(s, 0, full)).toBeNull()
+    expect(draftRow(s, 0, EMPTY_HAND)).toBeNull()
+    expect(draftAction(s, 0, EMPTY_HAND)).toBeNull()
+    expect(draftIssue(s, 0, EMPTY_HAND)).toBeNull()
+  })
+})
+
+describe('手元への操作の性質', () => {
+  const eventArb: fc.Arbitrary<HandEvent> = fc.oneof(
+    fc.record({ type: fc.constant('tapTray' as const), die: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ type: fc.constant('grab' as const), die: fc.integer({ min: 0, max: 2 }) }),
+    fc.record(
+      {
+        type: fc.constant('put' as const),
+        card: fc.constantFrom(...CARD_ORDER),
+        slot: fc.integer({ min: -1, max: 2 }),
+        die: fc.integer({ min: 0, max: 2 }),
+      },
+      { requiredKeys: ['type', 'card', 'slot'] },
+    ),
+    fc.record({
+      type: fc.constant('tapPlaced' as const),
+      card: fc.constantFrom(...CARD_ORDER),
+      slot: fc.integer({ min: 0, max: 1 }),
+      die: fc.integer({ min: 0, max: 2 }),
+    }),
+    fc.record({ type: fc.constant('takeBack' as const), die: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ type: fc.constant('consider' as const), card: fc.constantFrom(...CARD_ORDER) }),
+    fc.constant({ type: 'release' as const }),
+    fc.constant({ type: 'clear' as const }),
+  )
+
+  /** 手元がいつも守る決まり */
+  function expectSound(state: GameState, hand: Hand) {
+    const free = freeDice(state.players[0])
+    if (hand.held !== null) expect(free).toContain(hand.held)
+    const { draft } = hand
+    if (!draft) return
+    // 置いたダイスは、このステップに使える空いたダイスだけで、重ならず、少なくとも一つある
+    const dice = draft.slots.filter((d): d is number => d !== null)
+    expect(dice.length).toBeGreaterThan(0)
+    expect(new Set(dice).size).toBe(dice.length)
+    for (const d of dice) expect(free).toContain(d)
+    // 使えるカードの、今の行の置き場の数だけ並ぶ
+    expect(usableCards(state, 0).has(draft.card)).toBe(true)
+    const kind = rowNow(state, 0, draft.card)
+    expect(kind).toBeDefined()
+    expect(draft.slots).toHaveLength(slotsOf(ACTION_DEFS[kind ?? 'fireball']))
+    // 理由が出ないのは行動になるときだけで、行動は置いた置き場をそのまま持つ合法手
+    const a = draftAction(state, 0, hand)
+    expect(draftIssue(state, 0, hand) === null).toBe(a !== null)
+    if (a && a.kind !== 'pass') {
+      expect(isLegal(state, 0, a)).toBe(true)
+      expect(a.dice).toEqual(draft.slots)
+    }
+  }
+
+  it('どんな操作を続けても、手元は決まりを守る', () => {
+    fc.assert(
+      fc.property(stateArb, fc.array(eventArb, { maxLength: 12 }), (state, events) => {
+        let hand = EMPTY_HAND
+        for (const e of events) {
+          const next = reduceHand(state, 0, hand, e)
+          expectSound(state, next)
+          // 決定すれば空になり、名前を押せば持っていたダイスを下ろし、別のカードなら置いたダイスも戻す
+          if (e.type === 'clear') expect(next).toEqual(EMPTY_HAND)
+          if (e.type === 'consider') {
+            expect(next.held).toBeNull()
+            expect(next.draft).toEqual(hand.draft?.card === e.card ? hand.draft : null)
+          }
+          // 手元に戻したダイスは置き場から消える
+          if (e.type === 'takeBack') expect(next.draft?.slots ?? []).not.toContain(e.die)
+          // 置けたなら、そのダイスはその置き場にあり、ほかの置き場には無い
+          if (e.type === 'put' && next.draft !== hand.draft && next.draft) {
+            const die = e.die ?? hand.held
+            expect(next.draft.card).toBe(e.card)
+            expect(next.draft.slots[e.slot]).toBe(die)
+            expect(next.draft.slots.filter((d) => d === die)).toHaveLength(1)
+          }
+          hand = next
+        }
+      }),
+    )
+  })
+  it('持っているダイスは、置ける置き場のどこに置いても、その置き場に入る', () => {
+    fc.assert(
+      fc.property(stateArb, fc.integer({ min: 0, max: 2 }), fc.constantFrom(...CARD_ORDER), (state, die, card) => {
+        const hand = reduceHand(state, 0, EMPTY_HAND, { type: 'tapTray', die })
+        for (const k of targets(state, 0, hand, card)) {
+          const next = reduceHand(state, 0, hand, { type: 'put', card, slot: k })
+          expect(next.draft?.slots[k]).toBe(die)
+          expect(canPut(state, 0, card, die)).toBe(true)
+        }
+      }),
+    )
   })
 })

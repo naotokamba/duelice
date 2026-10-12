@@ -4,21 +4,15 @@
 
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
-import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard, requiredSlots } from '../game/cards'
-import { effectParts, type Settled } from '../game/compose'
-import type { ActionKind, CardId } from '../game/types'
+import { ACTION_DEFS, type ActionKind, CARD_DEFS, CARD_ORDER, type CardId, kindsOfCard } from '../game/cards'
+import { effectParts } from '../game/face'
+import { filled, MARK_SLOT, type PlacedRow, requiredSlots, slotsOf } from '../game/slots'
 import { Die } from './Die'
 import { EffectGlyph } from './glyphs'
 import type { DragHandlers } from './useDiceDrag'
 
-/** カードに置いて見せるダイス */
-export interface Shown {
-  kind: ActionKind
-  /** 置き場ごとのダイス。空いた置き場は null */
-  slots: (number | null)[]
-  /** 行動として組み上がっている。効果の記号を値に置き換える */
-  complete: boolean
-}
+/** カードに置いて見せるダイス。complete は行動として組み上がっていること。効果の記号を値に置き換える */
+export type Shown = PlacedRow & { complete: boolean }
 
 /** 引きずって落とした先の置き場を、data-drop に書く名前にする */
 export function slotDrop(card: CardId, slot: number): string {
@@ -61,11 +55,11 @@ interface Props {
   /** 公開で使ったカード。光らせて、中央の技と結びつける */
   casting?: boolean
   /** 1ステップ目に使い、ターンが変わるまで置き場に残るダイス。押せず、引きずれない */
-  settled?: Settled | null
+  kept?: PlacedRow | null
   play?: CardPlay
 }
 
-export function Card({ card, roll, active, used, shown, casting, settled, play }: Props) {
+export function Card({ card, roll, active, used, shown, casting, kept, play }: Props) {
   const name = CARD_DEFS[card].name
   const issueId = useId()
   const cls = [
@@ -93,7 +87,7 @@ export function Card({ card, roll, active, used, shown, casting, settled, play }
           roll={roll}
           on={active.includes(kind) || shown?.kind === kind}
           shown={shown?.kind === kind ? shown : null}
-          settled={settled?.kind === kind ? settled : null}
+          kept={kept?.kind === kind ? kept : null}
           play={play}
         />
       ))}
@@ -175,20 +169,20 @@ interface RowProps {
   on: boolean
   shown: Shown | null
   /** この行に残っている、前のステップのダイス。今置いているダイスや公開中のダイスがあれば、そちらを描く */
-  settled: Settled | null
+  kept: PlacedRow | null
   play?: CardPlay
 }
 
-function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
+function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = requiredSlots(def)
-  const fixed = !shown && settled !== null
-  const slots = shown?.slots ?? settled?.slots ?? []
+  const fixed = !shown && kept !== null
+  const slots = shown?.slots ?? kept?.slots ?? []
   // 効果の値は置き場の順に並べた目から決める。火球なら X の枠の目が威力になる
-  const vals = shown?.complete || fixed ? slots.filter((d): d is number => d !== null).map((i) => roll[i]) : undefined
+  const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
   /** 置き場の中に書く記号。最初の置き場には印、省いてもよい置き場には置くと増える量 */
-  const markOf = (k: number) => (k >= needed ? face.extra : k === 0 ? face.mark : undefined)
+  const markOf = (k: number) => (k >= needed ? face.extra : k === MARK_SLOT ? face.mark : undefined)
   /** 置き場の呼び名。記号を書いた置き場はその記号で、ほかは何番目かで呼ぶ */
   const slotName = (k: number) => {
     const mark = markOf(k)
@@ -204,8 +198,8 @@ function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
     // 前のステップのダイスは、盤の上の駒のようにそのまま残す。押せず、光らせない
     if (d !== null && fixed) {
       return (
-        <span className="slot is-filled is-settled">
-          <Die value={roll[d]} size="slot" settled />
+        <span className="slot is-filled is-kept">
+          <Die value={roll[d]} size="slot" kept />
         </span>
       )
     }
@@ -255,7 +249,7 @@ function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
         {/* 「Y =」は置き場の並びの外に出し、置き場の並びをカードの真ん中に置く */}
         {face.sum && <span className="sym slots-sum">{face.sum} =</span>}
         <span className="slot-group">
-          {Array.from({ length: Math.max(...def.dice) }, (_, k) => (
+          {Array.from({ length: slotsOf(def) }, (_, k) => (
             <Fragment key={k}>
               {k > 0 && face.join && <span className="sym">{face.join}</span>}
               {slot(k)}

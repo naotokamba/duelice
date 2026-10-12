@@ -3,8 +3,8 @@
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { dieArb, makeState, playRandom, rollArb, swapSeats } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, MARK_SLOT, readsMark, requiredSlots, slotsOf } from './cards'
+import { dieArb, playRandom, stateArb, swapSeats } from '../test/helpers'
+import { ACTION_DEFS, ACTION_KINDS, type ActionKind } from './cards'
 import {
   actionDice,
   actionKey,
@@ -18,36 +18,10 @@ import {
   strikes,
   turnOver,
 } from './rules'
-import type { Action, ActionKind, CardId, ChantState, GameState } from './types'
+import { MARK_SLOT, readsMark, requiredSlots, slotsOf } from './slots'
+import type { Action } from './types'
 
 const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
-
-/** 一ステップ目または二ステップ目の、ありうる局面 */
-const stateArb: fc.Arbitrary<GameState> = fc
-  .record({
-    r0: rollArb,
-    r1: rollArb,
-    hp0: fc.integer({ min: 1, max: 20 }),
-    hp1: fc.integer({ min: 1, max: 20 }),
-    step2: fc.boolean(),
-    used0: fc.subarray([0, 1, 2], { maxLength: 2 }),
-    used1: fc.subarray([0, 1, 2], { maxLength: 2 }),
-    card0: fc.constantFrom<CardId>(...CARD_ORDER),
-    card1: fc.constantFrom<CardId>(...CARD_ORDER),
-    chant0: fc.constantFrom<ChantState>('none', 'charged', 'broken'),
-    chant1: fc.constantFrom<ChantState>('none', 'charged', 'broken'),
-  })
-  .map((r) => {
-    if (!r.step2) return makeState({ roll: r.r0, hp: r.hp0 }, { roll: r.r1, hp: r.hp1 }, 1)
-    const seat = (roll: number[], hp: number, used: number[], card: CardId, chant: ChantState) => ({
-      roll,
-      hp,
-      usedDice: used,
-      usedCards: used.length > 0 ? [card] : [],
-      chant: card === 'spear' && used.length === 1 ? chant : 'none',
-    })
-    return makeState(seat(r.r0, r.hp0, r.used0, r.card0, r.chant0), seat(r.r1, r.hp1, r.used1, r.card1, r.chant1), 2)
-  })
 
 /** 行動の種類と、その行動に置ける個数の目 */
 const kindWithValsArb = fc
@@ -315,7 +289,9 @@ describe('状態の更新', () => {
           expect(after.roll).toEqual(before.roll)
         }
         expect(next.step).toBe(2)
-        expect(report.lines.length).toBeGreaterThanOrEqual(2)
+        // 記録の攻撃とダメージは、行動から決まるものと一致する
+        expect(report.strikes).toEqual(strikes(report.values, acts))
+        expect(report.damage).toEqual(stepDamage(report.values, acts))
       }),
     )
   })
@@ -353,13 +329,17 @@ describe('状態の更新', () => {
       }),
     )
   })
-  it('公開の文は、双方について一行ずつ、あなたと相手の順に並ぶ', () => {
+  it('詠唱の結果は、詠唱した側だけに記録され、詠唱の状態と一致する', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
-        const { lines } = resolveStep(s, acts).history.at(-1) ?? { lines: [] }
-        expect(lines[0]).toMatch(/^あなた/)
-        expect(lines[1]).toMatch(/^相手/)
-        for (const l of lines) expect(l).toMatch(/\S/)
+        const next = resolveStep(s, acts)
+        const report = next.history[next.history.length - 1]
+        for (const i of [0, 1] as const) {
+          const a = acts[i]
+          const chanted = a.kind !== 'pass' && !!ACTION_DEFS[a.kind].chant
+          const want = chanted ? (next.players[i].chant === 'broken' ? 'broken' : 'kept') : null
+          expect(report.chants[i]).toBe(want)
+        }
       }),
     )
   })

@@ -3,7 +3,7 @@
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
 import { type ReactNode, useId } from 'react'
-import type { EffectPart } from '../game/cards'
+import { type EffectPart, GUARD_LABEL } from '../game/cards'
 import { Tip } from './Tip'
 
 /**
@@ -190,10 +190,10 @@ function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
     case 'damage':
       return { label: `${v}ダメージを与える`, glyph: <Star value={v} /> }
     case 'pierce':
-      return { label: `障壁で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
+      return { label: `${GUARD_LABEL}で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
-    case 'reflect':
+    case 'bounce':
       return { label: '受けた攻撃をそのまま返す', glyph: <ReflectGlyph /> }
     default:
       return { label: `詠唱。${v}以上のダメージを受けると崩れる`, glyph: <ChantGlyph value={v} /> }

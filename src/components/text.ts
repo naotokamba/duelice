@@ -1,0 +1,70 @@
+// 画面に出す文。対局の記録や決定できない理由は文を持たないので、ここで見ている側から文にする。
+
+import { ACTION_DEFS } from '../game/cards'
+import type { Issue } from '../game/hand'
+import type { Action, PlayerIndex, StepReport } from '../game/types'
+
+/** 公開や履歴に出す行動の名前 */
+export function actionLabel(a: Action): string {
+  return a.kind === 'pass' ? '何もしない' : ACTION_DEFS[a.kind].label
+}
+
+/** who の行動を一文にする */
+function sentence(report: StepReport, who: PlayerIndex, name: string): string {
+  const a = report.actions[who]
+  if (a.kind === 'pass') return `${name}は何もしなかった`
+  const def = ACTION_DEFS[a.kind]
+  const other: PlayerIndex = who === 0 ? 1 : 0
+  const b = report.actions[other]
+  const answer = b.kind === 'pass' ? '' : ACTION_DEFS[b.kind].label
+  const s = report.strikes.find((x) => x.from === who)
+  if (!s) return `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
+  const head = `${name}の${def.label} ${s.power}点`
+  switch (s.outcome) {
+    case 'reflected':
+      return `${head}は${answer}で返された`
+    case 'pierced':
+      return `${head}、${answer}をすり抜けた`
+    case 'guarded':
+      return `${head}、${answer} ${report.values[other].join('と')} に削られて ${s.dealt}点`
+    default:
+      return head
+  }
+}
+
+/**
+ * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
+ * 詠唱したなら、その結果を後に添える
+ */
+export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
+  const order: [PlayerIndex, string][] = [
+    [viewer, 'あなた'],
+    [viewer === 0 ? 1 : 0, '相手'],
+  ]
+  const lines = order.map(([who, name]) => sentence(report, who, name))
+  for (const [who, name] of order) {
+    const chant = report.chants[who]
+    if (chant === 'broken') lines.push(`${name}の詠唱は ${report.damage[who]}点を受けて崩れた`)
+    if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
+  }
+  return lines
+}
+
+/** 決まった理由に当たらない置き方 */
+export const CANNOT_USE = 'この置き方では使えない'
+
+/** 決定できない理由を、決定の場所に出す短い文にする */
+export function issueText(issue: Issue): string {
+  switch (issue.type) {
+    case 'mark':
+      return `${issue.mark} の枠に置く`
+    case 'more':
+      return `${issue.same ? '同じ目を' : ''}あと${issue.count}個置く`
+    case 'left':
+      return '左の枠に置く'
+    case 'same':
+      return `同じ目を${issue.count}個置く`
+    default:
+      return CANNOT_USE
+  }
+}

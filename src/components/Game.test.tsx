@@ -327,7 +327,7 @@ describe('一ターンの流れ', () => {
     // 2ステップ目も、置いた枠に残り、押せない
     expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
     expect(filled()).toEqual([true, true])
-    expect(mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot.is-settled')).toHaveLength(2)
+    expect(mySeat().getByRole('listitem', { name: '魔弾' }).querySelectorAll('.slot.is-kept')).toHaveLength(2)
     expect(emptySlots('魔弾')).toHaveLength(0)
     expect(myCard('魔弾').queryAllByRole('button', { name: /目/ })).toHaveLength(0)
   })

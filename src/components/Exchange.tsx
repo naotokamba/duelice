@@ -5,18 +5,10 @@
 
 import { SkipForward } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
-import { ACTION_DEFS } from '../game/cards'
-import {
-  type Action,
-  actionLabel,
-  breaksChant,
-  type PlayerIndex,
-  type StepReport,
-  type Strike,
-  strikes,
-} from '../game/rules'
-import type { CardId } from '../game/types'
+import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
+import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
 import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
+import { actionLabel } from './text'
 
 /** 舞台の高さ。卓の上に重ねるので、席の間に収める必要はない */
 const STAGE_H = 300
@@ -99,13 +91,11 @@ const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
 function actionMark(a: Action, vals: number[]): ReactNode {
   if (a.kind === 'pass') return <SkipForward />
   const def = ACTION_DEFS[a.kind]
-  if (def.power) {
-    const v = String(def.power(vals))
-    return def.piercing ? <PierceStar value={v} /> : <Star value={v} />
-  }
-  if (def.guard) return <ShieldGlyph value={def.guard(vals)} />
+  const v = effectValue(def, vals)
+  if (def.power) return def.piercing ? <PierceStar value={String(v)} /> : <Star value={String(v)} />
+  if (def.guard) return <ShieldGlyph value={v} />
   if (def.reflects) return <ReflectGlyph />
-  return <ChantGlyph value={vals[0]} />
+  return <ChantGlyph value={v} />
 }
 
 interface ExchangeProps {
@@ -117,7 +107,7 @@ interface ExchangeProps {
 }
 
 export function Exchange({ report, top, bottom }: ExchangeProps) {
-  const list = strikes(report.values, report.actions)
+  const list = report.strikes
   const out = { '--out-at': `${revealMs(list) - OUT_MS}ms`, '--out': `${OUT_MS}ms` } as CSSProperties
   return (
     <div className="clash" style={out} aria-hidden="true">
@@ -306,14 +296,15 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
   }
   if (def.chant) {
     // 詠唱は攻撃を止めないので、矢印の横に置く。崩れるなら、攻撃が当たった時に印が切り替わる
-    const broken = breaksChant(vals, report.damage[who])
+    const broken = report.chants[who] === 'broken'
+    const v = effectValue(def, vals)
     return (
       <div
         className={`${cls} stance-chant${broken ? ' is-broken' : ''}`}
         style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}
       >
-        <ChantGlyph value={vals[0]} className="chant-on" />
-        {broken && <ChantGlyph value={vals[0]} broken className="chant-off" />}
+        <ChantGlyph value={v} className="chant-on" />
+        {broken && <ChantGlyph value={v} broken className="chant-off" />}
         {name}
       </div>
     )

@@ -4,7 +4,7 @@
 
 import { CircleHelp, X } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
-import { CARD_ORDER, type EffectPart, kindsOfCard } from '../game/cards'
+import { CARD_ORDER, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
 import { closeOnBackdrop } from './dialog'
 import { EffectGlyph } from './glyphs'
@@ -12,9 +12,9 @@ import { EffectGlyph } from './glyphs'
 /** カードに出てくる印と、その意味 */
 const MARKS: [EffectPart, string][] = [
   [{ icon: 'damage', value: 'X' }, 'X ダメージを与える'],
-  [{ icon: 'pierce', value: 'X' }, '障壁で減らない X ダメージを与える'],
+  [{ icon: 'pierce', value: 'X' }, `${GUARD_LABEL}で減らない X ダメージを与える`],
   [{ icon: 'guard', value: 'X' }, 'このステップに受けるダメージを X 減らす'],
-  [{ icon: 'reflect' }, 'このステップに受けた攻撃を、そのまま相手に返す'],
+  [{ icon: 'bounce' }, 'このステップに受けた攻撃を、そのまま相手に返す'],
   [
     { icon: 'chant', value: 'X' },
     '詠唱。このステップに X 以上のダメージを受けると崩れる。崩れなければ、次のステップで下の段を使える',

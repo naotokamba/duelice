@@ -2,10 +2,10 @@
 // カードを足したら、ここに行を足す。行の無い行動があるとメタテストが落ちる。
 
 import { describe, expect, it } from 'vitest'
-import { act } from '../test/helpers'
+import { actionOf } from '../test/helpers'
+import type { ActionKind, CardId } from './cards'
 import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, kindsOfCard } from './cards'
 import { stepDamage } from './rules'
-import type { ActionKind, CardId } from './types'
 
 type Side = { kind: ActionKind | 'pass'; vals: number[] }
 interface Case {
@@ -50,7 +50,7 @@ const SPEC: Case[] = [
 ]
 
 function run(c: Case): [number, number] {
-  return stepDamage([c.a.vals, c.b.vals], [act(c.a.kind, c.a.vals.length), act(c.b.kind, c.b.vals.length)])
+  return stepDamage([c.a.vals, c.b.vals], [actionOf(c.a.kind, c.a.vals.length), actionOf(c.b.kind, c.b.vals.length)])
 }
 
 describe('カードの仕様表', () => {

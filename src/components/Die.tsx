@@ -26,7 +26,7 @@ interface Props {
   /** 引きずっている途中。元の位置は薄く残す */
   lifted?: boolean
   /** 前のステップで使い、カードの上に残っている。色を変えて、今置けるダイスと見分ける */
-  settled?: boolean
+  kept?: boolean
 }
 
 export function Die({
@@ -40,13 +40,13 @@ export function Die({
   label,
   drag,
   lifted,
-  settled,
+  kept,
 }: Props) {
   const cls = [
     'die',
     `die-${size}`,
     used && 'die-used',
-    settled && 'die-settled',
+    kept && 'die-kept',
     selected && 'die-selected',
     hint && 'die-hint',
     drag && 'die-drag',

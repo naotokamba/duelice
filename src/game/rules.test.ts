@@ -1,21 +1,11 @@
 // ターンの進行に関する例示テスト。カード同士のダメージは cards.test.ts の仕様表で扱う。
 
 import { describe, expect, it } from 'vitest'
-import { makeState } from '../test/helpers'
+import { makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS } from './cards'
-import {
-  type Action,
-  actionLabel,
-  breaksChant,
-  fillsRequired,
-  isLegal,
-  legalActions,
-  newGame,
-  nextTurn,
-  resolveStep,
-  strikes,
-  turnOver,
-} from './rules'
+import { breaksChant, isLegal, keptRow, legalActions, newGame, nextTurn, resolveStep, strikes, turnOver } from './rules'
+import { fillsRequired } from './slots'
+import type { Action } from './types'
 
 const pass: Action = { kind: 'pass' }
 
@@ -27,7 +17,7 @@ describe('ターンの進行', () => {
       { kind: 'fireball', dice: [0, 1] },
     ])
     expect(s.players[0].chant).toBe('broken')
-    expect(s.history[0].lines.some((l) => l.includes('崩れた'))).toBe(true)
+    expect(s.history[0].chants).toEqual(['broken', null])
     expect(legalActions(s, 0).some((a) => a.kind === 'spearCast')).toBe(false)
   })
   it('詠唱と同じ値のダメージでも崩れる', () => {
@@ -45,6 +35,7 @@ describe('ターンの進行', () => {
       { kind: 'fireball', dice: [0, 1] },
     ])
     expect(s.players[0].chant).toBe('charged')
+    expect(s.history[0].chants).toEqual(['kept', null])
     expect(s.players[0].hp).toBe(17)
     s = resolveStep(s, [{ kind: 'spearCast', dice: [1, 2] }, pass])
     expect(s.players[1].hp).toBe(20 - 11)
@@ -156,12 +147,12 @@ describe('ターンの進行', () => {
       { kind: 'bullet', dice: [1, 2] },
     ])
   })
-  it('火球の X の枠の目は、置いた置き場のまま公開の文に出る', () => {
+  it('火球の X の枠の目は、置いた置き場のまま記録に残る', () => {
     const s = makeState({ roll: [2, 6, 1] }, { roll: [1, 2, 3] })
     const next = resolveStep(s, [{ kind: 'fireball', dice: [0, 1] }, pass])
     expect(next.history[0].values[0]).toEqual([2, 6])
+    expect(next.history[0].strikes).toEqual([{ from: 0, kind: 'fireball', power: 2, outcome: 'hit', to: 1, dealt: 2 }])
     expect(next.history[0].damage).toEqual([0, 2])
-    expect(next.history[0].lines[0]).toBe('あなたの火球 2点')
   })
   it('反射はゾロ目でしか置けない', () => {
     const s = makeState({ roll: [2, 2, 5] }, { roll: [1, 3, 5] })
@@ -267,49 +258,12 @@ describe('攻撃の行方', () => {
     ).toEqual([])
   })
   it('詠唱は置いた目と同じか多いダメージで崩れる', () => {
-    expect(breaksChant([5], 4)).toBe(false)
-    expect(breaksChant([5], 5)).toBe(true)
+    expect(breaksChant(ACTION_DEFS.spearChant, [5], 4)).toBe(false)
+    expect(breaksChant(ACTION_DEFS.spearChant, [5], 5)).toBe(true)
   })
 })
 
-describe('公開の文', () => {
-  const lines = (r0: number[], r1: number[], a0: Action, a1: Action) =>
-    resolveStep(makeState({ roll: r0 }, { roll: r1 }), [a0, a1]).history[0].lines
-  const fireball: Action = { kind: 'fireball', dice: [0, 1] }
-
-  it('攻撃と何もしない', () => {
-    expect(lines([6, 2, 1], [1, 2, 3], fireball, pass)).toEqual(['あなたの火球 6点', '相手は何もしなかった'])
-  })
-  it('障壁に削られた攻撃は、削った目と通った点を示す', () => {
-    expect(lines([5, 1, 1], [3, 2, 1], fireball, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの火球 5点、障壁 3 に削られて 2点',
-      '相手は 3 で障壁を張った',
-    ])
-  })
-  it('障壁をすり抜けた攻撃', () => {
-    expect(lines([1, 2, 3], [6, 2, 1], { kind: 'bullet', dice: [0, null] }, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの魔弾 2点、障壁をすり抜けた',
-      '相手は 6 で障壁を張った',
-    ])
-  })
-  it('反射で返された攻撃', () => {
-    expect(lines([6, 4, 1], [2, 2, 1], fireball, { kind: 'reflect', dice: [0, 1] })).toEqual([
-      'あなたの火球 6点は反射で返された',
-      '相手は 2と2 で反射を構えた',
-    ])
-  })
-  it('詠唱が崩れたときと保たれたとき', () => {
-    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, fireball)).toEqual([
-      'あなたは 2 で雷槍を詠唱',
-      '相手の火球 6点',
-      'あなたの詠唱は 6点を受けて崩れた',
-    ])
-    expect(lines([2, 1, 1], [1, 1, 1], { kind: 'spearChant', dice: [0] }, pass)).toContain('あなたの詠唱は保たれた')
-  })
-  it('公開時の行動名', () => {
-    expect(actionLabel(pass)).toBe('何もしない')
-    expect(actionLabel({ kind: 'spearChant', dice: [0] })).toBe('雷槍の詠唱')
-  })
+describe('記録', () => {
   it('何もしない手のダイスの値は空', () => {
     const s = resolveStep(makeState({ roll: [1, 2, 3] }, { roll: [1, 2, 3] }), [pass, pass])
     expect(s.history[0].values).toEqual([[], []])
@@ -319,5 +273,36 @@ describe('公開の文', () => {
     expect(() => resolveStep(s, [{ kind: 'reflect', dice: [0, 1] }, pass])).toThrow(/不正な行動/)
     const over = { ...s, winner: 0 as const }
     expect(() => resolveStep(over, [pass, pass])).toThrow(/終了/)
+  })
+})
+
+describe('1ステップ目のダイス', () => {
+  const start = makeState({ roll: [6, 2, 5] }, { roll: [3, 3, 1] })
+  it('1ステップ目を解決するまでは、カードに残るダイスは無い', () => {
+    expect(keptRow(start, 0)).toBeNull()
+    expect(keptRow(start, 1)).toBeNull()
+  })
+  it('2ステップ目には、双方が1ステップ目に使ったダイスが、置いた置き場のままカードに残る', () => {
+    const s = resolveStep(start, [
+      { kind: 'fireball', dice: [1, 0] },
+      { kind: 'reflect', dice: [0, 1] },
+    ])
+    expect(keptRow(s, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
+    expect(keptRow(s, 1)).toEqual({ card: 'reflect', kind: 'reflect', slots: [0, 1] })
+    // 2ステップ目を解決しても、ターンが変わるまでは残る
+    const after = resolveStep(s, [pass, pass])
+    expect(keptRow(after, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
+    // ターンが変わると片付く
+    expect(keptRow(nextTurn(after, seeded(1)), 0)).toBeNull()
+  })
+  it('省いた置き場は空いたまま残り、パスなら何も残らない', () => {
+    // 点線の枠を省いた魔弾は、点線の枠が空いたまま残る
+    const s = resolveStep(start, [{ kind: 'bullet', dice: [2, null] }, pass])
+    expect(keptRow(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
+    expect(keptRow(s, 1)).toBeNull()
+  })
+  it('詠唱のダイスは、詠唱の行に残る', () => {
+    const s = resolveStep(start, [{ kind: 'spearChant', dice: [0] }, pass])
+    expect(keptRow(s, 0)).toEqual({ card: 'spear', kind: 'spearChant', slots: [0] })
   })
 })

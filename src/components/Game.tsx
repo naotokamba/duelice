@@ -1,33 +1,23 @@
 import { SkipForward, X } from 'lucide-react'
 import { type ReactNode, useEffect, useRef, useState } from 'react'
-import { ACTION_DEFS, CARD_ORDER } from '../game/cards'
-import {
-  availableCards,
-  composeAction,
-  firstStepDice,
-  kindsNow,
-  type Placement,
-  placeDie,
-  placedKind,
-  placementIssue,
-  removeDie,
-  slotCount,
-} from '../game/compose'
+import { CARD_ORDER, type CardId } from '../game/cards'
 import { LEVEL_NAMES, type Level, Thinker } from '../game/cpu'
 import {
-  type Action,
-  type CardId,
-  freeDice,
-  type GameState,
-  newGame,
-  nextTurn,
-  type PlayerIndex,
-  type PlayerState,
-  type Rng,
-  resolveStep,
-  strikes,
-  turnOver,
-} from '../game/rules'
+  draftAction,
+  draftIssue,
+  draftRow,
+  EMPTY_HAND,
+  type Hand,
+  type HandEvent,
+  kindsNow,
+  reduceHand,
+  targets,
+  usableCards,
+} from '../game/hand'
+import { type Match, newMatch, type Resolution, submit, viewFor } from '../game/match'
+import { freeDice, keptRow } from '../game/rules'
+import { rowOf } from '../game/slots'
+import type { Action, GameState, PlayerIndex, PlayerState, Rng } from '../game/types'
 import { Card, type CardPlay, CardTabs, readSlotDrop, type Shown } from './Card'
 import { Die } from './Die'
 import { closeOnBackdrop } from './dialog'
@@ -35,6 +25,7 @@ import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
 import { HistoryButton, Recent } from './History'
 import { MatchMenu } from './MatchMenu'
 import { RulesButton } from './RulesButton'
+import { issueText, reportLines } from './text'
 import { useDiceDrag } from './useDiceDrag'
 import { useNarrow } from './useNarrow'
 
@@ -48,9 +39,9 @@ interface GameProps {
 }
 
 /** 公開した行動を、カードに置いたダイスとして見せる */
-function shownOf(a: Action | undefined): (Shown & { card: CardId }) | null {
-  if (!a || a.kind === 'pass') return null
-  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, slots: a.dice, complete: true }
+function shownOf(a: Action): Shown | null {
+  const row = rowOf(a)
+  return row && { ...row, complete: true }
 }
 
 function isCardId(s: string | null): s is CardId {
@@ -68,17 +59,18 @@ interface Banner {
 
 export function Game({ rng = Math.random, opponent }: GameProps) {
   const [level, setLevel] = useState<Level>('normal')
-  const [game, setGame] = useState<GameState | null>(null)
-  const [revealed, setRevealed] = useState(false)
-  const [placement, setPlacement] = useState<Placement | null>(null)
-  /** タップで持ち上げたダイス。次に押した置き場に置く */
-  const [held, setHeld] = useState<number | null>(null)
+  /** 対局。対局の中身は match.ts が決め、画面はそれを見せるだけ */
+  const [match, setMatch] = useState<Match | null>(null)
+  /** 公開している最中のステップ。解決した直後の盤と記録を持ち、動きが終わるまでこちらを見せる */
+  const [reveal, setReveal] = useState<Resolution | null>(null)
+  /** 決定するまでの手元。置きかけたダイスと持ち上げたダイス */
+  const [hand, setHand] = useState<Hand>(EMPTY_HAND)
   /** 狭い画面で大きく出しているカード */
   const [focus, setFocus] = useState<CardId | null>(null)
   /** 公開してから、何ミリ秒目までの攻撃が当たったか。当たった分だけ体力を減らして見せる */
   const [landed, setLanded] = useState(Number.POSITIVE_INFINITY)
   /** 決着した公開の動きが終わった。勝敗はそれから出す */
-  const [settled, setSettled] = useState(false)
+  const [ended, setEnded] = useState(false)
   const [banner, setBanner] = useState<Banner | null>(null)
   const thinker = useRef(new Thinker())
   const drag = useDiceDrag()
@@ -94,31 +86,30 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     if (peek) peekDialog.current?.showModal()
   }, [peek])
 
-  // 公開したら、矢印が当たる時刻に体力を減らし、動きが終わったら自動で次のステップかターンへ進む
+  // 公開したら、矢印が当たる時刻に体力を減らし、動きが終わったら次のステップかターンの盤に切り替える。
+  // 対局はもう先へ進んでいて、ここで変えるのは見せ方だけ
   useEffect(() => {
-    const last = game?.history[game.history.length - 1]
-    if (!game || !revealed || !last) return
-    const list = strikes(last.values, last.actions)
-    const timers = [...new Set(list.map(landsAt))].map((t) => setTimeout(() => setLanded(t), t))
+    if (!reveal) return
+    const { report } = reveal
+    const timers = [...new Set(report.strikes.map(landsAt))].map((t) => setTimeout(() => setLanded(t), t))
     timers.push(
       setTimeout(() => {
         setLanded(Number.POSITIVE_INFINITY)
-        if (game.winner !== null) {
-          setSettled(true)
+        if (reveal.state.winner !== null) {
+          setEnded(true)
           return
         }
-        const turn = turnOver(game)
-        setGame(turn ? nextTurn(game, rng) : game)
-        setRevealed(false)
+        const turn = report.step === 2
+        setReveal(null)
         // 狭い画面で出すカードは、同じターンの2ステップ目には見ていたカードのまま残し、新しいターンには左端のカードに戻す
         if (turn) setFocus(null)
-        setBanner({ text: turn ? `Turn ${game.turn + 1}` : 'Step 2', turn })
-      }, revealMs(list)),
+        setBanner({ text: turn ? `Turn ${report.turn + 1}` : 'Step 2', turn })
+      }, revealMs(report.strikes)),
     )
     return () => {
       for (const t of timers) clearTimeout(t)
     }
-  }, [game, revealed, rng])
+  }, [reveal])
 
   useEffect(() => {
     if (!banner) return
@@ -126,85 +117,70 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     return () => clearTimeout(t)
   }, [banner])
 
-  const clearHand = () => {
-    setPlacement(null)
-    setHeld(null)
-  }
-
   const start = () => {
     thinker.current = new Thinker()
-    setGame(newGame(rng))
-    setRevealed(false)
-    setSettled(false)
+    setMatch(newMatch(rng))
+    setReveal(null)
+    setEnded(false)
     setLanded(Number.POSITIVE_INFINITY)
     setBanner({ text: 'Turn 1', turn: true })
     setFocus(null)
-    clearHand()
+    setHand(EMPTY_HAND)
   }
 
-  if (!game) return <Title level={level} setLevel={setLevel} onStart={start} />
+  if (!match) return <Title level={level} setLevel={setLevel} onStart={start} />
 
-  const last = game.history[game.history.length - 1]
-  const showReveal = revealed && last !== undefined
-  const choosing = !revealed && game.winner === null
-  const action = placement ? composeAction(game, 0, placement.card, placement.slots) : null
+  /** 見せる盤。公開の最中は、解決した直後の盤を見せる */
+  const board = reveal?.state ?? match.state
+  const showReveal = reveal !== null
+  const choosing = !showReveal && match.state.winner === null
+  const action = draftAction(board, 0, hand)
 
+  /** 自分の行動を出し、相手の行動を受け取って、ステップを解決する */
   const commit = (mine: Action) => {
-    const theirs = opponent ? opponent(game, level, rng) : thinker.current.decide(game, 1, level, rng)
-    setGame(resolveStep(game, [mine, theirs]))
-    setRevealed(true)
+    const first = submit(match, 0, mine, rng)
+    if (!first.ok) throw new Error(`自分の行動を受け付けなかった: ${first.reason}`)
+    // 相手には、こちらの出した行動を見せない
+    const seen = viewFor(first.match, 1).state
+    const theirs = opponent ? opponent(seen, level, rng) : thinker.current.decide(seen, 1, level, rng)
+    const done = submit(first.match, 1, theirs, rng)
+    if (!done.ok || !done.resolved) throw new Error('相手の行動を受け付けなかった')
+    setMatch(done.match)
+    setReveal(done.resolved)
     setLanded(0)
     setBanner(null)
-    clearHand()
+    setHand(EMPTY_HAND)
     // 公開が終わっても、狭い画面では今見ているカードを出し続ける
     setFocus(myCurrent)
   }
 
   /** まだ矢印が当たっていないダメージ。公開の途中は、その分だけ体力を多く見せる */
   const pending = (who: PlayerIndex) =>
-    showReveal
-      ? strikes(last.values, last.actions)
-          .filter((x) => x.to === who && landsAt(x) > landed)
-          .reduce((sum, x) => sum + x.dealt, 0)
+    reveal
+      ? reveal.report.strikes.filter((x) => x.to === who && landsAt(x) > landed).reduce((sum, x) => sum + x.dealt, 0)
       : 0
   /** 決着して、最後の公開の動きも終わった */
-  const over = settled && game.winner !== null
+  const over = ended && board.winner !== null
   /** 詠唱の結果は、矢印が当たるまで伏せる */
   const quiet = showReveal && landed < IMPACT_MS
 
-  /** die をカードの slot 番目の置き場に置く */
-  const put = (card: CardId, die: number, slot: number) => {
-    const next = placeDie(game, 0, placement, card, die, slot)
-    if (next) {
-      setPlacement(next)
-      setFocus(card)
-    }
-    setHeld(null)
-  }
-
-  /** 持っているダイスを置ける、そのカードの置き場の番号。使えるカードなら、目を問わずどの置き場にも置ける */
-  const targetsOf = (c: CardId): number[] =>
-    held === null
-      ? []
-      : Array.from({ length: slotCount(game, 0, c) }, (_, k) => k).filter(
-          (k) => placeDie(game, 0, placement, c, held, k) !== null,
-        )
-
-  const takeBack = (die: number) => {
-    setPlacement(removeDie(placement, die))
-    setHeld(null)
+  /** 手元への操作。カードに置いたら、狭い画面ではそのカードを出す */
+  const act = (e: HandEvent) => {
+    const next = reduceHand(board, 0, hand, e)
+    setHand(next)
+    if (next.draft && next.draft !== hand.draft) setFocus(next.draft.card)
   }
 
   const dragDie = (die: number) =>
     drag.bind(die, {
-      start: () => setHeld(die),
+      start: () => act({ type: 'grab', die }),
       drop: (target) => {
         const slot = readSlotDrop(target)
-        if (target === 'tray') takeBack(die)
-        else if (slot) put(slot.card, die, slot.slot)
+        if (target === 'tray') act({ type: 'takeBack', die })
+        else if (slot) act({ type: 'put', card: slot.card, slot: slot.slot, die })
         // 狭い画面でカードの名前に落としたら、そのカードを出すだけで置かない。名前は置き場ではない
         else if (isCardId(target)) pick(target)
-        else setHeld(null)
+        else act({ type: 'release' })
       },
     })
 
@@ -213,16 +189,12 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     if (!drag.afterDrop()) f()
   }
 
-  const myShown = showReveal
-    ? shownOf(last.actions[0])
-    : placement && {
-        card: placement.card,
-        kind: placedKind(game, 0, placement),
-        slots: placement.slots,
-        complete: action !== null,
-      }
-  const cpuShown = showReveal ? shownOf(last.actions[1]) : null
-  const usableMine = availableCards(game, 0)
+  const drafted = draftRow(board, 0, hand)
+  const myShown: Shown | null = reveal
+    ? shownOf(reveal.report.actions[0])
+    : drafted && { ...drafted, complete: action !== null }
+  const cpuShown = reveal ? shownOf(reveal.report.actions[1]) : null
+  const usableMine = usableCards(board, 0)
   /**
    * 狭い画面で自分の席に大きく出すカード。公開の間は使ったカードを、選んでいる間は名前を押したカードを出す。
    * 名前を押していなければダイスを置いたカード、それも無ければ使える最初のカード
@@ -236,55 +208,55 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 
   const playFor = (c: CardId): CardPlay | undefined => {
     if (!choosing) return undefined
-    const targets = targetsOf(c)
+    const mine = hand.draft?.card === c
+    const issue = mine ? draftIssue(board, 0, hand) : null
     return {
-      targets,
-      hint: held === null,
-      onSlot: (k) => held !== null && put(c, held, k),
-      // ダイスのある置き場を押したとき、ダイスを持っていれば入れ替え、持っていなければそのダイスを手元に戻す
-      onPlaced: (k, die) => tap(() => (held !== null ? put(c, held, k) : takeBack(die)))(),
+      targets: targets(board, 0, hand, c),
+      hint: hand.held === null,
+      onSlot: (k) => act({ type: 'put', card: c, slot: k }),
+      onPlaced: (k, die) => tap(() => act({ type: 'tapPlaced', card: c, slot: k, die }))(),
       drag: dragDie,
       lifted: drag.view?.die ?? null,
-      onConfirm: action && placement?.card === c ? () => commit(action) : undefined,
-      issue: placement?.card === c ? placementIssue(game, 0, placement) : null,
+      onConfirm: action && mine ? () => commit(action) : undefined,
+      issue: issue && issueText(issue),
     }
   }
 
   /** 席のカードを1枚描く */
-  const cardView = (who: PlayerIndex, c: CardId, shown: (Shown & { card: CardId }) | null = null) => {
-    const p = game.players[who]
-    const usable = availableCards(game, who)
-    const onBoard = firstStepDice(game, who)
+  const cardView = (who: PlayerIndex, c: CardId, shown: Shown | null = null) => {
+    const p = board.players[who]
+    const usable = usableCards(board, who)
+    const kept = keptRow(board, who)
     return (
       <Card
         key={c}
         card={c}
         roll={p.roll}
-        active={usable.has(c) ? kindsNow(game, who, c) : []}
+        active={usable.has(c) ? kindsNow(board, who, c) : []}
         used={p.usedCards.includes(c) && !usable.has(c)}
         shown={shown?.card === c ? shown : null}
         casting={showReveal && shown?.card === c}
-        settled={onBoard?.card === c ? onBoard : null}
+        kept={kept?.card === c ? kept : null}
         play={who === 0 ? playFor(c) : undefined}
       />
     )
   }
 
-  const cardsOf = (who: PlayerIndex, shown: (Shown & { card: CardId }) | null) => {
-    const usable = availableCards(game, who)
+  const cardsOf = (who: PlayerIndex, shown: Shown | null) => {
+    const usable = usableCards(board, who)
     if (!narrow) return <ul className="cards">{CARD_ORDER.map((c) => cardView(who, c, shown))}</ul>
 
     // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す。ダイスを置いた後でも、ほかのカードを見られる
     const current = who === 0 ? myCurrent : shown?.card
-    const onBoard = firstStepDice(game, who)
+    const kept = keptRow(board, who)
     const tabs = (
       <CardTabs
         tabs={CARD_ORDER.map((c) => ({
           card: c,
           off: !usable.has(c) && shown?.card !== c,
           current: c === current,
-          hint: who === 0 && choosing && held === null && usable.has(c),
-          placed: shown?.card === c || onBoard?.card === c,
+          hint: who === 0 && choosing && hand.held === null && usable.has(c),
+          placed: shown?.card === c || kept?.card === c,
         }))}
         onPick={who === 0 ? (choosing ? pick : undefined) : setPeek}
       />
@@ -299,32 +271,26 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     )
   }
 
-  /**
-   * 狭い画面でカードの名前を押した。ダイスを持っていても、いつもそのカードを出す。
-   * 名前は置き場ではないので、持っているダイスは置かずに手元へ戻す。
-   * 別のカードに替えたなら、そのカードを使うことを考えているので、このステップに置いたダイスも手元へ戻す。
-   * 1ステップ目に使ったダイスは行動として済んでいるので、カードに残ったままになる
-   */
+  /** 狭い画面でカードの名前を押した。ダイスを持っていても、いつもそのカードを出す。手元がどうなるかは hand.ts が決める */
   const pick = (c: CardId) => {
     setFocus(c)
-    setHeld(null)
-    if (placement && placement.card !== c) setPlacement(null)
+    act({ type: 'consider', card: c })
   }
 
   const trayOf = (who: PlayerIndex, shown: Shown | null) => {
-    const p = game.players[who]
+    const p = board.players[who]
     const free = freeDice(p)
-    const onBoard = firstStepDice(game, who)
+    const kept = keptRow(board, who)
     return (
       <fieldset
-        key={game.turn}
+        key={board.turn}
         className={banner?.turn ? 'tray is-rolling' : 'tray'}
         aria-label="ダイス"
         data-drop={who === 0 && choosing ? 'tray' : undefined}
       >
         {p.roll.map((v, i) => {
           // カードに置いたダイスと、1ステップ目からカードに残っているダイスは、手元では空いた跡だけになる
-          if (shown?.slots.includes(i) || onBoard?.slots.includes(i)) {
+          if (shown?.slots.includes(i) || kept?.slots.includes(i)) {
             return <span key={i} className="socket" aria-hidden="true" />
           }
           const used = !free.includes(i)
@@ -333,9 +299,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             <Die
               key={i}
               value={v}
-              selected={held === i}
-              hint={held === null}
-              onClick={tap(() => setHeld(held === i ? null : i))}
+              selected={hand.held === i}
+              hint={hand.held === null}
+              onClick={tap(() => act({ type: 'tapTray', die: i }))}
               drag={dragDie(i)}
               lifted={drag.view?.die === i}
             />
@@ -432,7 +398,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
             className="btn btn-danger"
             onClick={() => {
               surrenderDialog.current?.close()
-              setGame(null)
+              setMatch(null)
             }}
           >
             降参する
@@ -443,61 +409,67 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       <Seat
         side="cpu"
         name="相手"
-        player={game.players[1]}
-        hp={game.players[1].hp + pending(1)}
-        maxHp={game.config.maxHp}
+        player={board.players[1]}
+        hp={board.players[1].hp + pending(1)}
+        maxHp={board.config.maxHp}
         quiet={quiet}
         tray={trayOf(1, cpuShown)}
         cards={cardsOf(1, cpuShown)}
       />
 
       {/* 公開の演出は、卓の上に重ねた幕で見せる。決着して動きが終わったら消す */}
-      {showReveal && !over && (
+      {reveal && !over && (
         <Exchange
-          key={game.history.length}
-          report={last}
-          top={<ClashSide side="cpu" name="相手" hp={game.players[1].hp + pending(1)} maxHp={game.config.maxHp} />}
-          bottom={<ClashSide side="me" name="あなた" hp={game.players[0].hp + pending(0)} maxHp={game.config.maxHp} />}
+          key={board.history.length}
+          report={reveal.report}
+          top={<ClashSide side="cpu" name="相手" hp={board.players[1].hp + pending(1)} maxHp={board.config.maxHp} />}
+          bottom={
+            <ClashSide side="me" name="あなた" hp={board.players[0].hp + pending(0)} maxHp={board.config.maxHp} />
+          }
         />
       )}
 
       <section className="arena">
-        {showReveal && (
+        {reveal && (
           <ul className="sr-only" aria-live="polite">
-            {last.lines.map((l, i) => (
+            {reportLines(reveal.report, 0).map((l, i) => (
               <li key={i}>{l}</li>
             ))}
           </ul>
         )}
         {/* 左端に今のターンとステップ、中央に一つ前の結果や勝敗、右端にメニューを出す */}
         <div className="arena-row">
-          <TurnLabel turn={showReveal ? last.turn : game.turn} step={showReveal ? last.step : game.step} />
+          <TurnLabel turn={reveal?.report.turn ?? board.turn} step={reveal?.report.step ?? board.step} />
           <div className="arena-main">
-            {!revealed && <Recent history={game.history} />}
+            {!showReveal && <Recent history={board.history} />}
             {over && (
               <div className="result">
                 <p className="result-text">
-                  {game.winner === 'draw' ? '相打ち。引き分けです' : game.winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
+                  {board.winner === 'draw'
+                    ? '相打ち。引き分けです'
+                    : board.winner === 0
+                      ? 'あなたの勝ち'
+                      : '相手の勝ち'}
                 </p>
                 <div className="result-actions">
                   <button type="button" className="btn btn-primary" onClick={start}>
                     もう一戦
                   </button>
-                  <button type="button" className="btn" onClick={() => setGame(null)}>
+                  <button type="button" className="btn" onClick={() => setMatch(null)}>
                     強さを選び直す
                   </button>
                 </div>
               </div>
             )}
-            {over && <Recent history={game.history} />}
+            {over && <Recent history={board.history} />}
           </div>
           {/* 右端に履歴の印とメニューを縦に並べる。メニューは下に揃えて、履歴が出ても動かさない */}
           <div className="arena-tools">
-            {(!revealed || over) && <HistoryButton history={game.history} />}
-            <MatchMenu onSurrender={game.winner === null ? () => surrenderDialog.current?.showModal() : undefined} />
+            {(!showReveal || over) && <HistoryButton history={board.history} />}
+            <MatchMenu onSurrender={board.winner === null ? () => surrenderDialog.current?.showModal() : undefined} />
           </div>
         </div>
-        {banner && !revealed && (
+        {banner && !showReveal && (
           <p key={banner.text} className="banner">
             <span>{banner.text}</span>
           </p>
@@ -507,9 +479,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       <Seat
         side="me"
         name="あなた"
-        player={game.players[0]}
-        hp={game.players[0].hp + pending(0)}
-        maxHp={game.config.maxHp}
+        player={board.players[0]}
+        hp={board.players[0].hp + pending(0)}
+        maxHp={board.config.maxHp}
         quiet={quiet}
         tray={trayOf(0, myShown)}
         extra={pass}
@@ -518,7 +490,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
 
       {drag.view && (
         <div className="drag-ghost" style={{ left: drag.view.x, top: drag.view.y }} aria-hidden="true">
-          <Die value={game.players[0].roll[drag.view.die]} />
+          <Die value={board.players[0].roll[drag.view.die]} />
         </div>
       )}
     </main>

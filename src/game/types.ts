@@ -1,12 +1,10 @@
-// ゲーム全体で共有する型と設定
+// ゲーム全体で共有する型と設定。カードと行動の種類は cards.ts の表から決まる
+
+import type { ActionKind, CardId } from './cards'
+
+export type { ActionKind, CardId }
 
 export type PlayerIndex = 0 | 1
-
-/** カードの種類。追加したら cards.ts の CARD_DEFS にも定義が必要で、無ければ型エラーになる */
-export type CardId = 'fireball' | 'barrier' | 'bullet' | 'spear' | 'reflect'
-
-/** 行動の種類。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
-export type ActionKind = 'fireball' | 'barrier' | 'bullet' | 'spearChant' | 'spearCast' | 'reflect'
 
 /**
  * dice はカードの行の置き場ごとに、置いたダイスの番号を書く。空けた置き場は null。
@@ -35,13 +33,38 @@ export const DEFAULT_CONFIG: Config = {
   diceCount: 3,
 }
 
+/** 攻撃が相手の構えに当たってどうなったか。当たった、障壁に削られた、障壁をすり抜けた、反射で返された */
+export type Outcome = 'hit' | 'guarded' | 'pierced' | 'reflected'
+
+/** 一つの攻撃の行方。画面はこれを矢印に描き、ダメージもこれから数える */
+export interface Strike {
+  from: PlayerIndex
+  kind: ActionKind
+  power: number
+  outcome: Outcome
+  /** ダメージを受けた側。反射されたら攻撃した側に返る */
+  to: PlayerIndex
+  dealt: number
+}
+
+/** 詠唱したステップの結果。詠唱しなかった側は null */
+export type ChantResult = 'kept' | 'broken' | null
+
+/**
+ * 一つのステップの記録。双方の行動と、そこから決まった結果だけを持ち、どちらの視点の文も持たない。
+ * 文は画面が、見ている側から書く
+ */
 export interface StepReport {
   turn: number
   step: 1 | 2
   actions: [Action, Action]
+  /** 双方がダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす */
   values: [number[], number[]]
+  /** 放たれた攻撃と、その行方 */
+  strikes: Strike[]
+  /** 双方が受けたダメージ */
   damage: [number, number]
-  lines: string[]
+  chants: [ChantResult, ChantResult]
 }
 
 export interface GameState {

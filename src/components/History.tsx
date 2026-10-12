@@ -5,9 +5,10 @@
 import { History as HistoryIcon, SkipForward, X } from 'lucide-react'
 import { useRef } from 'react'
 import { ACTION_DEFS } from '../game/cards'
-import { actionLabel, type PlayerIndex, type StepReport } from '../game/rules'
+import type { PlayerIndex, StepReport } from '../game/types'
 import { Die } from './Die'
 import { closeOnBackdrop } from './dialog'
+import { actionLabel } from './text'
 
 /** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
 export function Recent({ history }: { history: StepReport[] }) {

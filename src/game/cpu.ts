@@ -3,7 +3,8 @@
 // 難易度は、最適戦略からどれだけ外れた手を混ぜるかで調整する。
 
 import { solveMatrixGame } from './matrixGame'
-import { type Action, freeDice, type GameState, legalActions, type PlayerIndex, type Rng, resolveStep } from './rules'
+import { freeDice, legalActions, resolveStep } from './rules'
+import type { Action, GameState, PlayerIndex, Rng } from './types'
 
 export type Level = 'easy' | 'normal' | 'hard'
 
