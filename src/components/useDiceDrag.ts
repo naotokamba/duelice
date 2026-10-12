@@ -2,7 +2,7 @@
 // 少し動かすまではタップとして扱うので、タップで選んでタップで置く操作と両立する。
 // 落とした先は、data-drop を持つ一番近い祖先の値を drop.ts で読んで伝える。
 
-import { type PointerEvent, useRef, useState } from 'react'
+import { type PointerEvent, useEffect, useRef, useState } from 'react'
 import { type DropTarget, readDrop } from './drop'
 
 export interface DragHandlers {
@@ -33,6 +33,18 @@ export function useDiceDrag() {
   const [view, setView] = useState<DragView | null>(null)
   const press = useRef<{ x: number; y: number; dragging: boolean } | null>(null)
   const justDropped = useRef(false)
+
+  // ダイスを押している間の指の動きは、ページが受け取ったことにする。
+  // touch-action: none でページは動かないが、受け取らずにおくと、素早く払って離したときにブラウザが払う動きとして扱い、
+  // 直後の一押しを払う動きの停止に使ってしまう。そうなると、続けて押したカードの名前や置き場が効かない。
+  // React の touchmove は受け身の登録で既定の動きを止められないので、document に直接登録する
+  useEffect(() => {
+    const hold = (e: TouchEvent) => {
+      if (press.current && e.cancelable) e.preventDefault()
+    }
+    document.addEventListener('touchmove', hold, { passive: false })
+    return () => document.removeEventListener('touchmove', hold)
+  }, [])
 
   const bind = (die: number, on: DragCallbacks): DragHandlers => ({
     onPointerDown: (e) => {

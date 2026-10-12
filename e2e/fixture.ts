@@ -97,7 +97,7 @@ export async function mouseDrag(page: Page, from: Locator, to: Locator) {
   await page.mouse.up()
 }
 
-/** 指で from に触れたまま to まで動かして離す。指の動きはブラウザの入力として送る */
+/** 指で from に触れたまま to まで動かし、止めずにすぐ離す。素早く払う置き方になる。指の動きはブラウザの入力として送る */
 export async function touchDrag(page: Page, from: Locator, to: Locator) {
   const a = await center(from)
   const b = await center(to)
@@ -108,9 +108,6 @@ export async function touchDrag(page: Page, from: Locator, to: Locator) {
     const p = { x: a.x + ((b.x - a.x) * i) / steps, y: a.y + ((b.y - a.y) * i) / steps }
     await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [p] })
   }
-  // 人は行き先で指を止めてから離す。止めずに離すと払う動きになり、ブラウザが次の一押しを払う動きの停止に使ってしまう
-  await page.waitForTimeout(150)
-  await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [b] })
   await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
   await cdp.detach()
 }
