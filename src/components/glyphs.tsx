@@ -3,7 +3,7 @@
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
 import { type ReactNode, useId } from 'react'
-import { type EffectPart, GUARD_LABEL } from '../game/cards'
+import { type EffectIcon, type EffectPart, GUARD_LABEL } from '../game/cards'
 import { Tip } from './Tip'
 
 /**
@@ -183,10 +183,9 @@ export function ChantGlyph({ value, broken, className }: ChantProps) {
   )
 }
 
-/** 効果の印の一行の説明と形 */
-function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
-  const v = part.value
-  switch (part.icon) {
+/** 効果の印の一行の説明と形。印の種類を足すと、ここに書くまで型が通らない */
+function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; glyph: ReactNode } {
+  switch (icon) {
     case 'damage':
       return { label: `${v}ダメージを与える`, glyph: <Star value={v} /> }
     case 'pierce':
@@ -195,7 +194,7 @@ function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
     case 'bounce':
       return { label: '受けた攻撃をそのまま返す', glyph: <ReflectGlyph /> }
-    default:
+    case 'chant':
       return { label: `詠唱。${v}以上のダメージを受けると崩れる`, glyph: <ChantGlyph value={v} /> }
   }
 }
@@ -206,7 +205,7 @@ function effectIcon(part: EffectPart): { label: string; glyph: ReactNode } {
  */
 export function EffectGlyph({ part, tip = true }: { part: EffectPart; tip?: boolean }) {
   if (!part.icon) return <span className="fx-text">{part.text}</span>
-  const icon = effectIcon(part)
+  const icon = effectIcon(part.icon, part.value)
   const { glyph } = icon
   // 点線の枠にも置くと値が増えるなら、その値も説明に添える
   const label = part.full ? `${icon.label}。点線の枠にも置くと${part.full}` : icon.label

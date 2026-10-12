@@ -2,7 +2,7 @@
 // 対局中はヘッダーを出さず、そのぶん卓を広く使う。
 
 import { CircleHelp, Ellipsis, Flag } from 'lucide-react'
-import { useRef } from 'react'
+import { type MouseEvent, useRef } from 'react'
 import { Dialog } from './Dialog'
 import { RulesDialog } from './RulesButton'
 
@@ -15,15 +15,14 @@ interface Props {
 }
 
 export function MatchMenu({ onSurrender }: Props) {
-  const button = useRef<HTMLButtonElement>(null)
   const menu = useRef<HTMLDialogElement>(null)
   const rules = useRef<HTMLDialogElement>(null)
 
-  const open = () => {
-    const d = menu.current
-    if (!d) return
+  /** メニューを開いて、押したボタンのそばに置く。メニューはボタンと一緒に描くので、押せる時にはいつもある */
+  const open = (e: MouseEvent<HTMLButtonElement>) => {
+    const d = menu.current as HTMLDialogElement
     d.showModal()
-    if (button.current) place(d, button.current)
+    place(d, e.currentTarget)
   }
   /** メニューを閉じてから、選んだものを開く */
   const choose = (then: () => void) => {
@@ -34,7 +33,6 @@ export function MatchMenu({ onSurrender }: Props) {
   return (
     <>
       <button
-        ref={button}
         type="button"
         className="icon-button"
         aria-label="メニュー"

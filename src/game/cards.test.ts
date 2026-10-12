@@ -72,6 +72,17 @@ describe('定義表の整合性', () => {
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('障壁')
   })
+  it('攻撃する行動は、何もしない相手、受けるダメージを減らす相手、攻撃を返す相手とぶつかる行が仕様表にある', () => {
+    const missing: string[] = []
+    for (const k of ACTION_KINDS.filter((k) => ACTION_DEFS[k].power)) {
+      const against = SPEC.flatMap((c) => (c.a.kind === k ? [c.b.kind] : c.b.kind === k ? [c.a.kind] : []))
+      const has = (ok: (o: ActionKind) => boolean) => against.some((o) => o !== 'pass' && ok(o))
+      if (!against.includes('pass')) missing.push(`${k} と何もしない相手`)
+      if (!has((o) => !!ACTION_DEFS[o].guard)) missing.push(`${k} と受けるダメージを減らす相手`)
+      if (!has((o) => !!ACTION_DEFS[o].reflects)) missing.push(`${k} と攻撃を返す相手`)
+    }
+    expect(missing).toEqual([])
+  })
   it('全ての行動が仕様表に一度は登場する', () => {
     const covered = new Set(SPEC.flatMap((c) => [c.a.kind, c.b.kind]))
     const missing = ACTION_KINDS.filter((k) => !covered.has(k))

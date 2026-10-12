@@ -80,8 +80,31 @@ describe('カードの知識', () => {
 })
 
 describe('画面', () => {
+  const css = readFileSync(join(SRC, 'styles.css'), 'utf8')
+
   it('狭い画面の境目は、styles.css と useNarrow.ts で同じ', () => {
-    const css = readFileSync(join(SRC, 'styles.css'), 'utf8')
     expect(css).toContain(`@media ${NARROW_QUERY}`)
+  })
+
+  it('どのカードにも、明るい画面と暗い画面の色があり、カードの面と矢印の色につながっている', () => {
+    const light = css.match(/^:root\s*\{([^}]*)\}/m)?.[1] ?? ''
+    const dark = css.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([^}]*)\}/)?.[1] ?? ''
+    const missing: string[] = []
+    for (const card of CARD_ORDER) {
+      // 帯や矢印の鮮やかな色と、背景に対して読める文字の色
+      for (const name of [`--${card}:`, `--${card}-ink:`]) {
+        if (!light.includes(name)) missing.push(`明るい画面の ${name}`)
+        if (!dark.includes(name)) missing.push(`暗い画面の ${name}`)
+      }
+      const face = css.match(new RegExp(`\\.card-${card}\\s*\\{([^}]*)\\}`))?.[1] ?? ''
+      for (const use of [
+        `--spell: var(--${card})`,
+        `--spell-ink: var(--${card}-ink)`,
+        `--card-ink: var(--${card}-ink)`,
+      ]) {
+        if (!face.includes(use)) missing.push(`.card-${card} の ${use}`)
+      }
+    }
+    expect(missing).toEqual([])
   })
 })

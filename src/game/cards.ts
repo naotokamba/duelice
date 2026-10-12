@@ -18,7 +18,7 @@ export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'bounce' | 'chant'
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
- * mark も sum も無い行動では、値を書かない印に、置いた個数から決まる値を compose.ts の effectParts が入れる
+ * mark も sum も無い行動では、値を書かない印に、置いた個数から決まる値を face.ts の effectParts が入れる
  */
 export interface EffectPart {
   icon?: EffectIcon

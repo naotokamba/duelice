@@ -4,22 +4,27 @@
 
 import { CircleHelp } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
-import { CARD_ORDER, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
+import { CARD_ORDER, type EffectIcon, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
 import { Modal } from './Dialog'
 import { EffectGlyph } from './glyphs'
 
-/** カードに出てくる印と、その意味 */
-const MARKS: [EffectPart, string][] = [
-  [{ icon: 'damage', value: 'X' }, 'X ダメージを与える'],
-  [{ icon: 'pierce', value: 'X' }, `${GUARD_LABEL}で減らない X ダメージを与える`],
-  [{ icon: 'guard', value: 'X' }, 'このステップに受けるダメージを X 減らす'],
-  [{ icon: 'bounce' }, 'このステップに受けた攻撃を、そのまま相手に返す'],
-  [
-    { icon: 'chant', value: 'X' },
-    '詠唱。このステップに X 以上のダメージを受けると崩れる。崩れなければ、次のステップで下の段を使える',
-  ],
-]
+/** カードに出てくる印と、その意味。印の種類を足すと、ここに書くまで型が通らない */
+const MARK_TEXT: Record<EffectIcon, { value?: string; text: string }> = {
+  damage: { value: 'X', text: 'X ダメージを与える' },
+  pierce: { value: 'X', text: `${GUARD_LABEL}で減らない X ダメージを与える` },
+  guard: { value: 'X', text: 'このステップに受けるダメージを X 減らす' },
+  bounce: { text: 'このステップに受けた攻撃を、そのまま相手に返す' },
+  chant: {
+    value: 'X',
+    text: '詠唱。このステップに X 以上のダメージを受けると崩れる。崩れなければ、次のステップで下の段を使える',
+  },
+}
+
+const MARKS = Object.entries(MARK_TEXT).map(([icon, { value, text }]): [EffectPart, string] => [
+  { icon: icon as EffectIcon, value },
+  text,
+])
 
 /** タイトルの右上の「?」。押すとルールを開く */
 export function RulesButton() {
