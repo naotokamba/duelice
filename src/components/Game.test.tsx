@@ -139,7 +139,7 @@ describe('一ターンの流れ', () => {
     await advance(BANNER_MS)
     expect(screen.queryByText('Step 2')).toBeNull()
     // 一つ前の結果は中央に出る
-    const latest = () => within(screen.getByRole('region', { name: '直近の結果' }))
+    const latest = () => within(screen.getByRole('region', { name: '一つ前の結果' }))
     expect(latest().getByText('火球')).toBeTruthy()
     expect(latest().getByRole('img', { name: '6ダメージ' })).toBeTruthy()
     // 使ったカードには置けず、使ったダイスは手元で薄くなる
@@ -155,9 +155,9 @@ describe('一ターンの流れ', () => {
 
     // 中央には一つ前だけを出し、全ての履歴は履歴の印からモーダルで見る
     await advance(BANNER_MS)
-    // 中央には直近の2ステップが並ぶ
-    expect(latest().getAllByRole('listitem')).toHaveLength(2)
-    expect(latest().getAllByRole('img', { name: 'パス' })).toHaveLength(3)
+    // 中央には一つ前の結果だけが出る
+    expect(latest().getAllByRole('listitem')).toHaveLength(1)
+    expect(latest().getAllByRole('img', { name: 'パス' })).toHaveLength(2)
     await user.click(latest().getByRole('button', { name: '戦闘履歴' }))
     const dialog = screen.getByRole('dialog', { name: '戦闘履歴' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
@@ -276,7 +276,7 @@ describe('一ターンの流れ', () => {
     expect(theirs.getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
     await settle()
     expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
-    const latest = within(screen.getByRole('region', { name: '直近の結果' }))
+    const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))
     expect(latest.getByRole('img', { name: 'パス' })).toBeTruthy()
     expect(latest.getByRole('img', { name: '6ダメージ' })).toBeTruthy()
   })
@@ -467,6 +467,37 @@ describe('ルール', () => {
     await open()
     await user.click(button('決闘を始める'))
     await open()
+  })
+})
+
+describe('モーダル', () => {
+  it('外を押すと閉じ、中を押しても閉じない', async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    render(
+      <Game
+        rng={dice([
+          [1, 2, 3],
+          [1, 2, 3],
+        ])}
+        opponent={passOpponent}
+      />,
+    )
+    await user.click(button('ルール'))
+    const dialog = screen.getByRole('dialog', { name: 'ルール' }) as HTMLDialogElement
+    // 中の文を押しても閉じない
+    fireEvent.click(within(dialog).getByText(/毎ターン/))
+    expect(dialog.open).toBe(true)
+    // モーダルの枠の外を押すと閉じる
+    vi.spyOn(dialog, 'getBoundingClientRect').mockReturnValue({
+      left: 100,
+      right: 300,
+      top: 100,
+      bottom: 300,
+    } as DOMRect)
+    fireEvent.click(dialog, { clientX: 200, clientY: 200 })
+    expect(dialog.open).toBe(true)
+    fireEvent.click(dialog, { clientX: 20, clientY: 20 })
+    expect(dialog.open).toBe(false)
   })
 })
 

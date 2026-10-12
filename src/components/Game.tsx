@@ -27,6 +27,7 @@ import {
 } from '../game/rules'
 import { Card, type CardPlay, CardTabs, type Shown } from './Card'
 import { Die } from './Die'
+import { closeOnBackdrop } from './dialog'
 import { Exchange, IMPACT_MS, landsAt, revealMs } from './Exchange'
 import { History } from './History'
 import { RulesButton } from './RulesButton'
@@ -333,7 +334,14 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       </header>
 
       {/* 狭い画面では相手のカードは名前だけなので、名前を押すとカードを大きく出す */}
-      <dialog ref={peekDialog} className="peek-dialog" aria-labelledby="peek-title" onClose={() => setPeek(null)}>
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
+      <dialog
+        ref={peekDialog}
+        className="peek-dialog"
+        aria-labelledby="peek-title"
+        onClick={closeOnBackdrop}
+        onClose={() => setPeek(null)}
+      >
         <div className="rules-head">
           <h2 id="peek-title" className="dialog-title">
             相手のカード
@@ -352,7 +360,13 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       </dialog>
 
       {/* 降参すると対局をやめてタイトルに戻る。誤って押したときのために、最初は続けるを選んでおく */}
-      <dialog ref={surrenderDialog} className="confirm-dialog" aria-labelledby="surrender-title">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
+      <dialog
+        ref={surrenderDialog}
+        className="confirm-dialog"
+        aria-labelledby="surrender-title"
+        onClick={closeOnBackdrop}
+      >
         <p id="surrender-title" className="dialog-title">
           降参しますか？
         </p>
@@ -384,9 +398,17 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         cards={cardsOf(1, cpuShown)}
       />
 
+      {/* 公開の演出は、卓の上に重ねた幕で見せる。決着して動きが終わったら消す */}
+      {showReveal && !over && (
+        <Exchange
+          key={game.history.length}
+          report={last}
+          top={<ClashSide side="cpu" name="相手" hp={game.players[1].hp + pending(1)} maxHp={game.config.maxHp} />}
+          bottom={<ClashSide side="me" name="あなた" hp={game.players[0].hp + pending(0)} maxHp={game.config.maxHp} />}
+        />
+      )}
+
       <section className="arena">
-        {/* 決着したら、消えた舞台の場所を残さず、勝敗と直近の結果を出す */}
-        {showReveal && !over && <Exchange key={game.history.length} report={last} />}
         {showReveal && (
           <ul className="sr-only" aria-live="polite">
             {last.lines.map((l, i) => (
@@ -480,6 +502,20 @@ function Title({ level, setLevel, onStart }: { level: Level; setLevel: (l: Level
         決闘を始める
       </button>
     </main>
+  )
+}
+
+/** 公開の幕の上下の端に出す体力の帯。当たった時に減る */
+function ClashSide({ side, name, hp, maxHp }: { side: 'me' | 'cpu'; name: string; hp: number; maxHp: number }) {
+  const shown = Math.max(0, hp)
+  return (
+    <div className={`clash-side side-${side}`}>
+      <span className="clash-name">{name}</span>
+      <div className="hp-bar">
+        <div className="hp-fill" style={{ width: `${(shown / maxHp) * 100}%` }} />
+      </div>
+      <span className="hp-num">{shown}</span>
+    </div>
   )
 }
 

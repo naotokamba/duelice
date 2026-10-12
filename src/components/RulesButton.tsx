@@ -5,6 +5,7 @@ import { CircleHelp, X } from 'lucide-react'
 import { useRef } from 'react'
 import { CARD_ORDER, type EffectPart, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
+import { closeOnBackdrop } from './dialog'
 import { EffectGlyph } from './glyphs'
 
 /** カードに出てくる印と、その意味 */
@@ -32,7 +33,8 @@ export function RulesButton() {
       >
         <CircleHelp aria-hidden="true" />
       </button>
-      <dialog ref={dialog} className="rules-dialog" aria-labelledby="rules-title">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
+      <dialog ref={dialog} className="rules-dialog" aria-labelledby="rules-title" onClick={closeOnBackdrop}>
         <div className="rules-head">
           <h2 id="rules-title" className="dialog-title">
             ルール

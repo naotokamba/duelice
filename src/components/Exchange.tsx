@@ -1,5 +1,6 @@
-// 公開した一ステップで起きたことを、上下の席の間を飛ぶ矢印と印で見せる。
+// 公開した一ステップで起きたことを、卓の上に重ねた幕の中で、上下の間を飛ぶ矢印と印で見せる。
 // 上が相手、下が自分。攻撃は矢印、障壁や反射や詠唱は受ける側の端に置く印、受けたダメージは星で描く。
+// 幕の上下の端には双方の体力の帯を出し、当たった時に減らす。
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
 import { SkipForward } from 'lucide-react'
@@ -17,12 +18,12 @@ import {
 import type { CardId } from '../game/types'
 import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
 
-/** 舞台の高さ。styles.css の .stage と合わせる */
-const H = 170
+/** 舞台の高さ。卓の上に重ねるので、席の間に収める必要はない */
+const STAGE_H = 300
 /** 矢印が始まり、当たる位置の、端からの距離 */
-const EDGE = 12
-/** 構えの印の中心の、端からの距離。当たった星と重ならないように端から離す */
-const STANCE = 64
+const EDGE = 16
+/** 構えの印の中心の、端からの距離の割合。当たった星と重ならないように端から離す */
+const STANCE_SHARE = 0.3
 /** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。styles.css の .stance と合わせる */
 const STANCE_R = 28
 
@@ -62,7 +63,10 @@ export function revealMs(list: Strike[]): number {
   return Math.max(...list.map(landsAt)) + HOLD_MS
 }
 
-/** 端の位置。上が相手、下が自分 */
+/** 舞台の上での位置。上が相手、下が自分 */
+const H = STAGE_H
+const STANCE = Math.round(H * STANCE_SHARE)
+/** 端の位置 */
 const edge = (who: PlayerIndex) => (who === 1 ? EDGE : H - EDGE)
 const stanceY = (who: PlayerIndex) => (who === 1 ? STANCE : H - STANCE)
 /** 構えの印の、攻撃が飛んでくる側の縁 */
@@ -97,76 +101,90 @@ function actionMark(a: Action, vals: number[]): ReactNode {
   return <ChantGlyph value={vals[0]} />
 }
 
-export function Exchange({ report }: { report: StepReport }) {
+interface ExchangeProps {
+  report: StepReport
+  /** 幕の上端に出す相手の体力の帯 */
+  top?: ReactNode
+  /** 幕の下端に出す自分の体力の帯 */
+  bottom?: ReactNode
+}
+
+export function Exchange({ report, top, bottom }: ExchangeProps) {
   const list = strikes(report.values, report.actions)
   const out = { '--out-at': `${revealMs(list) - OUT_MS}ms`, '--out': `${OUT_MS}ms` } as CSSProperties
   return (
-    <div className="stage" style={out} aria-hidden="true">
-      {/* 一つ目の拍。技の名前と値を中央に名乗る */}
-      {([1, 0] as const).map((who) => (
-        <Plate key={`p${who}`} who={who} report={report} />
-      ))}
-      {([0, 1] as const).map((who) => {
-        const incoming = list.find((s) => s.from !== who)
-        return (
-          <Stance
-            key={who}
-            who={who}
-            report={report}
-            x={incoming ? laneX(list, incoming.from) : 50}
-            aside={!!incoming}
-            incoming={incoming}
-          />
-        )
-      })}
-      {list.map((s) => {
-        const x = laneX(list, s.from)
-        const other = otherOf(s.from)
-        const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
-        const a = report.actions[s.from]
-        const mark = actionMark(a, report.values[s.from])
-        return [
-          <Arrow
-            key={`a${s.from}`}
-            label={actionLabel(a)}
-            mark={mark}
-            x={x}
-            y0={edge(s.from)}
-            y1={stops ? stanceRim(other) : edge(other)}
-            delay={START_MS}
-            card={ACTION_DEFS[s.kind].card}
-            spent={stops}
-          />,
-          s.outcome === 'reflected' && (
-            <Arrow
-              key={`r${s.from}`}
-              label={actionLabel(a)}
-              mark={mark}
-              x={x}
-              dx={BACK}
-              y0={stanceRim(other)}
-              y1={edge(s.from)}
-              delay={IMPACT_MS}
-              card={ACTION_DEFS[s.kind].card}
-            />
-          ),
-          s.dealt > 0 && (
-            // 障壁に削られて通ったダメージは、障壁の横に出す。反射で返ったダメージは返る矢印の先に出す
-            <div
-              key={`b${s.from}`}
-              className="burst"
-              style={at(
-                x,
-                edge(s.to),
-                landsAt(s),
-                s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
-              )}
-            >
-              <Star value={`−${s.dealt}`} />
-            </div>
-          ),
-        ]
-      })}
+    <div className="clash" style={out} aria-hidden="true">
+      <div className="clash-panel">
+        {top}
+        <div className="stage" style={{ height: H }}>
+          {/* 一つ目の拍。技の名前と値を中央に名乗る */}
+          {([1, 0] as const).map((who) => (
+            <Plate key={`p${who}`} who={who} report={report} />
+          ))}
+          {([0, 1] as const).map((who) => {
+            const incoming = list.find((s) => s.from !== who)
+            return (
+              <Stance
+                key={who}
+                who={who}
+                report={report}
+                x={incoming ? laneX(list, incoming.from) : 50}
+                aside={!!incoming}
+                incoming={incoming}
+              />
+            )
+          })}
+          {list.map((s) => {
+            const x = laneX(list, s.from)
+            const other = otherOf(s.from)
+            const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
+            const a = report.actions[s.from]
+            const mark = actionMark(a, report.values[s.from])
+            return [
+              <Arrow
+                key={`a${s.from}`}
+                label={actionLabel(a)}
+                mark={mark}
+                x={x}
+                y0={edge(s.from)}
+                y1={stops ? stanceRim(other) : edge(other)}
+                delay={START_MS}
+                card={ACTION_DEFS[s.kind].card}
+                spent={stops}
+              />,
+              s.outcome === 'reflected' && (
+                <Arrow
+                  key={`r${s.from}`}
+                  label={actionLabel(a)}
+                  mark={mark}
+                  x={x}
+                  dx={BACK}
+                  y0={stanceRim(other)}
+                  y1={edge(s.from)}
+                  delay={IMPACT_MS}
+                  card={ACTION_DEFS[s.kind].card}
+                />
+              ),
+              s.dealt > 0 && (
+                // 障壁に削られて通ったダメージは、障壁の横に出す。反射で返ったダメージは返る矢印の先に出す
+                <div
+                  key={`b${s.from}`}
+                  className="burst"
+                  style={at(
+                    x,
+                    edge(s.to),
+                    landsAt(s),
+                    s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
+                  )}
+                >
+                  <Star value={`−${s.dealt}`} />
+                </div>
+              ),
+            ]
+          })}
+        </div>
+        {bottom}
+      </div>
     </div>
   )
 }

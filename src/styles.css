@@ -911,16 +911,52 @@ button.tab {
 }
 
 /* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる。最後は薄くなって消え、切り替わりの幕につなぐ */
-.stage {
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 50%;
-  margin-top: -85px;
-  width: 100%;
-  height: 170px;
+/* 公開の幕。卓の上に重ね、下の卓を少し暗くする。押すものは無いので、押しても下に通す */
+.clash {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(20, 24, 36, 0.28);
   pointer-events: none;
-  animation: gone var(--out) ease var(--out-at) both;
+  animation:
+    appear 220ms ease both,
+    gone var(--out) ease var(--out-at) both;
+}
+.clash-panel {
+  width: min(100%, 760px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 18px;
+  background: var(--table);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+.clash-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.clash-side.side-me {
+  --accent: var(--me);
+}
+.clash-side.side-cpu {
+  --accent: var(--cpu);
+}
+.clash-name {
+  font-weight: 700;
+  color: var(--accent);
+}
+.clash-side .hp-bar {
+  flex: 1;
+}
+/* 舞台。高さは Exchange.tsx の STAGE_H */
+.stage {
+  position: relative;
+  width: 100%;
 }
 .stage > * {
   position: absolute;
@@ -1257,15 +1293,16 @@ button.tab {
 }
 
 /* 戦闘履歴。上下の並びは卓と同じ */
+/* 一つ前の結果と履歴の印を一つのまとまりにして、中央に置く */
 .history {
   width: 100%;
-  max-width: 860px;
+  max-width: 480px;
   display: flex;
   align-items: center;
   gap: var(--tap-gap);
   text-align: left;
 }
-/* 直近の2ステップ。広い画面は横に、狭い画面は縦に並べる */
+/* 一つ前の結果 */
 .history-recent {
   flex: 1;
   min-width: 0;
@@ -1297,14 +1334,6 @@ button.tab {
 .history-recent > .history-entry {
   flex: 1;
   min-width: 0;
-  max-width: 420px;
-}
-/* 一番新しい結果は枠を太くして目立たせる。古い方は背景を落とす */
-.history-recent > .history-entry:not(.is-latest) {
-  background: transparent;
-  border-style: dashed;
-}
-.history-entry.is-latest {
   border: 2px solid color-mix(in srgb, var(--ink) 35%, transparent);
 }
 .history-when {
@@ -1441,7 +1470,7 @@ button.tab {
   .stance.is-broken .chant-on {
     opacity: 0;
   }
-  .stage {
+  .clash {
     animation: none;
   }
   .die-hint::after {
@@ -1580,15 +1609,8 @@ button.tab {
   :root {
     --die-tray-cpu: 36px;
   }
-  /* 中央の直近の結果は、一番新しい1件だけにする。全ては履歴の印から見る */
-  .history-recent > .history-entry:not(.is-latest) {
-    display: none;
-  }
   .table-head .help {
     margin-left: auto;
-  }
-  .history-recent {
-    flex-direction: column;
   }
   .seat-row {
     flex-wrap: wrap;

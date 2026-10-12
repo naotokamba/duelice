@@ -6,6 +6,7 @@ import { useRef } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import { actionLabel, type PlayerIndex, type StepReport } from '../game/rules'
 import { Die } from './Die'
+import { closeOnBackdrop } from './dialog'
 
 export function History({ history }: { history: StepReport[] }) {
   const dialog = useRef<HTMLDialogElement>(null)
@@ -13,15 +14,10 @@ export function History({ history }: { history: StepReport[] }) {
   const items = [...history].reverse()
   return (
     <>
-      <section className="history" aria-label="直近の結果">
-        {/* 直近の2ステップを、古い順に並べる。新しい方を強調する */}
+      {/* 中央には一つ前の結果だけを出す。今どのステップかは見出しの札で分かる */}
+      <section className="history" aria-label="一つ前の結果">
         <ol className="history-list history-recent">
-          {items
-            .slice(0, 2)
-            .reverse()
-            .map((r, i, recent) => (
-              <Entry key={`${r.turn}-${r.step}`} report={r} latest={i === recent.length - 1} />
-            ))}
+          <Entry report={items[0]} />
         </ol>
         <button
           type="button"
@@ -33,7 +29,8 @@ export function History({ history }: { history: StepReport[] }) {
           <HistoryIcon aria-hidden="true" />
         </button>
       </section>
-      <dialog ref={dialog} className="history-dialog" aria-labelledby="history-title">
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
+      <dialog ref={dialog} className="history-dialog" aria-labelledby="history-title" onClick={closeOnBackdrop}>
         <div className="rules-head">
           <h2 id="history-title" className="dialog-title">
             戦闘履歴
@@ -58,9 +55,9 @@ export function History({ history }: { history: StepReport[] }) {
   )
 }
 
-function Entry({ report, latest }: { report: StepReport; latest?: boolean }) {
+function Entry({ report }: { report: StepReport }) {
   return (
-    <li className={latest ? 'history-entry is-latest' : 'history-entry'}>
+    <li className="history-entry">
       <span className="history-when">
         {report.turn}-{report.step}
       </span>
