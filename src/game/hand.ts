@@ -130,6 +130,7 @@ export function reduceHand(state: GameState, who: PlayerIndex, hand: Hand, e: Ha
       return free(e.die) ? { ...hand, held: e.die } : hand
     case 'put': {
       const die = e.die ?? hand.held
+      // Stryker disable next-line ConditionalExpression: 持っていない手で置いても、置けずに下ろすだけで手元は同じ
       return die === null ? hand : put(e.card, e.slot, die)
     }
     case 'tapPlaced':
@@ -148,6 +149,7 @@ export function reduceHand(state: GameState, who: PlayerIndex, hand: Hand, e: Ha
 /** 持っているダイスを置ける、そのカードの置き場の番号。使えるカードなら、目を問わずどの置き場にも置ける */
 export function targets(state: GameState, who: PlayerIndex, hand: Hand, card: CardId): number[] {
   const { held } = hand
+  // Stryker disable next-line ConditionalExpression: 持っていなければ canPut も置けないと答える
   if (held === null || !canPut(state, who, card, held)) return []
   return Array.from({ length: slotCount(state, who, card) }, (_, k) => k)
 }
@@ -182,6 +184,7 @@ export function draftAction(state: GameState, who: PlayerIndex, hand: Hand): Act
  */
 export function missingDice(counts: readonly number[], placed: number): number | null {
   if (counts.includes(placed)) return null
+  // Stryker disable next-line EqualityOperator: 置いた個数と同じ個数は前の行で除いている
   const more = counts.filter((n) => n > placed)
   return more.length > 0 ? Math.min(...more) - placed : null
 }

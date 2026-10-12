@@ -341,6 +341,11 @@ describe('手元への操作', () => {
     expect(run(s, { type: 'tapTray', die: 0 }, { type: 'tapTray', die: 0 }).held).toBeNull()
     expect(run(s, { type: 'tapTray', die: 0 }, { type: 'tapTray', die: 1 }).held).toBe(1)
   })
+  it('引きずり始めたダイスを持つ。置いてあるダイスを引きずっても、置いたままで持つ', () => {
+    expect(run(s, { type: 'grab', die: 2 })).toEqual({ draft: null, held: 2 })
+    const placed = run(s, { type: 'put', card: 'barrier', slot: 0, die: 0 }, { type: 'grab', die: 0 })
+    expect(placed).toEqual({ draft: { card: 'barrier', slots: [0] }, held: 0 })
+  })
   it('使用済みのダイスは持ち上げられない', () => {
     const used = makeState({ roll: [6, 4, 2], usedDice: [0] }, { roll: [1, 2, 3] }, 2)
     expect(run(used, { type: 'tapTray', die: 0 }).held).toBeNull()
@@ -436,6 +441,9 @@ describe('手元への操作', () => {
     expect(draftAction(s, 0, full)).toEqual({ kind: 'fireball', dice: [0, 1] })
     expect(draftIssue(s, 0, full)).toBeNull()
     expect(draftRow(s, 0, EMPTY_HAND)).toBeNull()
+    // 今のステップに置ける行の無いカードは、行として読まない
+    const broken = makeState({ roll: [6, 4, 2], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
+    expect(draftRow(broken, 0, { draft: { card: 'spear', slots: [0, 1] }, held: null })).toBeNull()
     expect(draftAction(s, 0, EMPTY_HAND)).toBeNull()
     expect(draftIssue(s, 0, EMPTY_HAND)).toBeNull()
   })

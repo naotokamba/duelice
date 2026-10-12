@@ -10,7 +10,7 @@
     "dev": "vite dev --port 3000",
     "build": "vite build",
     "preview": "pnpm build && vite preview",
-    "check": "pnpm typecheck && pnpm lint && pnpm test:coverage",
+    "check": "pnpm typecheck && pnpm lint && pnpm test:coverage && pnpm test:balance",
     "typecheck": "tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",

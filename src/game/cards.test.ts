@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { actionOf } from '../test/helpers'
 import type { ActionKind, CardId } from './cards'
-import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, kindsOfCard } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, GUARD_LABEL, kindsOfCard } from './cards'
 import { stepDamage } from './rules'
 
 type Side = { kind: ActionKind | 'pass'; vals: number[] }
@@ -66,6 +66,12 @@ describe('カードの仕様表', () => {
 })
 
 describe('定義表の整合性', () => {
+  it('カードは画面にこの順で並ぶ', () => {
+    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['火球', '障壁', '魔弾', '雷槍', '反射'])
+  })
+  it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
+    expect(GUARD_LABEL).toBe('障壁')
+  })
   it('全ての行動が仕様表に一度は登場する', () => {
     const covered = new Set(SPEC.flatMap((c) => [c.a.kind, c.b.kind]))
     const missing = ACTION_KINDS.filter((k) => !covered.has(k))

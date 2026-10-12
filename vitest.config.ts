@@ -11,13 +11,13 @@ export default defineConfig({
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
       exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/routeTree.gen.ts', 'src/router.tsx', 'src/routes/**'],
-      // 下回ると pnpm test:coverage が失敗する。ルール本体は特に高く保つ
+      // 下回ると pnpm test:coverage が失敗する。対局の中身は、今の値のすぐ下に置いて、テストの抜けにすぐ気づけるようにする
       thresholds: {
         statements: 95,
         branches: 90,
         functions: 95,
         lines: 95,
-        'src/game/**': { statements: 97, branches: 95, functions: 95, lines: 97 },
+        'src/game/**': { statements: 99, branches: 98, functions: 99, lines: 99 },
       },
     },
   },

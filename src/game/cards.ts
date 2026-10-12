@@ -82,6 +82,7 @@ export interface ActionDef {
 }
 
 /** カードの表。並びは画面に並べる順 */
+// Stryker disable next-line ObjectLiteral: 表を空にするとテストの読み込みが失敗し、見つけたと数えられない。並びと名前は cards.test.ts で確かめる
 const CARDS = {
   fireball: { name: '火球' },
   barrier: { name: '障壁' },
@@ -175,4 +176,6 @@ export function effectValue(def: ActionDef, vals: number[]): number {
 }
 
 /** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */
+// Stryker disable next-line OptionalChaining,StringLiteral: 減らす行動が表に無いときの備え。今の表では通らない
+// Stryker disable next-line ArrowFunction: 表を読めなくするとこのファイルの読み込みが失敗し、見つけたと数えられない。名前は cards.test.ts で確かめる
 export const GUARD_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.guard)?.label ?? ''

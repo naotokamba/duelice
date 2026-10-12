@@ -70,6 +70,7 @@ function combinations(items: number[], k: number): number[][] {
   if (k === 0) return [[]]
   const out: number[][] = []
   items.forEach((x, i) => {
+    // Stryker disable next-line MethodExpression: 重なりや並べ替えた組が混ざっても、合法かと同じ手かの判定で除かれる
     for (const rest of combinations(items.slice(i + 1), k - 1)) out.push([x, ...rest])
   })
   return out
@@ -81,6 +82,7 @@ function combinations(items: number[], k: number): number[][] {
  */
 function placements(def: ActionDef, dice: number[]): (number | null)[][] {
   const fill = (xs: number[]) => Array.from({ length: slotsOf(def) }, (_, k) => xs[k] ?? null)
+  // Stryker disable next-line ConditionalExpression: 印の無い行動の置き方を増やしても、同じ手として一つにまとまる。速さだけが変わる
   if (!readsMark(def)) return [fill(dice)]
   return dice.map((d) => fill([d, ...dice.filter((x) => x !== d)]))
 }
@@ -93,6 +95,7 @@ function placements(def: ActionDef, dice: number[]): (number | null)[][] {
 export function actionKey(p: PlayerState, a: Action): string {
   if (a.kind === 'pass') return a.kind
   const vals = diceValues(p, a)
+  // Stryker disable next-line StringLiteral: 目は一桁なので、区切りが無くても組を取り違えない
   const set = [...vals].sort((x, y) => x - y).join(',')
   return `${a.kind}:${readsMark(ACTION_DEFS[a.kind]) ? `${vals[0]}|${set}` : set}`
 }

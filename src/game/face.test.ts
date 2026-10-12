@@ -49,6 +49,21 @@ describe('カード面', () => {
       { icon: 'guard', value: '1' },
     ])
   })
+  it('記号を使う行動でも、文や値の無い印はそのまま残す', () => {
+    // X の枠を持ち、値の無い印と文も並べた仮のカード
+    const def = {
+      ...ACTION_DEFS.fireball,
+      face: {
+        mark: 'X',
+        effect: [{ icon: 'damage' as const, value: 'X' }, { icon: 'bounce' as const }, { text: 'X点' }],
+      },
+    }
+    expect(faceParts(def, [5, 1])).toEqual([
+      { icon: 'damage', value: '5', text: undefined },
+      { icon: 'bounce', value: undefined, text: undefined },
+      { value: undefined, text: '5点' },
+    ])
+  })
   it('点線の枠に書く記号は、そこに置くと増える量と揃う', () => {
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]

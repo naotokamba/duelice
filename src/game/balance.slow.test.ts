@@ -1,10 +1,11 @@
-// バランスの記録。通常のテストには含めず pnpm test:balance で走らせる。
-// ルールやカードを変えると、ここの数字が変わる。意図した変更なら pnpm test:balance -u で更新し、
+// バランスの記録。数秒かかるので通常のテストとは分け、pnpm test:balance で走らせる。pnpm check にも含まれる。
+// 必ず成り立つことは数で確かめ、それ以外の数字は記録と比べる。
+// ルールやカードを変えると記録の数字が変わる。意図した変更なら pnpm test:balance -u で更新し、
 // 差分をコミットに含める。意図しない変更なら、どこかでルールが壊れている。
 
 import { describe, expect, it } from 'vitest'
 import { makeState } from '../test/helpers'
-import { ACTION_KINDS } from './cards'
+import { ACTION_DEFS, ACTION_KINDS } from './cards'
 import { Thinker } from './cpu'
 import { solveMatrixGame } from './matrixGame'
 
@@ -38,7 +39,12 @@ describe('バランス', () => {
       // 対称なゲームなので0になるはず
       seatAdvantage: round(firstValue / total),
     }
+    // 対称なゲームなので、どちらの席にも有利は無い
     expect(report.seatAdvantage).toBe(0)
+    // 頻度は確率なので合計は1。一ステップ目に使えない行動は選ばれない
+    const sum = Object.values(freq).reduce((a, b) => a + b, 0) / total
+    expect(sum).toBeCloseTo(1, 6)
+    for (const k of ACTION_KINDS) if (ACTION_DEFS[k].step === 2) expect(freq[k], k).toBe(0)
     expect(JSON.stringify(report, null, 2)).toMatchSnapshot()
   })
 })
