@@ -1,3 +1,5 @@
+// ダイス。目は九つの升に点を打って描く。押せるダイスはボタン、押せないダイスは絵として読み上げる。
+
 import type { DragHandlers } from './useDiceDrag'
 
 const PIPS: Record<number, number[]> = {
@@ -11,12 +13,10 @@ const PIPS: Record<number, number[]> = {
 
 interface Props {
   value: number
-  used?: boolean
   selected?: boolean
   /** 置ける場所があることを知らせる */
   hint?: boolean
   onClick?: () => void
-  disabled?: boolean
   /** slot はカードの置き場いっぱいに描く */
   size?: 'large' | 'small' | 'slot'
   /** 読み上げの名前。既定は目の値 */
@@ -29,23 +29,10 @@ interface Props {
   kept?: boolean
 }
 
-export function Die({
-  value,
-  used,
-  selected,
-  hint,
-  onClick,
-  disabled,
-  size = 'large',
-  label,
-  drag,
-  lifted,
-  kept,
-}: Props) {
+export function Die({ value, selected, hint, onClick, size = 'large', label, drag, lifted, kept }: Props) {
   const cls = [
     'die',
     `die-${size}`,
-    used && 'die-used',
     kept && 'die-kept',
     selected && 'die-selected',
     hint && 'die-hint',
@@ -54,7 +41,7 @@ export function Die({
   ]
     .filter(Boolean)
     .join(' ')
-  const name = label ?? `${value}の目${used ? '、使用済み' : ''}`
+  const name = label ?? `${value}の目`
   const pips = (
     <span className="die-face" aria-hidden="true">
       {Array.from({ length: 9 }, (_, i) => (
@@ -70,15 +57,7 @@ export function Die({
     )
   }
   return (
-    <button
-      type="button"
-      className={cls}
-      onClick={onClick}
-      disabled={disabled}
-      aria-pressed={selected}
-      aria-label={name}
-      {...drag}
-    >
+    <button type="button" className={cls} onClick={onClick} aria-pressed={selected} aria-label={name} {...drag}>
       {pips}
     </button>
   )

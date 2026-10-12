@@ -31,9 +31,11 @@
   --surface: #f4f5fa;
   --go: #2c9754;
   --hit: #d8392b;
-  /* ダイスの大きさ。手元のダイスとカードの置き場は同じ大きさにして、そのまま置ける感じを出す */
-  --die-me: 48px;
-  --die-cpu: 48px;
+  /* ダイスの大きさ。置き場は押すものなので押せる大きさにし、手元のダイスも同じ大きさにして、そのまま置ける感じを出す。
+     どの席のカードも同じ大きさにするため、カードの置き場はどこでもこの大きさ */
+  --die: var(--tap);
+  /* 決定はカードの下端に重ねる。決定の中心を、カードの下端からこれだけ下に置く */
+  --confirm-sink: calc(var(--tap) * 0.1);
   /* 相手の手元のダイス。押すものではないので小さくする。カードの置き場は、カードの大きさを揃えるため小さくしない */
   --die-tray-cpu: 40px;
   --font-ui: "Zen Kaku Gothic New", system-ui, sans-serif;
@@ -233,8 +235,8 @@ button {
   background: color-mix(in srgb, var(--me) 12%, transparent);
   color: var(--me);
 }
-/* 対局中のメニュー。中央の段の右端に置き、押すとボタンのすぐ下にルールと降参を出す */
-.menu-button {
+/* 丸い印だけのボタン。ルールの「?」、戦闘履歴、対局中のメニュー */
+.icon-button {
   flex: none;
   display: grid;
   place-items: center;
@@ -247,14 +249,14 @@ button {
   color: var(--ink);
   cursor: pointer;
 }
-.menu-button svg {
+.icon-button svg {
   width: 22px;
   height: 22px;
 }
-.menu-button:hover {
+.icon-button:hover {
   border-color: var(--ink-soft);
 }
-/* 位置は MatchMenu.tsx が開いたボタンに合わせて決める */
+/* 対局中のメニュー。ボタンのすぐ下にルールと降参を出す。位置は MatchMenu.tsx が開いたボタンに合わせて決める */
 .menu-dialog {
   position: fixed;
   inset: auto;
@@ -299,19 +301,6 @@ button {
 .menu-item:focus-visible {
   background: var(--table);
 }
-.confirm-dialog {
-  max-width: min(90vw, 360px);
-  padding: 1.5rem 1.25rem 1.25rem;
-  border: 0;
-  border-radius: 16px;
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  text-align: center;
-}
-.confirm-dialog::backdrop {
-  background: rgba(20, 24, 36, 0.5);
-}
 .dialog-title {
   margin: 0 0 1.25rem;
   font-family: var(--font-spell);
@@ -322,6 +311,49 @@ button {
   display: flex;
   justify-content: center;
   gap: 0.75rem;
+}
+/* モーダル。どれも同じ枠と背景で、大きさと余白だけを窓ごとに変える */
+.modal {
+  padding: 1.25rem;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
+}
+.modal::backdrop {
+  background: rgba(20, 24, 36, 0.5);
+}
+/* 見出しと閉じるボタンの段 */
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+.dialog-head .dialog-title {
+  margin: 0;
+}
+.dialog-close {
+  display: grid;
+  place-items: center;
+  width: var(--tap);
+  height: var(--tap);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+.dialog-close:hover {
+  color: var(--ink);
+}
+/* 取り消せない操作の前に確かめる窓 */
+.modal-confirm {
+  max-width: min(90vw, 360px);
+  padding: 1.5rem 1.25rem 1.25rem;
+  text-align: center;
 }
 
 /* 席。相手は上から カード、ダイス、体力。自分は 体力、ダイス、カード。色の帯は卓の中央側に付ける */
@@ -335,12 +367,10 @@ button {
 }
 .seat-me {
   --accent: var(--me);
-  --die: var(--die-me);
   border-top: 4px solid var(--accent);
 }
 .seat-cpu {
   --accent: var(--cpu);
-  --die: var(--die-cpu);
   border-bottom: 4px solid var(--accent);
 }
 /* ダイスと体力を一つの段に並べる */
@@ -481,17 +511,10 @@ button.die {
     0 0 0 3px var(--me),
     0 8px 14px rgba(29, 34, 51, 0.25);
 }
-.die-used {
-  opacity: 0.3;
-  transform: rotate(-8deg) scale(0.9);
-}
 /* 前のステップで使い、カードの置き場に残っているダイス。押せないので浮かせず、面の色を変えて今置けるダイスと見分ける */
 .die-kept {
   background: var(--die-kept);
   box-shadow: inset 0 -2px 0 rgba(29, 34, 51, 0.15);
-}
-button.die:disabled {
-  cursor: default;
 }
 /* 置ける場所があることを、うっすら光らせて知らせる */
 /* 光は色を変えずに濃さだけを動かす。影の色を混ぜると途中で黒ずむため、光を別の層にして透明度で明滅させる */
@@ -518,7 +541,6 @@ button.die:disabled {
   opacity: 0.25;
 }
 .drag-ghost {
-  --die: var(--die-me);
   position: fixed;
   z-index: 10;
   pointer-events: none;
@@ -560,9 +582,9 @@ button.die:disabled {
   border: 1px solid var(--line);
   border-top: 5px solid var(--spell);
   border-radius: 10px;
-  /* 下は決定のボタンが重なる分を空ける。自分の席だけ空けると大きさが変わるので、どの席でも空ける */
-  /* 決定のボタンは下端に半分重なるので、その半分と押せるものの間隔だけ空ける */
-  padding: 0.3rem 0.45rem calc(var(--tap) * 0.4 + var(--tap-gap));
+  /* 下は、決定のボタンがカードの内側に重なる分と、押せるものの間隔を空ける。
+     自分の席だけ空けると大きさが変わるので、どの席でも空ける */
+  padding: 0.3rem 0.45rem calc(var(--tap) / 2 - var(--confirm-sink) + var(--tap-gap));
   background: var(--table);
   transition:
     box-shadow 150ms ease,
@@ -628,12 +650,12 @@ button.die:disabled {
 .card.is-ready {
   box-shadow: 0 0 0 2px var(--go);
 }
-/* 決定は、置き場、効果と読み下ろした先のカードの下端に重ねる */
+/* 決定は、置き場、効果と読み下ろした先のカードの下端に重ねる。中心はカードの下端から --confirm-sink だけ下 */
 .confirm {
   position: absolute;
   left: 50%;
   bottom: 0;
-  transform: translate(-50%, 60%);
+  transform: translate(-50%, calc(50% + var(--confirm-sink)));
   width: var(--tap);
   height: var(--tap);
   display: grid;
@@ -653,12 +675,12 @@ button.die:disabled {
 }
 @keyframes pop-in {
   from {
-    transform: translate(-50%, 60%) scale(0.4);
+    transform: translate(-50%, calc(50% + var(--confirm-sink))) scale(0.4);
     opacity: 0;
   }
 }
 /* 置いたダイスが行動にならない間は、決定と同じ場所に押せない灰色の札を出し、理由を書く。
-   押せないので光らせず動かさない。中心の高さは押せる決定と揃え、カードの下端に同じだけ重ねる */
+   押せないので光らせず動かさない。中心の高さは押せる決定と揃える */
 .confirm.is-blocked {
   width: auto;
   height: 34px;
@@ -674,7 +696,6 @@ button.die:disabled {
   white-space: nowrap;
   cursor: default;
   box-shadow: 0 2px 6px rgba(29, 34, 51, 0.18);
-  transform: translate(-50%, calc(50% + 4.8px));
   animation: none;
   --confirm-icon: 16px;
 }
@@ -713,6 +734,7 @@ button.die:disabled {
   transform: translateY(-50%);
 }
 .slot {
+  position: relative;
   width: var(--die);
   height: var(--die);
   flex: none;
@@ -742,27 +764,30 @@ button.slot {
 button.slot:disabled {
   cursor: default;
 }
+/* 何も持っていない間、使えるカードの空いた置き場を薄く色づけて知らせる。
+   押せるのはダイスを持ってからなので、動かさない */
 .card.is-hint .face-row.is-on .slot:not(.is-filled) {
-  animation: slot-hint 2.4s ease-in-out infinite;
+  background: color-mix(in srgb, var(--spell) 8%, transparent);
 }
-@keyframes slot-hint {
-  50% {
-    background: color-mix(in srgb, var(--spell) 10%, transparent);
-    box-shadow: 0 0 9px color-mix(in srgb, var(--spell) 40%, transparent);
-  }
-}
-/* 持っているダイスを置ける置き場。カード全体ではなく、押せる置き場だけを強調する */
+/* 持っているダイスを置ける置き場。今押せるので、カード全体ではなく押せる置き場だけを光らせる */
 .slot.is-target:not(.is-filled) {
   border-style: solid;
   background: color-mix(in srgb, var(--spell) 16%, transparent);
-  box-shadow: 0 0 12px 1px color-mix(in srgb, var(--spell) 55%, transparent);
 }
 /* ダイスのある置き場にも置ける。置くと、あったダイスと入れ替わる */
 .slot.is-filled.is-target {
-  border-radius: 18%;
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--spell) 70%, transparent),
-    0 0 12px 1px color-mix(in srgb, var(--spell) 55%, transparent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--spell) 70%, transparent);
+}
+/* 光は手元のダイスと同じく、色を変えずに濃さだけを動かす */
+.slot.is-target::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: 0 0 14px 2px color-mix(in srgb, var(--spell) 60%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  animation: glow 2.4s ease-in-out infinite;
 }
 .sym {
   font-family: var(--font-spell);
@@ -890,8 +915,8 @@ button.fx[aria-describedby] {
 .pass {
   margin-left: auto;
   align-self: center;
-  width: 48px;
-  height: 48px;
+  width: var(--tap);
+  height: var(--tap);
   flex: none;
   display: grid;
   place-items: center;
@@ -954,11 +979,17 @@ button.tab {
   background: color-mix(in srgb, var(--spell, var(--ink)) 14%, var(--surface));
 }
 .tab.is-hint {
-  animation: slot-hint 2.4s ease-in-out infinite;
+  animation: tab-hint 2.4s ease-in-out infinite;
+}
+@keyframes tab-hint {
+  50% {
+    background: color-mix(in srgb, var(--spell) 10%, transparent);
+    box-shadow: 0 0 9px color-mix(in srgb, var(--spell) 40%, transparent);
+  }
 }
 
-/* 中央。公開の間は矢印と印の舞台、選んでいる間は戦闘履歴を出す */
-/* 中央。選んでいる間は直近の結果の高さだけ取る。公開の舞台は、上下の席のダイスと体力の段に重ねて大きく描く */
+/* 二人の間の段。左端にターンとステップ、中央に一つ前の結果、右端に履歴とメニュー。
+   高さは右端のボタン二つ分で決め、結果が出ても入れ替わっても段の高さを変えない */
 .arena-row {
   width: 100%;
   min-height: calc(var(--tap) * 2 + var(--tap-gap));
@@ -1006,8 +1037,8 @@ button.tab {
   border: 0;
 }
 
-/* 舞台。上が相手、下が自分。高さは Exchange.tsx の H と合わせる。最後は薄くなって消え、切り替わりの幕につなぐ */
-/* 公開の幕。卓の上に重ね、下の卓を少し暗くする。押すものは無いので、押しても下に通す */
+/* 公開の幕。卓の上に重ね、下の卓を少し暗くする。押すものは無いので、押しても下に通す。
+   最後は薄くなって消え、切り替わりの幕につなぐ */
 .clash {
   position: fixed;
   inset: 0;
@@ -1049,7 +1080,7 @@ button.tab {
 .clash-side .hp-bar {
   flex: 1;
 }
-/* 舞台。高さは Exchange.tsx の STAGE_H */
+/* 舞台。上が相手、下が自分。高さは Exchange.tsx が決める */
 .stage {
   position: relative;
   width: 100%;
@@ -1211,11 +1242,11 @@ button.tab {
     opacity: 1;
   }
 }
-/* 構え。障壁、反射、詠唱は受ける側の端に置く。大きさは Exchange.tsx の STANCE_R と合わせる */
+/* 構え。障壁、反射、詠唱は受ける側の端に置く。矢印が縁で止まるので、大きさは Exchange.tsx が --stance-d で渡す */
 .stance {
   --glyph-bg: var(--surface);
-  width: 56px;
-  height: 56px;
+  width: var(--stance-d);
+  height: var(--stance-d);
   display: grid;
   place-items: center;
   border-radius: 50%;
@@ -1249,7 +1280,7 @@ button.tab {
   color: var(--spell-ink, var(--ink));
 }
 /* 名乗りの札。上が相手、下が自分。技の名前と値を大きく出し、構えの拍で消える。
-   出しておく時間は Exchange.tsx の ANNOUNCE_MS と合わせる */
+   時間は Exchange.tsx が --plate で渡す。最後の二割で消える */
 .plate {
   display: inline-flex;
   align-items: center;
@@ -1263,7 +1294,7 @@ button.tab {
   z-index: 3;
   box-shadow: 0 6px 18px rgba(29, 34, 51, 0.18);
   transform: translate(-50%, -50%);
-  animation: plate 1000ms ease both;
+  animation: plate var(--plate) ease both;
 }
 .plate-name {
   font-family: var(--font-spell);
@@ -1495,56 +1526,18 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
-/* 戦闘履歴を開く印。中央の段の右端に、メニューの上に置く */
-.history-open {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: var(--tap);
-  height: var(--tap);
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-}
-.history-open svg {
-  width: 22px;
-  height: 22px;
-}
-.history-open:hover {
-  border-color: var(--ink-soft);
-}
-.history-dialog {
+.modal-history {
   width: min(94vw, 600px);
   max-height: 85vh;
-  padding: 1.25rem;
-  border: 0;
-  border-radius: 16px;
   background: var(--table);
-  color: var(--ink);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
   text-align: left;
 }
 .seat-cpu .tray {
   --die: var(--die-tray-cpu);
 }
 /* 狭い画面で相手のカードを大きく見る。カードは自分のと同じ大きさ */
-.peek-dialog {
-  --die: var(--die-cpu);
+.modal-peek {
   padding: 1rem;
-  border: 0;
-  border-radius: 16px;
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-}
-.peek-dialog::backdrop {
-  background: rgba(20, 24, 36, 0.5);
-}
-.history-dialog::backdrop {
-  background: rgba(20, 24, 36, 0.5);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1559,8 +1552,7 @@ button.tab {
   .stance,
   .stance svg,
   .banner,
-  .tray.is-rolling .die,
-  .card.is-hint .face-row.is-on .slot:not(.is-filled) {
+  .tray.is-rolling .die {
     animation: none;
     transition: none;
   }
@@ -1576,7 +1568,8 @@ button.tab {
   .clash {
     animation: none;
   }
-  .die-hint::after {
+  .die-hint::after,
+  .slot.is-target::after {
     animation: none;
     opacity: 0.6;
   }
@@ -1609,63 +1602,10 @@ button.tab {
   justify-content: center;
 }
 
-/* ルール。タイトルでは右上の「?」から開く */
-.help {
-  display: grid;
-  place-items: center;
-  width: var(--tap);
-  height: var(--tap);
-  flex: none;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 50%;
-  background: var(--surface);
-  color: var(--ink);
-  cursor: pointer;
-}
-.help svg {
-  width: 22px;
-  height: 22px;
-}
-.help:hover {
-  border-color: var(--ink-soft);
-}
-.rules-dialog {
+/* ルール。タイトルでは右上の「?」から、対局中はメニューから開く */
+.modal-rules {
   width: min(94vw, 1040px);
   max-height: 90vh;
-  padding: 1.25rem;
-  border: 0;
-  border-radius: 16px;
-  background: var(--surface);
-  color: var(--ink);
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-}
-.rules-dialog::backdrop {
-  background: rgba(20, 24, 36, 0.5);
-}
-.rules-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
-}
-.rules-head .dialog-title {
-  margin: 0;
-}
-.dialog-close {
-  display: grid;
-  place-items: center;
-  width: var(--tap);
-  height: var(--tap);
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink-soft);
-  cursor: pointer;
-}
-.dialog-close:hover {
-  color: var(--ink);
 }
 /* 印の見方 */
 .rules-marks {
@@ -1687,9 +1627,6 @@ button.tab {
 .rules-cards-title {
   margin: 1.25rem 0 0.6rem;
   font-size: 1rem;
-}
-.rules-cards {
-  --die: var(--die-me);
 }
 .rules-list {
   margin: 0.5rem 0 0;
@@ -1755,10 +1692,10 @@ button.tab {
   .rules-cards {
     justify-content: center;
   }
-  /* 狭い画面のカードは、効果の印を置き場の右に並べて背を低くし、卓が縦の画面に収まるようにする。対局、相手のカード、ルールのどれでも同じ形 */
-  /* 幅は一番長い魔弾の「□ □ 1個 ☆ 2個 ☆」がゆとりを持って一行に収まる幅。画面が狭ければ画面に合わせる */
-  /* どこに出しても同じ大きさになるように、入れ物ではなく画面の幅から決める。引く量は、一番狭いルールの窓の余白と、そのスクロールバーの分 */
-  /* 高さは二段ある雷槍に合わせ、どのカードも同じ大きさにする。置き場2段のほかは、名前と段の区切りと、決定のボタンが重なる分 */
+  /* 狭い画面のカードは、効果の印を置き場の右に並べて背を低くし、卓が縦の画面に収まるようにする。対局、相手のカード、ルールのどれでも同じ形。
+     幅は一番長い行がゆとりを持って一行に収まる幅で、画面が狭ければ画面に合わせる。
+     どこに出しても同じ大きさになるように、入れ物ではなく画面の幅から決める。引く量は、一番狭いルールの窓の余白と、そのスクロールバーの分。
+     高さは二段ある行のカードに合わせ、どのカードも同じ大きさにする。置き場2段のほかは、名前と段の区切りと、決定のボタンが重なる分 */
   .card {
     width: min(330px, calc(100vw - 4.5rem));
     height: calc(var(--die) * 2 + 5rem);
@@ -1768,16 +1705,15 @@ button.tab {
     justify-content: center;
     gap: 10px;
   }
-  /* 印と添える文の間は、押せる印どうしの間に文が挟まるので詰めてよい */
+  /* 効果は置き場の右に一行で並べる */
   .effect {
     flex-wrap: nowrap;
-    gap: 6px;
   }
   .fx-text {
     white-space: nowrap;
   }
   /* カードを対局と同じ大きさで並べられるように、ルールの窓の余白を詰める */
-  .rules-dialog {
+  .modal-rules {
     padding: 1rem;
   }
 }

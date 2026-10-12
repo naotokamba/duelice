@@ -3,7 +3,7 @@
 
 import { CircleHelp, Ellipsis, Flag } from 'lucide-react'
 import { useRef } from 'react'
-import { closeOnBackdrop } from './dialog'
+import { Dialog } from './Dialog'
 import { RulesDialog } from './RulesButton'
 
 /** メニューと、開いたボタンや画面の端との間 */
@@ -36,7 +36,7 @@ export function MatchMenu({ onSurrender }: Props) {
       <button
         ref={button}
         type="button"
-        className="menu-button"
+        className="icon-button"
         aria-label="メニュー"
         title="メニュー"
         aria-haspopup="dialog"
@@ -44,8 +44,7 @@ export function MatchMenu({ onSurrender }: Props) {
       >
         <Ellipsis aria-hidden="true" />
       </button>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
-      <dialog ref={menu} className="menu-dialog" aria-label="メニュー" onClick={closeOnBackdrop}>
+      <Dialog ref={menu} className="menu-dialog" label="メニュー">
         <button type="button" className="menu-item" onClick={() => choose(() => rules.current?.showModal())}>
           <CircleHelp aria-hidden="true" />
           ルール
@@ -56,14 +55,14 @@ export function MatchMenu({ onSurrender }: Props) {
             降参
           </button>
         )}
-      </dialog>
+      </Dialog>
       <RulesDialog ref={rules} />
     </>
   )
 }
 
 /** メニューを、開いたボタンの右端に揃えて下に出す。下に収まらなければ上に出す */
-function place(d: HTMLDialogElement, from: HTMLElement) {
+export function place(d: HTMLDialogElement, from: HTMLElement) {
   const r = from.getBoundingClientRect()
   const h = d.getBoundingClientRect().height
   const below = r.bottom + GAP + h <= window.innerHeight - GAP

@@ -2,11 +2,11 @@
 // タイトルでは右上の「?」から、対局中はメニューから開く。
 // カードの説明は文で書かず、対戦で使うカードをそのままの大きさで並べる。
 
-import { CircleHelp, X } from 'lucide-react'
+import { CircleHelp } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
 import { CARD_ORDER, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
-import { closeOnBackdrop } from './dialog'
+import { Modal } from './Dialog'
 import { EffectGlyph } from './glyphs'
 
 /** カードに出てくる印と、その意味 */
@@ -28,7 +28,7 @@ export function RulesButton() {
     <>
       <button
         type="button"
-        className="help"
+        className="icon-button"
         aria-label="ルール"
         title="ルール"
         onClick={() => dialog.current?.showModal()}
@@ -43,50 +43,33 @@ export function RulesButton() {
 /** ルールの窓。開くのは呼ぶ側で、ref の showModal を呼ぶ */
 export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement | null> }) {
   return (
-    <>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
-      <dialog ref={dialog} className="rules-dialog" aria-labelledby="rules-title" onClick={closeOnBackdrop}>
-        <div className="rules-head">
-          <h2 id="rules-title" className="dialog-title">
-            ルール
-          </h2>
-          <button
-            type="button"
-            className="dialog-close"
-            aria-label="閉じる"
-            title="閉じる"
-            onClick={() => dialog.current?.close()}
-          >
-            <X aria-hidden="true" />
-          </button>
-        </div>
-        <ul className="rules-list">
-          <li>毎ターン、互いにダイスを3個振る。出目はお互いに見えている</li>
-          <li>1ターンは2ステップ。各ステップでカードを1枚選んでダイスを置き、同時に公開する</li>
-          <li>ステップ1で使わなかったダイスは、ステップ2で使える。同じカードは1ターンに1回まで</li>
-          <li>
-            カードの置き場は、横に並んだ一段がステップ1つぶん。二段あるカードは、ステップ1で上の段、ステップ2で下の段を使う
+    <Modal ref={dialog} title="ルール" className="modal-rules">
+      <ul className="rules-list">
+        <li>毎ターン、互いにダイスを3個振る。出目はお互いに見えている</li>
+        <li>1ターンは2ステップ。各ステップでカードを1枚選んでダイスを置き、同時に公開する</li>
+        <li>ステップ1で使わなかったダイスは、ステップ2で使える。同じカードは1ターンに1回まで</li>
+        <li>
+          カードの置き場は、横に並んだ一段がステップ1つぶん。二段あるカードは、ステップ1で上の段、ステップ2で下の段を使う
+        </li>
+        <li>ダイスは置き場を選んで置く。X と書いた置き場に置いた目が X になる</li>
+        <li>点線の枠は置かなくてもよい。置くと、枠の中に書いた分だけ増える</li>
+        <li>体力が先に0になった方の負け。同時なら引き分け</li>
+      </ul>
+      <h3 className="rules-cards-title">印</h3>
+      <ul className="rules-marks">
+        {MARKS.map(([part, text]) => (
+          <li key={part.icon}>
+            <EffectGlyph part={part} tip={false} />
+            <span>{text}</span>
           </li>
-          <li>ダイスは置き場を選んで置く。X と書いた置き場に置いた目が X になる</li>
-          <li>点線の枠は置かなくてもよい。置くと、枠の中に書いた分だけ増える</li>
-          <li>体力が先に0になった方の負け。同時なら引き分け</li>
-        </ul>
-        <h3 className="rules-cards-title">印</h3>
-        <ul className="rules-marks">
-          {MARKS.map(([part, text]) => (
-            <li key={part.icon}>
-              <EffectGlyph part={part} tip={false} />
-              <span>{text}</span>
-            </li>
-          ))}
-        </ul>
-        <h3 className="rules-cards-title">カード</h3>
-        <ul className="cards rules-cards">
-          {CARD_ORDER.map((c) => (
-            <Card key={c} card={c} roll={[]} active={kindsOfCard(c)} used={false} shown={null} />
-          ))}
-        </ul>
-      </dialog>
-    </>
+        ))}
+      </ul>
+      <h3 className="rules-cards-title">カード</h3>
+      <ul className="cards rules-cards">
+        {CARD_ORDER.map((c) => (
+          <Card key={c} card={c} roll={[]} active={kindsOfCard(c)} used={false} shown={null} />
+        ))}
+      </ul>
+    </Modal>
   )
 }

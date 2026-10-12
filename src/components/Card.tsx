@@ -4,33 +4,20 @@
 
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
-import { ACTION_DEFS, type ActionKind, CARD_DEFS, CARD_ORDER, type CardId, kindsOfCard } from '../game/cards'
+import { ACTION_DEFS, type ActionKind, CARD_DEFS, type CardId, kindsOfCard } from '../game/cards'
 import { effectParts } from '../game/face'
 import { filled, MARK_SLOT, type PlacedRow, requiredSlots, slotsOf } from '../game/slots'
 import { Die } from './Die'
+import { dropAttr } from './drop'
 import { EffectGlyph } from './glyphs'
+import type { Shown } from './seatView'
 import type { DragHandlers } from './useDiceDrag'
-
-/** カードに置いて見せるダイス。complete は行動として組み上がっていること。効果の記号を値に置き換える */
-export type Shown = PlacedRow & { complete: boolean }
-
-/** 引きずって落とした先の置き場を、data-drop に書く名前にする */
-export function slotDrop(card: CardId, slot: number): string {
-  return `${card}:${slot}`
-}
-
-/** data-drop に書いた名前から、落とした先の置き場を読む。置き場でなければ null */
-export function readSlotDrop(target: string | null): { card: CardId; slot: number } | null {
-  const [card, slot] = target?.split(':') ?? []
-  if (!CARD_ORDER.includes(card as CardId) || !/^\d+$/.test(slot ?? '')) return null
-  return { card: card as CardId, slot: Number(slot) }
-}
 
 /** 自分の席で選んでいる間だけ渡す操作 */
 export interface CardPlay {
   /** 持っているダイスを置ける置き場の番号。押せる置き場だけを光らせる */
   targets: number[]
-  /** 何も持っていないとき。使えるカードの置き場を薄く光らせる */
+  /** 何も持っていないとき。使えるカードの空いた置き場を、動かさずに薄く色づけて知らせる。押せるのはダイスを持ってから */
   hint: boolean
   /** 空いた置き場か、ダイスのある置き場を押した。持っているダイスをそこに置く */
   onSlot: (slot: number) => void
@@ -111,56 +98,6 @@ export function Card({ card, roll, active, used, shown, casting, kept, play }: P
   )
 }
 
-/** 狭い画面で並べるカードの名前。押すとそのカードを出す。名前は置き場ではないので、ダイスは置けない */
-export interface Tab {
-  card: CardId
-  /** 今は使えない */
-  off: boolean
-  /** 大きく出しているカード */
-  current: boolean
-  /** 何も持っていないとき、使えることを薄く光らせて知らせる */
-  hint: boolean
-  /** ダイスが置いてある */
-  placed: boolean
-}
-
-export function CardTabs({ tabs, onPick }: { tabs: Tab[]; onPick?: (c: CardId) => void }) {
-  return (
-    <ul className="tabs">
-      {tabs.map((t) => {
-        const cls = [
-          'tab',
-          `card-${t.card}`,
-          t.off && 'is-off',
-          t.current && 'is-current',
-          t.hint && 'is-hint',
-          t.placed && 'is-placed',
-        ]
-          .filter(Boolean)
-          .join(' ')
-        const name = CARD_DEFS[t.card].name
-        return (
-          <li key={t.card}>
-            {onPick ? (
-              <button
-                type="button"
-                className={cls}
-                aria-pressed={t.current}
-                data-drop={t.card}
-                onClick={() => onPick(t.card)}
-              >
-                {name}
-              </button>
-            ) : (
-              <span className={cls}>{name}</span>
-            )}
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
 interface RowProps {
   card: CardId
   kind: ActionKind
@@ -194,7 +131,7 @@ function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
     const optional = k >= needed ? ' is-optional' : ''
     const active = play && on
     const target = active && play.targets.includes(k) ? ' is-target' : ''
-    const drop = active ? slotDrop(card, k) : undefined
+    const drop = active ? dropAttr({ type: 'slot', card, slot: k }) : undefined
     // 前のステップのダイスは、盤の上の駒のようにそのまま残す。押せず、光らせない
     if (d !== null && fixed) {
       return (

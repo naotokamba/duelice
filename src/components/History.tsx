@@ -2,12 +2,12 @@
 // 履歴の印は、中央の段の右端にメニューと縦に並べるので、一つ前の結果とは別に置く。
 // 上下の並びは卓と同じで、上が相手、下が自分。
 
-import { History as HistoryIcon, SkipForward, X } from 'lucide-react'
+import { History as HistoryIcon, SkipForward } from 'lucide-react'
 import { useRef } from 'react'
 import { ACTION_DEFS } from '../game/cards'
 import type { PlayerIndex, StepReport } from '../game/types'
+import { Modal } from './Dialog'
 import { Die } from './Die'
-import { closeOnBackdrop } from './dialog'
 import { actionLabel } from './text'
 
 /** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
@@ -32,35 +32,20 @@ export function HistoryButton({ history }: { history: StepReport[] }) {
     <>
       <button
         type="button"
-        className="history-open"
+        className="icon-button"
         aria-label="戦闘履歴"
         title="戦闘履歴"
         onClick={() => dialog.current?.showModal()}
       >
         <HistoryIcon aria-hidden="true" />
       </button>
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: 外を押して閉じるのはマウスと指のため。キーボードでは Esc で閉じる */}
-      <dialog ref={dialog} className="history-dialog" aria-labelledby="history-title" onClick={closeOnBackdrop}>
-        <div className="rules-head">
-          <h2 id="history-title" className="dialog-title">
-            戦闘履歴
-          </h2>
-          <button
-            type="button"
-            className="dialog-close"
-            aria-label="閉じる"
-            title="閉じる"
-            onClick={() => dialog.current?.close()}
-          >
-            <X aria-hidden="true" />
-          </button>
-        </div>
+      <Modal ref={dialog} title="戦闘履歴" className="modal-history">
         <ol className="history-list">
           {items.map((r) => (
             <Entry key={`${r.turn}-${r.step}`} report={r} />
           ))}
         </ol>
-      </dialog>
+      </Modal>
     </>
   )
 }

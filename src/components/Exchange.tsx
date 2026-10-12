@@ -8,10 +8,11 @@ import type { CSSProperties, ReactNode } from 'react'
 import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
 import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
 import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
+import { HpBar } from './HpBar'
 import { actionLabel } from './text'
 
 /** 舞台の高さ。卓の上に重ねるので、席の間に収める必要はない */
-const STAGE_H = 300
+export const STAGE_H = 300
 /** 矢印が始まる位置の、端からの距離 */
 const EDGE = 16
 /**
@@ -21,17 +22,19 @@ const EDGE = 16
 const HIT = 38
 /** 構えの印の中心の、端からの距離の割合。当たった星と重ならないように端から離す */
 const STANCE_SHARE = 0.35
-/** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。styles.css の .stance と合わせる */
+/** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。印の大きさは、この値を CSS の変数で渡して決める */
 const STANCE_R = 28
 
 // 公開は三つの拍に分けて、拍ごとに間を取る。
 // 一つ目は名乗り。使ったカードが光り、技の名前と値の札が中央に出る。
 // 二つ目は構え。札が消え、障壁や反射や詠唱の印が技の名前と一緒に出る。
 // 三つ目は攻撃と結果。技の名前を付けた矢印が飛び、当たって体力が減る。
-// 札の出入りの時間は styles.css の .plate と合わせる
+// 時間はここで決め、CSS の変数で動きに渡す
 
 /** 名乗りの札を出しておく時間 */
-export const ANNOUNCE_MS = 800
+const ANNOUNCE_MS = 800
+/** 名乗りの札が出て消えるまでの時間。出しておく時間の後、残りの二割で消える */
+const PLATE_MS = ANNOUNCE_MS * 1.25
 /** 構えの印が出る時刻 */
 const STANCE_AT = 850
 /** 矢印を放つ時刻 */
@@ -108,9 +111,14 @@ interface ExchangeProps {
 
 export function Exchange({ report, top, bottom }: ExchangeProps) {
   const list = report.strikes
-  const out = { '--out-at': `${revealMs(list) - OUT_MS}ms`, '--out': `${OUT_MS}ms` } as CSSProperties
+  const vars = {
+    '--out-at': `${revealMs(list) - OUT_MS}ms`,
+    '--out': `${OUT_MS}ms`,
+    '--plate': `${PLATE_MS}ms`,
+    '--stance-d': `${STANCE_R * 2}px`,
+  } as CSSProperties
   return (
-    <div className="clash" style={out} aria-hidden="true">
+    <div className="clash" style={vars} aria-hidden="true">
       <div className="clash-panel">
         {top}
         <div className="stage" style={{ height: H }}>
@@ -183,6 +191,16 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
         </div>
         {bottom}
       </div>
+    </div>
+  )
+}
+
+/** 公開の幕の上下の端に出す体力の帯。当たった時に減る */
+export function ClashSide({ side, name, hp, maxHp }: { side: 'me' | 'cpu'; name: string; hp: number; maxHp: number }) {
+  return (
+    <div className={`clash-side side-${side}`}>
+      <span className="clash-name">{name}</span>
+      <HpBar hp={hp} maxHp={maxHp} />
     </div>
   )
 }

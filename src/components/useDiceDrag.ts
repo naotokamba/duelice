@@ -1,8 +1,9 @@
 // ダイスを指やマウスで引きずって、カードの置き場や手元に置く。
 // 少し動かすまではタップとして扱うので、タップで選んでタップで置く操作と両立する。
-// 落とした先は、data-drop を持つ一番近い祖先の値で伝える。
+// 落とした先は、data-drop を持つ一番近い祖先の値を drop.ts で読んで伝える。
 
 import { type PointerEvent, useRef, useState } from 'react'
+import { type DropTarget, readDrop } from './drop'
 
 export interface DragHandlers {
   onPointerDown: (e: PointerEvent<HTMLElement>) => void
@@ -14,8 +15,8 @@ export interface DragHandlers {
 export interface DragCallbacks {
   /** 引きずり始めた */
   start: () => void
-  /** 指を離した。target は落とした先の data-drop の値 */
-  drop: (target: string | null) => void
+  /** 指を離した。落とした先が行き先でなければ null */
+  drop: (target: DropTarget | null) => void
 }
 
 /** 引きずっている途中のダイスの位置 */
@@ -61,7 +62,7 @@ export function useDiceDrag() {
         justDropped.current = false
       }, 0)
       const el = document.elementFromPoint(e.clientX, e.clientY)
-      on.drop(el?.closest('[data-drop]')?.getAttribute('data-drop') ?? null)
+      on.drop(readDrop(el?.closest('[data-drop]')?.getAttribute('data-drop') ?? null))
     },
     onPointerCancel: () => {
       press.current = null

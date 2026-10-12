@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { Action, Rng } from '../game/types'
 import { seeded } from '../test/helpers'
 import { HOLD_MS, IMPACT_MS } from './Exchange'
-import { BANNER_MS, Game, type Opponent } from './Game'
+import { Game, type Opponent } from './Game'
+import { BANNER_MS } from './useRevealClock'
 
 // 公開の動きと自動の進行は時間で進むので、偽の時計で進める。
 // Testing Library は内部で setTimeout の完了を待つので、偽の時計も実時間に合わせて少しずつ進める
