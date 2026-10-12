@@ -1,6 +1,9 @@
 // CPUの思考。
 // 公開されている情報だけを使い、二ステップの同時手番を最適戦略で解く。
 // 難易度は、最適戦略からどれだけ外れた手を混ぜるかで調整する。
+// 無意味なパスはどの強さでも選ばない。弱さは、パス以外の手の選び方で出す。
+// 二ステップ目は、ほかに使える行動があればパスを候補から外す。どのステップでも、ほかの行動に弱く支配されるパスは外す。
+// 候補を絞るのは二人とも同じなので、つよいが解く均衡は、この絞った行列ゲームの均衡になる
 
 import { solveMatrixGame } from './matrixGame'
 import { freeDice, legalActions, resolveStep } from './rules'
@@ -21,6 +24,55 @@ interface StepGame {
   a0: Action[]
   a1: Action[]
   payoff: number[][] // プレイヤー0から見た得点
+}
+
+/** そのステップで考える行動。二ステップ目は、ほかに使える行動があればパスを外す */
+export function candidates(s: GameState, who: PlayerIndex): Action[] {
+  const all = legalActions(s, who)
+  if (s.step !== 2) return all
+  const acting = all.filter((a) => a.kind !== 'pass')
+  return acting.length > 0 ? acting : all
+}
+
+/**
+ * 得点の比較で同じとみなす幅。二ステップ目の価値は行列ゲームを解いた小数で、同じ局面でも手の並びが違うと末の桁がずれる。
+ * そのずれで、本当は同点の手を「上回る」と判定しないようにする
+ */
+const EPS = 1e-9
+
+/**
+ * 行 i が、ほかのどれかの行に弱く支配されているか。
+ * 相手のどの手に対しても得点が同じか上で、少なくとも一つの手で上回る行があれば支配されている
+ */
+export function weaklyDominated(payoff: number[][], i: number): boolean {
+  return payoff.some(
+    (row, r) => r !== i && row.every((v, j) => v >= payoff[i][j] - EPS) && row.some((v, j) => v > payoff[i][j] + EPS),
+  )
+}
+
+/** 行列ゲームの行と列を入れ替え、符号を反転する。相手から見た行列ゲームになる */
+function flip(g: StepGame): StepGame {
+  return { a0: g.a1, a1: g.a0, payoff: g.a1.map((_, j) => g.a0.map((_, i) => -g.payoff[i][j])) }
+}
+
+/** 行の側のパスが弱く支配されていれば、その行の番号。外すものが無ければ -1 */
+function dominatedPass(g: StepGame): number {
+  const i = g.a0.findIndex((a) => a.kind === 'pass')
+  return i >= 0 && weaklyDominated(g.payoff, i) ? i : -1
+}
+
+/**
+ * 二人それぞれについて、弱く支配されるパスを外す。どちらも元の行列ゲームで判定して同時に外し、席による差を作らない。
+ * 支配された手は、支配する手に替えても損をしないので、外しても零和の行列ゲームの価値は変わらない
+ */
+function prune(g: StepGame): StepGame {
+  const row = dominatedPass(g)
+  const col = dominatedPass(flip(g))
+  return {
+    a0: g.a0.filter((_, i) => i !== row),
+    a1: g.a1.filter((_, j) => j !== col),
+    payoff: g.payoff.filter((_, i) => i !== row).map((r) => r.filter((_, j) => j !== col)),
+  }
 }
 
 function stateKey(s: GameState): string {
@@ -62,30 +114,26 @@ export class Thinker {
   }
 
   private buildStep2(s: GameState): StepGame {
-    const a0 = legalActions(s, 0)
-    const a1 = legalActions(s, 1)
-    const payoff = a0.map((x) => a1.map((y) => stepScore(resolveStep(s, [x, y]))))
-    return { a0, a1, payoff }
+    return this.build(s, (next) => stepScore(next))
   }
 
   private buildStep1(s: GameState): StepGame {
-    const a0 = legalActions(s, 0)
-    const a1 = legalActions(s, 1)
-    const payoff = a0.map((x) =>
-      a1.map((y) => {
-        const next = resolveStep(s, [x, y])
-        return stepScore(next) + this.step2Value(next)
-      }),
-    )
-    return { a0, a1, payoff }
+    return this.build(s, (next) => stepScore(next) + this.step2Value(next))
+  }
+
+  /** 二人の候補の組ごとに一ステップ解決し、score で得点を付けた行列ゲーム。無意味なパスは外す */
+  private build(s: GameState, score: (next: GameState) => number): StepGame {
+    const a0 = candidates(s, 0)
+    const a1 = candidates(s, 1)
+    const payoff = a0.map((x) => a1.map((y) => score(resolveStep(s, [x, y]))))
+    return prune({ a0, a1, payoff })
   }
 
   /** 今のステップの行列ゲームを、指定したプレイヤーの視点で返す */
   game(s: GameState, who: PlayerIndex): { mine: Action[]; theirs: Action[]; payoff: number[][] } {
-    const g = s.step === 1 ? this.buildStep1(s) : this.buildStep2(s)
-    if (who === 0) return { mine: g.a0, theirs: g.a1, payoff: g.payoff }
-    const payoff = g.a1.map((_, j) => g.a0.map((_, i) => -g.payoff[i][j]))
-    return { mine: g.a1, theirs: g.a0, payoff }
+    const g0 = s.step === 1 ? this.buildStep1(s) : this.buildStep2(s)
+    const g = who === 0 ? g0 : flip(g0)
+    return { mine: g.a0, theirs: g.a1, payoff: g.payoff }
   }
 
   /** 各行動を選ぶ確率と、その行動の期待得点 */
