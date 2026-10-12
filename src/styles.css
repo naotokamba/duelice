@@ -633,6 +633,26 @@ button.die {
   font-weight: 700;
   color: var(--ink-soft);
 }
+/* このターンに使い終わったカード。縁を灰色の実線にし、地に細い斜線を敷く。
+   点線は置き場の印なので縁には使わない。置いたダイスや印は薄くせず、そのまま読めるようにする */
+.card.is-used {
+  border: 2px solid var(--ink-soft);
+  border-top-width: 5px;
+  background: repeating-linear-gradient(
+    -45deg,
+    var(--table) 0 9px,
+    color-mix(in srgb, var(--ink-soft) 9%, var(--table)) 9px 12px
+  );
+}
+.card.is-used .card-name {
+  color: var(--ink-soft);
+}
+.card.is-used .card-used {
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--ink-soft);
+  color: var(--table);
+}
 .card.is-casting {
   border-color: var(--spell);
   box-shadow:
@@ -949,6 +969,7 @@ button.fx[aria-describedby] {
   gap: var(--tap-gap);
 }
 .tab {
+  position: relative;
   display: block;
   width: 100%;
   min-height: var(--tap);
@@ -980,6 +1001,27 @@ button.tab {
 }
 .tab.is-hint {
   animation: tab-hint 2.4s ease-in-out infinite;
+}
+/* 使い終わったカードの名前。下の線を灰色にし、右上に「済」を付ける */
+.tab.is-used {
+  --spell: var(--ink-soft);
+  --spell-ink: var(--ink-soft);
+}
+.tab-used {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  color: var(--table);
+  font-family: var(--font-ui);
+  font-size: 0.62rem;
+  font-weight: 800;
+  line-height: 1;
 }
 @keyframes tab-hint {
   50% {

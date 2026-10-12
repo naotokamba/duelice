@@ -49,10 +49,13 @@ interface Props {
 export function Card({ card, roll, active, used, shown, casting, kept, play }: Props) {
   const name = CARD_DEFS[card].name
   const issueId = useId()
+  // 公開で使っている間は使ったカードとして光らせるので、使用済みの見た目にはしない
+  const spent = used && !shown
   const cls = [
     'card',
     `card-${card}`,
     active.length === 0 && !shown && 'is-off',
+    spent && 'is-used',
     play?.hint && active.length > 0 && 'is-hint',
     play?.onConfirm && 'is-ready',
     casting && 'is-casting',
@@ -60,10 +63,10 @@ export function Card({ card, roll, active, used, shown, casting, kept, play }: P
     .filter(Boolean)
     .join(' ')
   return (
-    <li className={cls} aria-label={name}>
+    <li className={cls} aria-label={name} aria-description={spent ? '使用済み' : undefined}>
       <div className="card-head">
         <span className="card-name">{name}</span>
-        {used && !shown && <span className="card-used">使用済み</span>}
+        {spent && <span className="card-used">使用済み</span>}
       </div>
       {kindsOfCard(card).map((kind) => (
         <Row

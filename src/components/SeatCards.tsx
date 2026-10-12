@@ -62,6 +62,7 @@ export function SeatCards({ seat, shown, revealing, narrow, current, onPick, hin
         current: c === (current ?? shown?.card),
         hint: !!hint && seat.usable.has(c),
         placed: shown?.card === c || seat.kept?.card === c,
+        used: usedUp(seat, c) && shown?.card !== c,
       }))}
       onPick={onPick}
     />

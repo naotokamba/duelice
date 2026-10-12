@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { kindsOfCard } from '../game/cards'
 import { diceOn } from '../test/screen'
 import { Card, type CardPlay } from './Card'
+import { CardTabs, type Tab } from './CardTabs'
 
 afterEach(cleanup)
 
@@ -125,5 +126,70 @@ describe('カード面', () => {
   it('置いていなければ決定は出さない', () => {
     const card = draw({ card: 'fireball', play: play() })
     expect(card.queryByRole('button', { name: '決定' })).toBeNull()
+  })
+})
+
+describe('使用済みのカード', () => {
+  it('このターンに使い終わったカードは、使用済みと書き、カードの説明でも伝える', () => {
+    const card = draw({ card: 'fireball', active: [], used: true })
+    expect(card.getByText('使用済み')).toBeTruthy()
+    expect(screen.getByRole('listitem').getAttribute('aria-description')).toBe('使用済み')
+  })
+
+  it('使えるカードと、今は使えないだけのカードは、使用済みにしない', () => {
+    const usable = draw({ card: 'fireball' })
+    expect(usable.queryByText('使用済み')).toBeNull()
+    expect(screen.getByRole('listitem').getAttribute('aria-description')).toBeNull()
+    cleanup()
+    // 雷槍の発動は、詠唱していなければ今は使えないが、使い終わってはいない
+    const off = draw({ card: 'spear', active: [] })
+    expect(off.queryByText('使用済み')).toBeNull()
+    expect(screen.getByRole('listitem').getAttribute('aria-description')).toBeNull()
+  })
+
+  it('公開で使っている間は、使ったカードとして描き、使用済みにしない', () => {
+    const card = draw({
+      card: 'fireball',
+      active: [],
+      used: true,
+      shown: { card: 'fireball', kind: 'fireball', slots: [0, 1], complete: true },
+    })
+    expect(card.queryByText('使用済み')).toBeNull()
+  })
+})
+
+describe('カードの名前', () => {
+  const tab = (over: Partial<Tab> & Pick<Tab, 'card'>): Tab => ({
+    off: false,
+    current: false,
+    hint: false,
+    placed: false,
+    used: false,
+    ...over,
+  })
+
+  it('使い終わったカードの名前は、使用済みと伝え、印を付ける。ほかの名前には付けない', () => {
+    render(
+      <CardTabs
+        tabs={[
+          tab({ card: 'fireball', off: true, used: true, placed: true }),
+          tab({ card: 'barrier', placed: true }),
+          tab({ card: 'bullet' }),
+        ]}
+        onPick={vi.fn()}
+      />,
+    )
+    const fireball = screen.getByRole('button', { name: '火球' })
+    expect(fireball.getAttribute('aria-description')).toBe('使用済み')
+    expect(fireball.textContent).toBe('火球済')
+    expect(screen.getByRole('button', { name: '障壁' }).getAttribute('aria-description')).toBe('ダイスが置いてある')
+    const bullet = screen.getByRole('button', { name: '魔弾' })
+    expect(bullet.getAttribute('aria-description')).toBeNull()
+    expect(bullet.textContent).toBe('魔弾')
+  })
+
+  it('押せない名前でも、使い終わったことを伝える', () => {
+    render(<CardTabs tabs={[tab({ card: 'reflect', used: true })]} />)
+    expect(screen.getByText('反射').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
   })
 })
