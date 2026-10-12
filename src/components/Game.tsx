@@ -9,6 +9,7 @@ import {
   placeDie,
   placedDice,
   placedKind,
+  placementIssue,
   removeDie,
   slotCount,
 } from '../game/compose'
@@ -179,7 +180,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     setHeld(null)
   }
 
-  /** 持っているダイスを置ける、そのカードの置き場の番号 */
+  /** 持っているダイスを置ける、そのカードの置き場の番号。使えるカードなら、目を問わずどの置き場にも置ける */
   const targetsOf = (c: CardId): number[] =>
     held === null
       ? []
@@ -227,11 +228,12 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
       targets,
       hint: held === null,
       onSlot: (k) => held !== null && put(c, held, k),
-      // ダイスのある置き場を押したとき、持っているダイスを置けるなら入れ替え、置けなければそのダイスを手元に戻す
-      onPlaced: (k, die) => tap(() => (held !== null && targets.includes(k) ? put(c, held, k) : takeBack(die)))(),
+      // ダイスのある置き場を押したとき、ダイスを持っていれば入れ替え、持っていなければそのダイスを手元に戻す
+      onPlaced: (k, die) => tap(() => (held !== null ? put(c, held, k) : takeBack(die)))(),
       drag: dragDie,
       lifted: drag.view?.die ?? null,
       onConfirm: action && placement?.card === c ? () => commit(action) : undefined,
+      issue: placement?.card === c ? placementIssue(game, 0, placement) : null,
     }
   }
 

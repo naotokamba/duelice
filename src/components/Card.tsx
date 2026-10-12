@@ -3,7 +3,7 @@
 // ダイスは置き場を一つずつ選んで置く。カードの置き場の外を押しても、引きずって落としても置かない。
 
 import { Check } from 'lucide-react'
-import { Fragment } from 'react'
+import { Fragment, useId } from 'react'
 import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard } from '../game/cards'
 import { effectParts } from '../game/compose'
 import type { ActionKind, CardId } from '../game/types'
@@ -47,6 +47,8 @@ export interface CardPlay {
   lifted: number | null
   /** 行動が組み上がったときだけ渡す */
   onConfirm?: () => void
+  /** ダイスを置いたが行動にならないとき、決定を押せない理由 */
+  issue?: string | null
 }
 
 interface Props {
@@ -63,6 +65,7 @@ interface Props {
 
 export function Card({ card, roll, active, used, shown, casting, play }: Props) {
   const name = CARD_DEFS[card].name
+  const issueId = useId()
   const cls = [
     'card',
     `card-${card}`,
@@ -92,10 +95,20 @@ export function Card({ card, roll, active, used, shown, casting, play }: Props) 
         />
       ))}
       {/* 置き場、効果と読んだ流れの先に、カードの下端に重ねて出す */}
-      {play?.onConfirm && (
+      {play?.onConfirm ? (
         <button type="button" className="confirm" aria-label="決定" title="決定" onClick={play.onConfirm}>
           <Check aria-hidden="true" strokeWidth={3} />
         </button>
+      ) : (
+        // 行動にならない間は、同じ場所に押せない決定を出し、足りないことを短く書く。組み上がれば押せる決定に変わる
+        play?.issue && (
+          <button type="button" className="confirm is-blocked" aria-label="決定" aria-describedby={issueId} disabled>
+            <Check aria-hidden="true" strokeWidth={3} />
+            <span id={issueId} className="confirm-issue">
+              {play.issue}
+            </span>
+          </button>
+        )
       )}
     </li>
   )

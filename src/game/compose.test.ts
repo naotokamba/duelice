@@ -6,14 +6,17 @@ import { makeState, rollArb } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
 import {
   availableCards,
-  canHold,
+  CANNOT_USE,
+  canPut,
   composeAction,
   effectParts,
   kindsNow,
+  missingDice,
   type Placement,
   placeDie,
   placedDice,
   placedKind,
+  placementIssue,
   removeDie,
   slotCount,
 } from './compose'
@@ -107,12 +110,6 @@ function placeAll(s: GameState, card: CardId, dice: number[]): Placement | null 
   return pl
 }
 
-/** picked を含む、空きダイスの組み合わせ全て */
-function supersets(free: number[], picked: number[]): number[][] {
-  const rest = free.filter((i) => !picked.includes(i))
-  return rest.reduce<number[][]>((acc, i) => acc.flatMap((xs) => [xs, [...xs, i]]), [picked])
-}
-
 describe('ダイスを置く', () => {
   it('合法手は全て、ダイスをそれぞれの置き場へどの順で置いても、置き場の順のまま組み立てられる', () => {
     fc.assert(
@@ -130,31 +127,37 @@ describe('ダイスを置く', () => {
       }),
     )
   })
-  it('置けたダイスは、足りないダイスを足せば必ず合法な行動になる', () => {
+  it('使えるカードには、空いたダイスを目を問わずどの置き場にも置ける。置いた結果が行動にならなければ理由が出る', () => {
     fc.assert(
       fc.property(
         rollArb,
         fc.constantFrom<CardId>(...CARD_ORDER),
-        fc.subarray([0, 1, 2]),
+        fc.subarray([0, 1, 2], { minLength: 1 }),
         fc.boolean(),
         (roll, card, order, step2) => {
           const s = makeState({ roll, chant: step2 ? 'charged' : 'none' }, { roll: [1, 2, 3] }, step2 ? 2 : 1)
+          const n = slotCount(s, 0, card)
           const pl = placeAll(s, card, order)
+          const fits = availableCards(s, 0).has(card) && order.length <= n
+          expect(pl !== null).toBe(fits)
           if (pl === null) return
-          const made = supersets([0, 1, 2], placedDice(pl)).some((dice) => composeAction(s, 0, card, dice) !== null)
-          expect(made).toBe(true)
+          // 理由が出ないのは、行動になるときだけ
+          const made = composeAction(s, 0, card, placedDice(pl))
+          expect(placementIssue(s, 0, pl) === null).toBe(made !== null)
         },
       ),
     )
   })
-  it('使用済みのダイスや、同じダイスを二つは置けない', () => {
+  it('使用済みのダイスは置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(canHold(s, 0, 'bullet', [2])).toBe(false)
-    expect(canHold(s, 0, 'bullet', [0, 0])).toBe(false)
-    expect(canHold(s, 0, 'bullet', [0, 1])).toBe(true)
-    // 使用済みのダイスは、空いたダイスと同じ目でも置けない
-    const same = makeState({ roll: [6, 6, 6], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(canHold(same, 0, 'bullet', [0, 2])).toBe(false)
+    expect(canPut(s, 0, 'bullet', 2)).toBe(false)
+    expect(canPut(s, 0, 'bullet', 0)).toBe(true)
+    expect(placeDie(s, 0, null, 'bullet', 2, 0)).toBeNull()
+    // 同じダイスを二つの置き場には置けない。置き直すと元の置き場は空く
+    expect(placeDie(s, 0, { card: 'bullet', slots: [0, null] }, 'bullet', 0, 1)).toEqual({
+      card: 'bullet',
+      slots: [null, 0],
+    })
   })
   it('置き場の外には置けない', () => {
     const s = makeState({ roll: [6, 6, 2] }, { roll: [1, 2, 3] })
@@ -181,21 +184,25 @@ describe('ダイスを置く', () => {
     expect(pl).toEqual({ card: 'bullet', slots: [null, 2] })
     expect(composeAction(s, 0, 'bullet', placedDice(pl))).toEqual({ kind: 'bullet', dice: [2] })
   })
-  it('反射には同じ目しか並べられない', () => {
+  it('反射には違う目も置けるが、同じ目が揃うまで行動にならない', () => {
     const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
-    expect(placeAll(s, 'reflect', [0, 2])).toEqual({ card: 'reflect', slots: [0, 2] })
-    expect(canHold(s, 0, 'reflect', [0, 1])).toBe(false)
-    // ゾロ目の無い目は、最初の一個から置けない
-    expect(canHold(s, 0, 'reflect', [1])).toBe(false)
-    // 埋まった置き場に違う目を置こうとしても置けない
-    expect(placeDie(s, 0, { card: 'reflect', slots: [0, 2] }, 'reflect', 1, 0)).toBeNull()
+    const mixed = placeAll(s, 'reflect', [0, 1])
+    expect(mixed).toEqual({ card: 'reflect', slots: [0, 1] })
     expect(composeAction(s, 0, 'reflect', [0, 1])).toBeNull()
-    expect(composeAction(s, 0, 'reflect', [0, 2])).toEqual({ kind: 'reflect', dice: [0, 2] })
+    // 違う目の置き場に同じ目を置き直せば、行動になる
+    const fixed = placeDie(s, 0, mixed, 'reflect', 2, 1)
+    expect(fixed).toEqual({ card: 'reflect', slots: [0, 2] })
+    expect(composeAction(s, 0, 'reflect', placedDice(fixed))).toEqual({ kind: 'reflect', dice: [0, 2] })
   })
   it('使えないカードには置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedCards: ['fireball'] }, { roll: [1, 2, 3] }, 2)
-    expect(canHold(s, 0, 'fireball', [0])).toBe(false)
-    expect(canHold(s, 0, 'spear', [0])).toBe(false)
+    expect(canPut(s, 0, 'fireball', 0)).toBe(false)
+    expect(canPut(s, 0, 'spear', 0)).toBe(false)
+    expect(canPut(s, 0, 'bullet', 0)).toBe(true)
+    // ゾロ目が無ければ、反射は使えないカードなので置けない
+    const odd = makeState({ roll: [1, 2, 3] }, { roll: [1, 2, 3] })
+    expect(canPut(odd, 0, 'reflect', 0)).toBe(false)
+    expect(placeDie(odd, 0, null, 'reflect', 0, 0)).toBeNull()
   })
   it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
     const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
@@ -294,5 +301,53 @@ describe('カード面', () => {
       const written = face.effect.map((p) => `${p.value ?? ''}${p.text ?? ''}`).join(' ')
       for (const sym of [face.mark, face.sum]) if (sym) expect(written).toContain(sym)
     }
+  })
+})
+
+describe('決定を押せない理由', () => {
+  const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
+  it('行動になる置き方なら理由は無い', () => {
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [1, 0] })).toBeNull()
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 2] })).toBeNull()
+    // 魔弾は1個でも2個でも行動になる。省いてよい置き場だけでもよい
+    expect(placementIssue(s, 0, { card: 'bullet', slots: [null, 1] })).toBeNull()
+  })
+  it('個数が足りなければ、あと何個置くかを出す', () => {
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [1, null] })).toBe('あと1個置く')
+    expect(placementIssue(s, 0, { card: 'fireball', slots: [null, 0] })).toBe('あと1個置く')
+    const charged = makeState({ roll: [3, 5, 3], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
+    expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 1] })).toBe('あと1個置く')
+  })
+  it('同じ目を揃える行動は、揃える目の数で伝える', () => {
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [1, null] })).toBe('同じ目をあと1個置く')
+    expect(placementIssue(s, 0, { card: 'reflect', slots: [0, 1] })).toBe('同じ目を2個置く')
+  })
+  it('置ける個数になるまでの残りを数える。個数を選べるなら、一番近い個数を目指す', () => {
+    expect(missingDice([2], 1)).toBe(1)
+    expect(missingDice([2], 0)).toBe(2)
+    expect(missingDice([1, 2], 0)).toBe(1)
+    expect(missingDice([1, 2], 1)).toBeNull()
+    expect(missingDice([1, 2], 2)).toBeNull()
+    expect(missingDice([2, 3], 1)).toBe(1)
+    expect(missingDice([1, 3], 2)).toBe(1)
+    // 多すぎる個数には、足しても届かない
+    expect(missingDice([2], 3)).toBeNull()
+  })
+  it('同じ目が揃っていても、ほかの理由で使えなければ同じ目のことは言わない', () => {
+    // 使用済みのダイスで、同じ目が揃っている
+    const used = makeState({ roll: [3, 3, 3], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
+    expect(placementIssue(used, 0, { card: 'reflect', slots: [0, 2] })).toBe(CANNOT_USE)
+    // 同じ目を求めない行動は、違う目でも同じ目のことは言わない
+    const mixed = makeState({ roll: [3, 5, 6], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
+    expect(placementIssue(mixed, 0, { card: 'fireball', slots: [0, 2] })).toBe(CANNOT_USE)
+  })
+  it('決まった理由に当たらなければ、使えないとだけ伝える', () => {
+    expect(CANNOT_USE).toBe('この置き方では使えない')
+    // 使用済みのダイスが置き場に残っている
+    const used = makeState({ roll: [3, 5, 3], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
+    expect(placementIssue(used, 0, { card: 'barrier', slots: [2] })).toBe(CANNOT_USE)
+    // 今のステップで使える行の無いカード
+    const broken = makeState({ roll: [3, 5, 3], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
+    expect(placementIssue(broken, 0, { card: 'spear', slots: [0] })).toBe(CANNOT_USE)
   })
 })

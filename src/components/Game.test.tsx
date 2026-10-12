@@ -61,6 +61,16 @@ type User = ReturnType<typeof userEvent.setup>
 const emptySlots = (card: string) =>
   myCard(card).queryAllByRole('button', { name: new RegExp(`^${card}の.+枠に置く$`) })
 
+/** 決定のボタン。出ていなければ null */
+const confirmButton = () => screen.queryByRole('button', { name: '決定' }) as HTMLButtonElement | null
+
+/** 決定が押せないときに、ボタンの説明として添えた理由。押せるか出ていなければ null */
+function blockedReason(): string | null {
+  const b = confirmButton()
+  if (!b?.disabled) return null
+  return document.getElementById(b.getAttribute('aria-describedby') ?? '')?.textContent ?? null
+}
+
 /** 手元から value の目のダイスを一つ選び、カードの空いた最初の置き場に置く */
 async function place(user: User, value: number, card: string) {
   await user.click(
@@ -134,9 +144,13 @@ describe('一ターンの流れ', () => {
     expect(myCard('火球').getByRole('button', { name: 'Xダメージを与える' })).toBeTruthy()
 
     await place(user, 6, '火球')
-    // 一個では火球にならないので、まだ決定できない
-    expect(screen.queryByRole('button', { name: '決定' })).toBeNull()
+    // 一個では火球にならないので、まだ決定できない。押せない決定に理由が出る
+    expect(confirmButton()?.disabled).toBe(true)
+    expect(blockedReason()).toBe('あと1個置く')
+    expect(myCard('火球').getByText('あと1個置く')).toBeTruthy()
     await place(user, 6, '火球')
+    expect(confirmButton()?.disabled).toBe(false)
+    expect(blockedReason()).toBeNull()
     expect(myCard('火球').getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
     expect(myCard('火球').getAllByRole('button', { name: '6の目を戻す' })).toHaveLength(2)
 
@@ -280,7 +294,7 @@ describe('一ターンの流れ', () => {
     expect(emptySlots('反射')).toHaveLength(0)
   })
 
-  it('反射には同じ目しか並べられない', async () => {
+  it('反射には違う目も置けるが、同じ目が揃うまで決定を押せず、理由が出る', async () => {
     const user = await start({
       rng: dice([
         [3, 5, 3],
@@ -289,11 +303,49 @@ describe('一ターンの流れ', () => {
       opponent: passOpponent,
     })
     await place(user, 3, '反射')
+    expect(blockedReason()).toBe('同じ目をあと1個置く')
+    // 違う目を持っていても、置き場は押せる
     await user.click(mySeat().getByRole('button', { name: '5の目' }))
     const rest = myCard('反射').getByRole('button', { name: '反射の2つ目の枠に置く' }) as HTMLButtonElement
-    expect(rest.disabled).toBe(true)
+    expect(rest.disabled).toBe(false)
+    await user.click(rest)
+    expect(confirmButton()?.disabled).toBe(true)
+    expect(blockedReason()).toBe('同じ目を2個置く')
+    // 押せない決定を押しても何も起きない
+    await user.click(confirmButton() as HTMLButtonElement)
+    expect(screen.getByText('Turn 1 - Step 1')).toBeTruthy()
+    expect(screen.queryByText(/反射を構えた/)).toBeNull()
+
+    // 違う目のある置き場に同じ目を置けば、入れ替わって決定できる
+    await user.click(mySeat().getByRole('button', { name: '3の目' }))
+    await user.click(myCard('反射').getByRole('button', { name: '5の目と入れ替える' }))
+    expect(mySeat().getByRole('button', { name: '5の目' })).toBeTruthy()
+    expect(confirmButton()?.disabled).toBe(false)
+    expect(blockedReason()).toBeNull()
+    await user.click(button('決定'))
+    expect(screen.getByText('あなたは 3と3 で反射を構えた')).toBeTruthy()
+  })
+
+  it('ダイスを持って埋まった置き場を押すと、目を問わず入れ替わる', async () => {
+    const user = await start({
+      rng: dice([
+        [3, 5, 3],
+        [1, 2, 3],
+      ]),
+      opponent: passOpponent,
+    })
     await place(user, 3, '反射')
-    expect(button('決定')).toBeTruthy()
+    // 何を持っていても、埋まった置き場は入れ替えの的になる
+    await user.click(mySeat().getByRole('button', { name: '5の目' }))
+    await user.click(myCard('反射').getByRole('button', { name: '3の目と入れ替える' }))
+    expect(myCard('反射').getByRole('button', { name: '5の目を戻す' })).toBeTruthy()
+    expect(
+      within(mySeat().getByRole('group', { name: 'ダイス' })).getAllByRole('button', { name: '3の目' }),
+    ).toHaveLength(2)
+    expect(blockedReason()).toBe('同じ目をあと1個置く')
+    // 何も持っていなければ、押したダイスは手元に戻る
+    await user.click(myCard('反射').getByRole('button', { name: '5の目を戻す' }))
+    expect(confirmButton()).toBeNull()
   })
 
   it('詠唱が保たれると表示され、二ステップ目に雷槍を発動できる', async () => {

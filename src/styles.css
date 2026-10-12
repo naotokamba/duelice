@@ -639,14 +639,35 @@ button.die:disabled {
   animation: pop-in 220ms cubic-bezier(0.2, 0.9, 0.3, 1.4) both;
 }
 .confirm svg {
-  width: 24px;
-  height: 24px;
+  width: var(--confirm-icon, 24px);
+  height: var(--confirm-icon, 24px);
 }
 @keyframes pop-in {
   from {
     transform: translate(-50%, 60%) scale(0.4);
     opacity: 0;
   }
+}
+/* 置いたダイスが行動にならない間は、決定と同じ場所に押せない灰色の札を出し、理由を書く。
+   押せないので光らせず動かさない。中心の高さは押せる決定と揃え、カードの下端に同じだけ重ねる */
+.confirm.is-blocked {
+  width: auto;
+  height: 34px;
+  grid-auto-flow: column;
+  gap: 4px;
+  padding: 0 12px 0 8px;
+  border: 2px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: default;
+  box-shadow: 0 2px 6px rgba(29, 34, 51, 0.18);
+  transform: translate(-50%, calc(50% + 4.8px));
+  animation: none;
+  --confirm-icon: 16px;
 }
 .face-row {
   display: flex;

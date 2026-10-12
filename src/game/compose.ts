@@ -1,10 +1,11 @@
 // 画面の操作から行動を組み立てる処理。
 // プレイヤーは手元のダイスを、カードの置き場を一つずつ選んで置いていくので、その途中経過を扱う。
 // ダイスは選んだ置き場にそのまま入り、並べ替えたり空いた置き場へ詰めたりはしない。
+// 置く時点では目の組み合わせを問わない。行動にならない置き方なら、決定を押せない理由を返す。
 // 画面から切り離した純粋関数にして、カードを足したときも定義表から自動で追従する。
 
 import { ACTION_DEFS, type EffectPart, kindsOfCard } from './cards'
-import { diceValues, freeDice, isLegal, legalActions } from './rules'
+import { freeDice, isLegal, legalActions } from './rules'
 import type { Action, ActionKind, CardId, GameState, PlayerIndex } from './types'
 
 /** カードに置いたダイス。置けるのは1ステップに1枚だけ。slots は置き場ごとのダイスで、空いた置き場は null */
@@ -46,29 +47,12 @@ export function composeAction(state: GameState, who: PlayerIndex, card: CardId, 
   return null
 }
 
-/** vals の目が全て、all の中に重複を数えて含まれる */
-function containsValues(all: number[], vals: number[]): boolean {
-  const rest = [...all]
-  return vals.every((v) => {
-    const i = rest.indexOf(v)
-    if (i < 0) return false
-    rest.splice(i, 1)
-    return true
-  })
-}
-
 /**
- * dice を全てカードに置いた状態が、足りないダイスを足せば合法な行動になるか。
- * 合法かどうかは目の値だけで決まり、置き場の順には左右されないので、合法手の目に含まれるかで判定する
+ * die を card の置き場に置けるか。今のステップで使えるカードになら、空いたダイスはどの置き場にも置ける。
+ * 目の組み合わせが行動になるかは置いた後に placementIssue で確かめる
  */
-export function canHold(state: GameState, who: PlayerIndex, card: CardId, dice: number[]): boolean {
-  const p = state.players[who]
-  const free = freeDice(p)
-  if (new Set(dice).size !== dice.length || !dice.every((d) => free.includes(d))) return false
-  const vals = dice.map((i) => p.roll[i])
-  return legalActions(state, who).some(
-    (a) => a.kind !== 'pass' && ACTION_DEFS[a.kind].card === card && containsValues(diceValues(p, a), vals),
-  )
+export function canPut(state: GameState, who: PlayerIndex, card: CardId, die: number): boolean {
+  return freeDice(state.players[who]).includes(die) && availableCards(state, who).has(card)
 }
 
 /** そのカードに今のステップで並べる置き場の数。使える行動が無ければ 0 */
@@ -78,7 +62,7 @@ export function slotCount(state: GameState, who: PlayerIndex, card: CardId): num
 }
 
 /**
- * die をカードの slot 番目の置き場に置いた後の配置。置けなければ null。
+ * die をカードの slot 番目の置き場に置いた後の配置。置き場が無いか、使えないカードや使用済みのダイスなら null。
  * 置き場にあったダイスは手元に戻る。同じカードの別の置き場から移したときは、二つを入れ替える。
  * 別のカードに置いてあったダイスは手元に戻る
  */
@@ -91,13 +75,43 @@ export function placeDie(
   slot: number,
 ): Placement | null {
   const n = slotCount(state, who, card)
-  if (!(slot >= 0 && slot < n)) return null
+  if (!(slot >= 0 && slot < n) || !canPut(state, who, card, die)) return null
   const slots = placement?.card === card ? [...placement.slots] : Array<number | null>(n).fill(null)
   const from = slots.indexOf(die)
   if (from >= 0) slots[from] = slots[slot]
   slots[slot] = die
-  const next = { card, slots }
-  return canHold(state, who, card, placedDice(next)) ? next : null
+  return { card, slots }
+}
+
+/**
+ * 置ける個数 counts のどれかになるまでに、あと何個置けばよいか。置いた個数で足りているか、もう足しても届かなければ null。
+ * 魔弾のように個数を選べる行動もあるので、置いた個数より多い中で一番少ない個数を目指す
+ */
+export function missingDice(counts: readonly number[], placed: number): number | null {
+  if (counts.includes(placed)) return null
+  const more = counts.filter((n) => n > placed)
+  return more.length > 0 ? Math.min(...more) - placed : null
+}
+
+/** 決まった理由に当たらない置き方。カードを足して新しい条件が増えても、何かは伝える */
+export const CANNOT_USE = 'この置き方では使えない'
+
+/**
+ * 置いたダイスが行動にならないとき、決定を押せない理由を短く返す。行動になるなら null。
+ * 理由は定義表の性質から決めるので、カードを足しても追従する。
+ * 個数が足りなければ、あと何個置くか。同じ目を揃える行動なら、目が揃っていないこと
+ */
+export function placementIssue(state: GameState, who: PlayerIndex, placement: Placement): string | null {
+  const picked = placedDice(placement)
+  if (composeAction(state, who, placement.card, picked)) return null
+  const kind = kindsNow(state, who, placement.card)[0]
+  if (kind === undefined) return CANNOT_USE
+  const def = ACTION_DEFS[kind]
+  const missing = missingDice(def.dice, picked.length)
+  if (missing !== null) return `${def.sameValues ? '同じ目を' : ''}あと${missing}個置く`
+  const vals = picked.map((i) => state.players[who].roll[i])
+  if (def.sameValues && new Set(vals).size > 1) return `同じ目を${picked.length}個置く`
+  return CANNOT_USE
 }
 
 /** die を手元に戻した後の配置。どの置き場も空になったら null */
