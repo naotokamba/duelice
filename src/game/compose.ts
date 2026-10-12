@@ -14,6 +14,29 @@ export interface Placement {
   slots: (number | null)[]
 }
 
+/** 前のステップで使い、カードの上に残っているダイス。kind はダイスの載っている行の行動 */
+export interface Settled {
+  card: CardId
+  kind: ActionKind
+  /** 置き場ごとのダイス。空いた置き場は null */
+  slots: (number | null)[]
+}
+
+/**
+ * このターンの1ステップ目に who が使ったダイス。盤の上の駒のように、ターンが変わるまでカードの置き場に残す。
+ * 1ステップ目を解決してから次のターンまで返し、パスしたときや、まだ1ステップ目を解決していなければ null。
+ * 行動には置いた置き場の位置は残らないので、ダイスは置き場の順に前から詰めて置く
+ */
+export function firstStepDice(state: GameState, who: PlayerIndex): Settled | null {
+  // 履歴はステップの順に並ぶので、このターンの最初の記録が1ステップ目になる
+  const report = state.history.find((r) => r.turn === state.turn)
+  const a = report?.actions[who]
+  if (!a || a.kind === 'pass') return null
+  const def = ACTION_DEFS[a.kind]
+  const slots = Array.from({ length: Math.max(...def.dice) }, (_, k) => a.dice[k] ?? null)
+  return { card: def.card, kind: a.kind, slots }
+}
+
 /** 置いたダイスを置き場の順に並べる。空いた置き場は飛ばす。行動のダイスはこの順になる */
 export function placedDice(placement: Placement | null): number[] {
   return placement?.slots.filter((d): d is number => d !== null) ?? []

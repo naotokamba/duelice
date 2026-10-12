@@ -5,7 +5,7 @@
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
 import { ACTION_DEFS, CARD_DEFS, CARD_ORDER, kindsOfCard } from '../game/cards'
-import { effectParts } from '../game/compose'
+import { effectParts, type Settled } from '../game/compose'
 import type { ActionKind, CardId } from '../game/types'
 import { Die } from './Die'
 import { EffectGlyph } from './glyphs'
@@ -60,10 +60,12 @@ interface Props {
   shown: Shown | null
   /** 公開で使ったカード。光らせて、中央の技と結びつける */
   casting?: boolean
+  /** 1ステップ目に使い、ターンが変わるまで置き場に残るダイス。押せず、引きずれない */
+  settled?: Settled | null
   play?: CardPlay
 }
 
-export function Card({ card, roll, active, used, shown, casting, play }: Props) {
+export function Card({ card, roll, active, used, shown, casting, settled, play }: Props) {
   const name = CARD_DEFS[card].name
   const issueId = useId()
   const cls = [
@@ -91,6 +93,7 @@ export function Card({ card, roll, active, used, shown, casting, play }: Props) 
           roll={roll}
           on={active.includes(kind) || shown?.kind === kind}
           shown={shown?.kind === kind ? shown : null}
+          settled={settled?.kind === kind ? settled : null}
           play={play}
         />
       ))}
@@ -171,16 +174,19 @@ interface RowProps {
   roll: number[]
   on: boolean
   shown: Shown | null
+  /** この行に残っている、前のステップのダイス。今置いているダイスや公開中のダイスがあれば、そちらを描く */
+  settled: Settled | null
   play?: CardPlay
 }
 
-function Row({ card, kind, name, roll, on, shown, play }: RowProps) {
+function Row({ card, kind, name, roll, on, shown, settled, play }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = Math.min(...def.dice)
-  const slots = shown?.slots ?? []
+  const fixed = !shown && settled !== null
+  const slots = shown?.slots ?? settled?.slots ?? []
   // 効果の値は置き場の順に並べた目から決める。火球なら X の枠の目が威力になる
-  const vals = shown?.complete ? slots.filter((d): d is number => d !== null).map((i) => roll[i]) : undefined
+  const vals = shown?.complete || fixed ? slots.filter((d): d is number => d !== null).map((i) => roll[i]) : undefined
   /** 置き場の呼び名。記号を書いた置き場はその記号で、ほかは何番目かで呼ぶ */
   const slotName = (k: number) => (k === 0 && face.mark ? `${name}の${face.mark}の枠` : `${name}の${k + 1}つ目の枠`)
 
@@ -190,6 +196,14 @@ function Row({ card, kind, name, roll, on, shown, play }: RowProps) {
     const active = play && on
     const target = active && play.targets.includes(k) ? ' is-target' : ''
     const drop = active ? slotDrop(card, k) : undefined
+    // 前のステップのダイスは、盤の上の駒のようにそのまま残す。押せず、光らせない
+    if (d !== null && fixed) {
+      return (
+        <span className="slot is-filled is-settled">
+          <Die value={roll[d]} size="slot" settled />
+        </span>
+      )
+    }
     if (d !== null) {
       return (
         <span className={`slot is-filled${target}`} data-drop={drop}>

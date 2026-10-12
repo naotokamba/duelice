@@ -10,6 +10,8 @@
   --me: #2b4c8c;
   --cpu: #7b2d5b;
   --ivory: #fbf7ec;
+  /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
+  --die-settled: #c9ccd8;
   --pip: #1d2233;
   --fireball: #c8371e;
   --barrier: #2f7f86;
@@ -49,6 +51,8 @@
     --me: #7b9be0;
     --cpu: #d07aac;
     --surface: #212636;
+    /* 目との差は 6.1:1、卓との差は 6.4:1 */
+    --die-settled: #9aa0b3;
     --go: #38a863;
     --hit: #e1301b;
     --on-accent: #141824;
@@ -480,6 +484,11 @@ button.die {
 .die-used {
   opacity: 0.3;
   transform: rotate(-8deg) scale(0.9);
+}
+/* 前のステップで使い、カードの置き場に残っているダイス。押せないので浮かせず、面の色を変えて今置けるダイスと見分ける */
+.die-settled {
+  background: var(--die-settled);
+  box-shadow: inset 0 -2px 0 rgba(29, 34, 51, 0.15);
 }
 button.die:disabled {
   cursor: default;

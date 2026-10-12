@@ -2,7 +2,7 @@
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { makeState, rollArb } from '../test/helpers'
+import { makeState, rollArb, seeded } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER } from './cards'
 import {
   availableCards,
@@ -10,6 +10,7 @@ import {
   canPut,
   composeAction,
   effectParts,
+  firstStepDice,
   kindsNow,
   missingDice,
   type Placement,
@@ -20,7 +21,7 @@ import {
   removeDie,
   slotCount,
 } from './compose'
-import { diceValues, isLegal, legalActions } from './rules'
+import { diceValues, isLegal, legalActions, nextTurn, resolveStep } from './rules'
 import type { CardId, GameState } from './types'
 
 describe('行動の組み立て', () => {
@@ -349,5 +350,35 @@ describe('決定を押せない理由', () => {
     // 今のステップで使える行の無いカード
     const broken = makeState({ roll: [3, 5, 3], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
     expect(placementIssue(broken, 0, { card: 'spear', slots: [0] })).toBe(CANNOT_USE)
+  })
+})
+
+describe('1ステップ目のダイス', () => {
+  const start = makeState({ roll: [6, 2, 5] }, { roll: [3, 3, 1] })
+  it('1ステップ目を解決するまでは、カードに残るダイスは無い', () => {
+    expect(firstStepDice(start, 0)).toBeNull()
+    expect(firstStepDice(start, 1)).toBeNull()
+  })
+  it('2ステップ目には、双方が1ステップ目に使ったダイスが、置き場の順にカードに残る', () => {
+    const s = resolveStep(start, [
+      { kind: 'fireball', dice: [1, 0] },
+      { kind: 'reflect', dice: [0, 1] },
+    ])
+    expect(firstStepDice(s, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
+    expect(firstStepDice(s, 1)).toEqual({ card: 'reflect', kind: 'reflect', slots: [0, 1] })
+    // 2ステップ目を解決しても、ターンが変わるまでは残る
+    const after = resolveStep(s, [{ kind: 'pass' }, { kind: 'pass' }])
+    expect(firstStepDice(after, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
+    // ターンが変わると片付く
+    expect(firstStepDice(nextTurn(after, seeded(1)), 0)).toBeNull()
+  })
+  it('省いた置き場は空いたまま残り、パスなら何も残らない', () => {
+    const s = resolveStep(start, [{ kind: 'bullet', dice: [2] }, { kind: 'pass' }])
+    expect(firstStepDice(s, 0)).toEqual({ card: 'bullet', kind: 'bullet', slots: [2, null] })
+    expect(firstStepDice(s, 1)).toBeNull()
+  })
+  it('詠唱のダイスは、詠唱の行に残る', () => {
+    const s = resolveStep(start, [{ kind: 'spearChant', dice: [0] }, { kind: 'pass' }])
+    expect(firstStepDice(s, 0)).toEqual({ card: 'spear', kind: 'spearChant', slots: [0] })
   })
 })

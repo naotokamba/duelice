@@ -4,6 +4,7 @@ import { ACTION_DEFS, CARD_ORDER } from '../game/cards'
 import {
   availableCards,
   composeAction,
+  firstStepDice,
   kindsNow,
   type Placement,
   placeDie,
@@ -110,8 +111,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         const turn = turnOver(game)
         setGame(turn ? nextTurn(game, rng) : game)
         setRevealed(false)
-        // 狭い画面で出していたカードは使い終わっているかもしれないので、使える最初のカードに戻す
-        setFocus(null)
+        // 狭い画面で出すカードは、同じターンの2ステップ目には見ていたカードのまま残し、新しいターンには左端のカードに戻す
+        if (turn) setFocus(null)
         setBanner({ text: turn ? `Turn ${game.turn + 1}` : 'Step 2', turn })
       }, revealMs(list)),
     )
@@ -156,6 +157,8 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     setLanded(0)
     setBanner(null)
     clearHand()
+    // 公開が終わっても、狭い画面では今見ているカードを出し続ける
+    setFocus(myCurrent)
   }
 
   /** まだ矢印が当たっていないダメージ。公開の途中は、その分だけ体力を多く見せる */
@@ -220,6 +223,17 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         complete: action !== null,
       }
   const cpuShown = showReveal ? shownOf(last.actions[1]) : null
+  const usableMine = availableCards(game, 0)
+  /**
+   * 狭い画面で自分の席に大きく出すカード。公開の間は使ったカードを、選んでいる間は名前を押したカードを出す。
+   * 名前を押していなければダイスを置いたカード、それも無ければ使える最初のカード
+   */
+  const myCurrent =
+    (showReveal ? myShown?.card : undefined) ??
+    focus ??
+    myShown?.card ??
+    CARD_ORDER.find((c) => usableMine.has(c)) ??
+    CARD_ORDER[0]
 
   const playFor = (c: CardId): CardPlay | undefined => {
     if (!choosing) return undefined
@@ -241,6 +255,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const cardView = (who: PlayerIndex, c: CardId, shown: (Shown & { card: CardId }) | null = null) => {
     const p = game.players[who]
     const usable = availableCards(game, who)
+    const onBoard = firstStepDice(game, who)
     return (
       <Card
         key={c}
@@ -250,6 +265,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         used={p.usedCards.includes(c) && !usable.has(c)}
         shown={shown?.card === c ? shown : null}
         casting={showReveal && shown?.card === c}
+        settled={onBoard?.card === c ? onBoard : null}
         play={who === 0 ? playFor(c) : undefined}
       />
     )
@@ -259,16 +275,9 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
     const usable = availableCards(game, who)
     if (!narrow) return <ul className="cards">{CARD_ORDER.map((c) => cardView(who, c, shown))}</ul>
 
-    // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す。
-    // 公開の間は使ったカードを、選んでいる間は名前を押したカードを出す。ダイスを置いた後でも、ほかのカードを見られる
-    const current =
-      who === 0
-        ? ((showReveal ? shown?.card : undefined) ??
-          focus ??
-          shown?.card ??
-          CARD_ORDER.find((c) => usable.has(c)) ??
-          CARD_ORDER[0])
-        : shown?.card
+    // 狭い画面では名前を並べ、自分のカードは一枚だけ大きく出す。ダイスを置いた後でも、ほかのカードを見られる
+    const current = who === 0 ? myCurrent : shown?.card
+    const onBoard = firstStepDice(game, who)
     const tabs = (
       <CardTabs
         tabs={CARD_ORDER.map((c) => ({
@@ -276,7 +285,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
           off: !usable.has(c) && shown?.card !== c,
           current: c === current,
           hint: who === 0 && choosing && held === null && usable.has(c),
-          placed: shown?.card === c,
+          placed: shown?.card === c || onBoard?.card === c,
         }))}
         onPick={who === 0 ? (choosing ? pick : undefined) : setPeek}
       />
@@ -303,6 +312,7 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
   const trayOf = (who: PlayerIndex, shown: Shown | null) => {
     const p = game.players[who]
     const free = freeDice(p)
+    const onBoard = firstStepDice(game, who)
     return (
       <fieldset
         key={game.turn}
@@ -311,7 +321,10 @@ export function Game({ rng = Math.random, opponent }: GameProps) {
         data-drop={who === 0 && choosing ? 'tray' : undefined}
       >
         {p.roll.map((v, i) => {
-          if (shown?.slots.includes(i)) return <span key={i} className="socket" aria-hidden="true" />
+          // カードに置いたダイスと、1ステップ目からカードに残っているダイスは、手元では空いた跡だけになる
+          if (shown?.slots.includes(i) || onBoard?.slots.includes(i)) {
+            return <span key={i} className="socket" aria-hidden="true" />
+          }
           const used = !free.includes(i)
           if (who === 1 || !choosing || used) return <Die key={i} value={v} used={used} />
           return (
