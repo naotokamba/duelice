@@ -216,10 +216,19 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     damage: dmg,
     chants,
   }
-  const dead0 = players[0].hp <= 0
-  const dead1 = players[1].hp <= 0
-  const winner: GameState['winner'] = dead0 && dead1 ? 'draw' : dead0 ? 1 : dead1 ? 0 : null
-  return { ...state, players, history: [...state.history, report], winner, step: 2 }
+  return { ...state, players, history: [...state.history, report], winner: winnerOf(players), step: 2 }
+}
+
+/**
+ * 勝敗。体力が0以下になった方の負け。同時に0以下になったら、体力の残りが多い方の勝ちで、同じなら引き分け。
+ * 体力は0で止めずにマイナスまで持つので、どれだけはみ出したかで比べられる
+ */
+export function winnerOf(players: [PlayerState, PlayerState]): GameState['winner'] {
+  const [a, b] = [players[0].hp, players[1].hp]
+  if (a > 0 && b > 0) return null
+  if (a === b) return 'draw'
+  // Stryker disable next-line EqualityOperator: 同じ体力は前の行で引き分けにしているので、>= にしても結果は変わらない
+  return a > b ? 0 : 1
 }
 
 /** 二ステップ目まで終わったか */

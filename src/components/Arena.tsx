@@ -5,6 +5,7 @@
 import type { PlayerIndex, StepReport } from '../game/types'
 import { HistoryButton, Recent } from './History'
 import { MatchMenu } from './MatchMenu'
+import { resultText } from './text'
 import type { Banner } from './useRevealClock'
 
 /**
@@ -32,16 +33,16 @@ export function TurnLabel({ turn, step }: { turn: number; step: 1 | 2 }) {
 /** 決着した後の勝敗と、次の対局の始め方 */
 export interface Over {
   winner: PlayerIndex | 'draw'
+  /** 決着したときの双方の体力。席の順。同時に0以下になったときは、はみ出した分まで持つ */
+  hp: [number, number]
   onAgain: () => void
   onRelevel: () => void
 }
 
-function Result({ winner, onAgain, onRelevel }: Over) {
+function Result({ winner, hp, onAgain, onRelevel }: Over) {
   return (
     <div className="result">
-      <p className="result-text">
-        {winner === 'draw' ? '相打ち。引き分けです' : winner === 0 ? 'あなたの勝ち' : '相手の勝ち'}
-      </p>
+      <p className="result-text">{resultText(winner, hp, 0)}</p>
       <div className="result-actions">
         <button type="button" className="btn btn-primary" onClick={onAgain}>
           もう一戦

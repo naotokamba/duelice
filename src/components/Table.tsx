@@ -144,7 +144,11 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
         history={board.history}
         revealing={revealing}
         lines={clock.reveal && reportLines(clock.reveal.report, 0)}
-        over={over === null ? null : { winner: over, onAgain, onRelevel: onQuit }}
+        over={
+          over === null
+            ? null
+            : { winner: over, hp: [board.players[0].hp, board.players[1].hp], onAgain, onRelevel: onQuit }
+        }
         banner={clock.banner}
         onSurrender={board.winner === null ? () => surrenderDialog.current?.showModal() : undefined}
       />

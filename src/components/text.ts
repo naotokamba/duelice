@@ -36,6 +36,19 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
  * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
  * 詠唱したなら、その結果を後に添える
  */
+/** 勝敗の文。同時に体力が0以下になって決着したときは、はみ出した体力を見ている側から並べて示す */
+export function resultText(winner: PlayerIndex | 'draw', hp: [number, number], viewer: PlayerIndex): string {
+  if (winner === 'draw') return '相打ち。引き分けです'
+  const who = winner === viewer ? 'あなたの勝ち' : '相手の勝ち'
+  const mine = hp[viewer]
+  const theirs = hp[viewer === 0 ? 1 : 0]
+  if (mine > 0 || theirs > 0) return who
+  return `相打ち。${signed(mine)} 対 ${signed(theirs)} で、${who}`
+}
+
+/** 体力の数。マイナスは記号の − で書く */
+const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
+
 export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   const order: [PlayerIndex, string][] = [
     [viewer, 'あなた'],

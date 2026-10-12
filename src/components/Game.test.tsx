@@ -4,6 +4,7 @@
 
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { GameState } from '../game/types'
 import { seeded } from '../test/helpers'
 import {
   advance,
@@ -590,17 +591,22 @@ describe('決着', () => {
     expect(button('決闘を始める')).toBeTruthy()
   })
 
-  it('同時に0になると引き分け', async () => {
-    const both: [number[], number[]] = [
-      [6, 6, 6],
-      [6, 6, 6],
-    ]
-    // 毎ターン火球 6 と魔弾 2 を撃ち合う。相手と同じ手を指す
-    const mirror: Opponent = (s) =>
-      s.players[1].usedCards.includes('fireball')
-        ? { kind: 'bullet', dice: [2, null] }
-        : { kind: 'fireball', dice: [0, 1] }
-    const user = await start({ rng: dice(both, both, both, both, both, both), opponent: mirror })
+  const both: [number[], number[]] = [
+    [6, 6, 6],
+    [6, 6, 6],
+  ]
+  /** 相手は毎ターン火球 6 と魔弾 2 を撃つ。skip を満たすステップだけは何もしない */
+  const mirror =
+    (skip: (s: GameState) => boolean = () => false): Opponent =>
+    (s) =>
+      skip(s)
+        ? { kind: 'pass' }
+        : s.players[1].usedCards.includes('fireball')
+          ? { kind: 'bullet', dice: [2, null] }
+          : { kind: 'fireball', dice: [0, 1] }
+
+  /** こちらも毎ターン火球 6 と魔弾 2 を撃ち、決着まで進める */
+  async function trade(user: User) {
     for (let k = 0; k < 20 && !screen.queryByText(RESULT); k++) {
       const fireball = fireballReady()
       await place(user, 6, fireball ? '火球' : '魔弾')
@@ -608,7 +614,23 @@ describe('決着', () => {
       await user.click(button('決定'))
       await settle()
     }
+  }
+
+  it('同時に0以下になり、体力の残りも同じなら引き分け', async () => {
+    const user = await start({ rng: dice(both, both, both, both, both, both), opponent: mirror() })
+    await trade(user)
     expect(screen.getByText('相打ち。引き分けです')).toBeTruthy()
+  })
+
+  it('同時に0以下になっても、体力の残りが多い方の勝ち', async () => {
+    // 1ターン目の2ステップ目だけ相手が何もしないので、3ターン目の初めに 0 対 −2 で同時に倒れる
+    const user = await start({
+      rng: dice(both, both, both, both, both, both),
+      opponent: mirror((s) => s.turn === 1 && s.step === 2),
+    })
+    await trade(user)
+    expect(screen.getByText('相打ち。0 対 −2 で、あなたの勝ち')).toBeTruthy()
+    expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
   })
 })
 

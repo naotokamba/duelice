@@ -3,7 +3,18 @@
 import { describe, expect, it } from 'vitest'
 import { makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS } from './cards'
-import { breaksChant, isLegal, keptRow, legalActions, newGame, nextTurn, resolveStep, strikes, turnOver } from './rules'
+import {
+  breaksChant,
+  isLegal,
+  keptRow,
+  legalActions,
+  newGame,
+  nextTurn,
+  resolveStep,
+  strikes,
+  turnOver,
+  winnerOf,
+} from './rules'
 import { fillsRequired } from './slots'
 import type { Action } from './types'
 
@@ -163,13 +174,32 @@ describe('ターンの進行', () => {
     const s = makeState({ roll: [1, 3, 5] }, { roll: [1, 2, 3] })
     expect(() => resolveStep(s, [{ kind: 'reflect', dice: [0, 1] }, pass])).toThrow()
   })
-  it('HPが0以下で決着、同時なら引き分け', () => {
-    let s = makeState({ roll: [6, 6, 1], hp: 6 }, { roll: [6, 6, 1], hp: 6 })
-    s = resolveStep(s, [
-      { kind: 'fireball', dice: [0, 1] },
-      { kind: 'fireball', dice: [0, 1] },
-    ])
-    expect(s.winner).toBe('draw')
+  it('同時に0以下になったら、体力の残りが多い方の勝ち。同じなら引き分け', () => {
+    const fire = (hp0: number, hp1: number) =>
+      resolveStep(makeState({ roll: [6, 6, 1], hp: hp0 }, { roll: [6, 6, 1], hp: hp1 }), [
+        { kind: 'fireball', dice: [0, 1] },
+        { kind: 'fireball', dice: [0, 1] },
+      ])
+    expect(fire(6, 6).winner).toBe('draw')
+    // 0 対 −1 なら、はみ出しの小さい方が勝つ
+    const s = fire(6, 5)
+    expect(s.players.map((p) => p.hp)).toEqual([0, -1])
+    expect(s.winner).toBe(0)
+    expect(fire(2, 4).winner).toBe(1)
+  })
+  it('勝敗は体力だけで決まる', () => {
+    const hp = (a: number, b: number) =>
+      winnerOf([
+        { hp: a, roll: [], usedDice: [], usedCards: [], chant: 'none' },
+        { hp: b, roll: [], usedDice: [], usedCards: [], chant: 'none' },
+      ])
+    expect(hp(1, 1)).toBeNull()
+    expect(hp(1, 0)).toBe(0)
+    expect(hp(0, 1)).toBe(1)
+    expect(hp(0, 0)).toBe('draw')
+    expect(hp(-3, -3)).toBe('draw')
+    expect(hp(-1, -3)).toBe(0)
+    expect(hp(-3, 0)).toBe(1)
   })
   it('片方だけ0以下なら残った方の勝ち。決着後は進めない', () => {
     let s = makeState({ roll: [6, 6, 1] }, { roll: [1, 2, 3], hp: 6 })

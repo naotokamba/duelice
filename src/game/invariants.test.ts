@@ -295,12 +295,14 @@ describe('状態の更新', () => {
       }),
     )
   })
-  it('勝敗はHPと一致する', () => {
+  it('勝敗はHPと一致する。同時に0以下なら体力の残りが多い方が勝ち、同じなら引き分け', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const next = resolveStep(s, acts)
-        const dead = next.players.map((p) => p.hp <= 0)
-        const expected = dead[0] && dead[1] ? 'draw' : dead[0] ? 1 : dead[1] ? 0 : null
+        const [a, b] = next.players.map((p) => p.hp)
+        const dead = [a <= 0, b <= 0]
+        const both = a === b ? 'draw' : a > b ? 0 : 1
+        const expected = dead[0] && dead[1] ? both : dead[0] ? 1 : dead[1] ? 0 : null
         expect(next.winner).toBe(expected)
       }),
     )

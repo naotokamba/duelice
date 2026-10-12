@@ -72,7 +72,7 @@ describe('二人の間の段', () => {
   it('決着したら勝敗と次の対局の始め方を出し、メニューには降参を出さない', () => {
     const onAgain = vi.fn()
     const onRelevel = vi.fn()
-    draw({ revealing: true, over: { winner: 0, onAgain, onRelevel }, onSurrender: undefined })
+    draw({ revealing: true, over: { winner: 0, hp: [5, -2], onAgain, onRelevel }, onSurrender: undefined })
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
     expect(screen.getByRole('region', { name: '一つ前の結果' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'もう一戦' }))
@@ -85,10 +85,12 @@ describe('二人の間の段', () => {
   })
 
   it.each([
-    ['draw', '相打ち。引き分けです'],
-    [1, '相手の勝ち'],
-  ] as const)('勝敗 %s を出す', (winner, text) => {
-    draw({ revealing: true, over: { winner, onAgain: vi.fn(), onRelevel: vi.fn() } })
+    ['draw', [-2, -2], '相打ち。引き分けです'],
+    [1, [-2, 4], '相手の勝ち'],
+    [0, [0, -3], '相打ち。0 対 −3 で、あなたの勝ち'],
+    [1, [-3, -1], '相打ち。−3 対 −1 で、相手の勝ち'],
+  ] as const)('勝敗 %s を出す', (winner, hp, text) => {
+    draw({ revealing: true, over: { winner, hp: [hp[0], hp[1]], onAgain: vi.fn(), onRelevel: vi.fn() } })
     expect(screen.getByText(text)).toBeTruthy()
   })
 })

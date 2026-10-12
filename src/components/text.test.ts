@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { legalActions, resolveStep } from '../game/rules'
 import type { Action, PlayerIndex, StepReport } from '../game/types'
 import { makeState, stateArb } from '../test/helpers'
-import { actionLabel, CANNOT_USE, issueText, reportLines } from './text'
+import { actionLabel, CANNOT_USE, issueText, reportLines, resultText } from './text'
 
 const pass: Action = { kind: 'pass' }
 const fireball: Action = { kind: 'fireball', dice: [0, 1] }
@@ -91,5 +91,21 @@ describe('決定できない理由の文', () => {
     [{ type: 'unusable' }, CANNOT_USE],
   ] as const)('%j', (issue, want) => {
     expect(issueText(issue)).toBe(want)
+  })
+})
+
+describe('勝敗の文', () => {
+  it('片方だけ倒れたら、勝ち負けだけを書く', () => {
+    expect(resultText(0, [3, -2], 0)).toBe('あなたの勝ち')
+    expect(resultText(0, [3, -2], 1)).toBe('相手の勝ち')
+    expect(resultText(1, [0, 7], 0)).toBe('相手の勝ち')
+  })
+  it('同時に0以下で決着したら、はみ出した体力を見ている側から並べる', () => {
+    expect(resultText(0, [-1, -3], 0)).toBe('相打ち。−1 対 −3 で、あなたの勝ち')
+    expect(resultText(0, [-1, -3], 1)).toBe('相打ち。−3 対 −1 で、相手の勝ち')
+    expect(resultText(1, [-4, 0], 0)).toBe('相打ち。−4 対 0 で、相手の勝ち')
+  })
+  it('引き分け', () => {
+    expect(resultText('draw', [-2, -2], 0)).toBe('相打ち。引き分けです')
   })
 })

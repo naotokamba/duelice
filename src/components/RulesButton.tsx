@@ -58,7 +58,7 @@ export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement 
         </li>
         <li>ダイスは置き場を選んで置く。X と書いた置き場に置いた目が X になる</li>
         <li>点線の枠は置かなくてもよい。置くと、枠の中に書いた分だけ増える</li>
-        <li>体力が先に0になった方の負け。同時なら引き分け</li>
+        <li>体力が先に0になった方の負け。同時に0以下になったら、体力の残りが多い方の勝ち。同じなら引き分け</li>
       </ul>
       <h3 className="rules-cards-title">印</h3>
       <ul className="rules-marks">
