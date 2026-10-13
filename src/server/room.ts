@@ -1,0 +1,254 @@
+// 部屋の中身。入室、合言葉、席、つながりの有無、持ち時間、決着、もう一戦を、時刻と乱数を外から受け取る純粋な関数で書く。
+// Durable Object の殻 room-object.ts は、これを呼んで保存し、つながっている画面に様子を送るだけにする。
+
+import { ACTION_DEFS, type ActionKind } from '../game/cards'
+import { forfeit, type Match, newMatch, type Resolution, resign, submit, viewFor } from '../game/match'
+import type { Action, Config, PlayerIndex, Rng } from '../game/types'
+import { DEFAULT_CONFIG } from '../game/types'
+import {
+  EMPTY_GRACE_MS,
+  type EndReason,
+  type LobbyRoom,
+  REVEAL_GRACE_MS,
+  type RoomSnapshot,
+  type RoomStatus,
+  START_GRACE_MS,
+  STEP_MS,
+} from '../online/protocol'
+
+export interface Seat {
+  name: string
+  /** 席の合言葉。再読み込みしても同じ席に戻るのに使う。本人にだけ渡す */
+  token: string
+  /** 画面がつながっているか */
+  online: boolean
+}
+
+export interface RoomState {
+  id: string
+  /** 入るための合言葉 */
+  code: string
+  createdAt: number
+  /** 席0は部屋を作った人。決着の後に一人が抜けたら、残った人が席0に移る */
+  seats: [Seat | null, Seat | null]
+  /** 対局。二人目が入るまでは null */
+  match: Match | null
+  matchNo: number
+  /** この対局で一番新しい解決。n はこの対局で何回目の解決か */
+  last: { n: number; resolution: Resolution } | null
+  /** 今のステップの持ち時間の期限。決着した後と、待っている間は null */
+  deadline: number | null
+  end: { reason: EndReason } | null
+  again: [boolean, boolean]
+  /** 誰もつながっていなくなった時刻。誰かつながっていれば null */
+  emptySince: number | null
+  /** 1ステップの持ち時間。開発のテストだけ短くする */
+  stepMs: number
+  config: Config
+}
+
+export interface CreateArgs {
+  id: string
+  code: string
+  name: string
+  token: string
+  now: number
+  stepMs?: number
+  config?: Config
+}
+
+/** 部屋を作る。作った人はまだつながっていないので、つながらないまま猶予が過ぎれば消える */
+export function createRoom({
+  id,
+  code,
+  name,
+  token,
+  now,
+  stepMs = STEP_MS,
+  config = DEFAULT_CONFIG,
+}: CreateArgs): RoomState {
+  return {
+    id,
+    code,
+    createdAt: now,
+    seats: [{ name, token, online: false }, null],
+    match: null,
+    matchNo: 0,
+    last: null,
+    deadline: null,
+    end: null,
+    again: [false, false],
+    emptySince: now,
+    stepMs,
+    config,
+  }
+}
+
+/** 部屋の様子 */
+export function statusOf(s: RoomState): RoomStatus {
+  if (!s.match) return 'waiting'
+  return s.end ? 'over' : 'playing'
+}
+
+/** 新しい対局を始める。最初のステップの持ち時間は、最初のターンを知らせる帯の後から数える */
+function begin(s: RoomState, rng: Rng, now: number): RoomState {
+  return {
+    ...s,
+    match: newMatch(rng, s.config),
+    matchNo: s.matchNo + 1,
+    last: null,
+    deadline: now + START_GRACE_MS + s.stepMs,
+    end: null,
+    again: [false, false],
+  }
+}
+
+export type JoinResult = { ok: true; state: RoomState } | { ok: false; reason: 'code' | 'full' }
+
+/** 二人目が入る。合言葉が合えば席1に座り、すぐ対局を始める */
+export function joinRoom(
+  s: RoomState,
+  { name, code, token, now, rng }: { name: string; code: string; token: string; now: number; rng: Rng },
+): JoinResult {
+  if (s.seats[1]) return { ok: false, reason: 'full' }
+  if (code !== s.code) return { ok: false, reason: 'code' }
+  const seated: RoomState = { ...s, seats: [s.seats[0], { name, token, online: false }] }
+  return { ok: true, state: begin(seated, rng, now) }
+}
+
+/** 席の合言葉から席を引く。どの席でもなければ null */
+export function seatOf(s: RoomState, token: string): PlayerIndex | null {
+  if (s.seats[0]?.token === token) return 0
+  if (s.seats[1]?.token === token) return 1
+  return null
+}
+
+/** 席ごとに画面がつながっているかを書き換える。誰もつながっていなくなったら、その時刻を覚える */
+export function setOnline(s: RoomState, online: [boolean, boolean], now: number): RoomState {
+  const seats = s.seats.map((seat, i) => (seat ? { ...seat, online: online[i] } : null)) as RoomState['seats']
+  const anyone = seats.some((seat) => seat?.online)
+  return { ...s, seats, emptySince: anyone ? null : (s.emptySince ?? now) }
+}
+
+/** 対局が続いているか。決着した後は行動を受け付けない */
+const playing = (s: RoomState): s is RoomState & { match: Match } => s.match !== null && s.end === null
+
+/** 画面から届いた行動の形を確かめる。表に無い種類や、置き場の形が崩れたものは null。合法かどうかは act が確かめる */
+export function asAction(raw: unknown): Action | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const { kind, dice } = raw as { kind?: unknown; dice?: unknown }
+  if (kind === 'pass') return { kind: 'pass' }
+  if (typeof kind !== 'string' || !Object.hasOwn(ACTION_DEFS, kind)) return null
+  if (!Array.isArray(dice) || !dice.every((d) => d === null || Number.isInteger(d))) return null
+  return { kind: kind as ActionKind, dice: dice as (number | null)[] }
+}
+
+export type ActResult = { ok: true; state: RoomState } | { ok: false; reason: 'over' | 'already' | 'illegal' }
+
+/**
+ * seat の行動を受け付ける。両方そろって解決したら一番新しい解決として覚え、次のステップの期限を、
+ * 公開の演出の猶予の後から数え直す。体力で決着したら期限を消す
+ */
+export function act(s: RoomState, seat: PlayerIndex, action: Action, rng: Rng, now: number): ActResult {
+  if (!playing(s)) return { ok: false, reason: 'over' }
+  const r = submit(s.match, seat, action, rng)
+  if (!r.ok) return r
+  if (!r.resolved) return { ok: true, state: { ...s, match: r.match } }
+  const last = { n: (s.last?.n ?? 0) + 1, resolution: r.resolved }
+  const over = r.match.state.winner !== null
+  return {
+    ok: true,
+    state: {
+      ...s,
+      match: r.match,
+      last,
+      deadline: over ? null : now + REVEAL_GRACE_MS + s.stepMs,
+      end: over ? { reason: 'hp' } : null,
+    },
+  }
+}
+
+/** seat が降参する */
+export function resignRoom(s: RoomState, seat: PlayerIndex): RoomState {
+  if (!playing(s)) return s
+  return { ...s, match: resign(s.match, seat), deadline: null, end: { reason: 'resign' } }
+}
+
+/** 決着した後に seat がもう一戦を押す。二人とも押したら新しい対局を始める */
+export function again(s: RoomState, seat: PlayerIndex, rng: Rng, now: number): RoomState {
+  if (!s.end || !s.seats[0] || !s.seats[1]) return s
+  const votes: [boolean, boolean] = [...s.again]
+  votes[seat] = true
+  if (!votes[0] || !votes[1]) return { ...s, again: votes }
+  return begin(s, rng, now)
+}
+
+/**
+ * seat が部屋を出る。残った人がいれば席0に移り、次の相手を待つ部屋に戻る。対局中なら、その対局は記録せずに終える。
+ * 残った人がつながっていなければ、誰もいない部屋として猶予を数える。誰も残らなければ部屋は消える
+ */
+export function leave(s: RoomState, seat: PlayerIndex, now: number): { state: RoomState; deleted: boolean } {
+  const rest = s.seats[seat === 0 ? 1 : 0]
+  if (!rest) return { state: s, deleted: true }
+  return {
+    state: {
+      ...s,
+      seats: [rest, null],
+      match: null,
+      last: null,
+      deadline: null,
+      end: null,
+      again: [false, false],
+      emptySince: rest.online ? null : (s.emptySince ?? now),
+    },
+    deleted: false,
+  }
+}
+
+/**
+ * 時刻を進める。持ち時間の期限を過ぎたら、まだ行動を出していない側の負けで決着させる。両方なら引き分け。
+ * 対局していない部屋は、誰もつながっていないまま猶予を過ぎたら消す。対局中は持ち時間が決着をつけるので消さない
+ */
+export function tick(s: RoomState, now: number): { state: RoomState; deleted: boolean } {
+  const state = playing(s) && s.deadline !== null && now >= s.deadline ? timeout(s) : s
+  const empty = !playing(state) && state.emptySince !== null && now - state.emptySince >= EMPTY_GRACE_MS
+  return { state, deleted: empty }
+}
+
+function timeout(s: RoomState & { match: Match }): RoomState {
+  const late = ([0, 1] as const).filter((i) => s.match.pending[i] === null)
+  return { ...s, match: forfeit(s.match, late), deadline: null, end: { reason: 'timeout' } }
+}
+
+/** 次に時刻を進めるべき時刻。対局中は持ち時間の期限、ほかは誰もいない部屋を消す時刻。どちらも無ければ null */
+export function nextAlarm(s: RoomState): number | null {
+  if (playing(s)) return s.deadline
+  return s.emptySince === null ? null : s.emptySince + EMPTY_GRACE_MS
+}
+
+/** ロビーの一覧に出す一行。二人そろっていれば対戦中。部屋を作った人がいなければ出さない */
+export function lobbyRoom(s: RoomState): LobbyRoom | null {
+  const host = s.seats[0]
+  if (!host) return null
+  return { id: s.id, host: host.name, status: s.seats[1] ? 'playing' : 'waiting', createdAt: s.createdAt }
+}
+
+/** seat に送る様子。相手がまだ公開していない行動は viewFor が隠す */
+export function snapshot(s: RoomState, seat: PlayerIndex, now: number): RoomSnapshot {
+  return {
+    type: 'room',
+    id: s.id,
+    code: s.code,
+    seat,
+    names: [s.seats[0]?.name ?? null, s.seats[1]?.name ?? null],
+    online: [!!s.seats[0]?.online, !!s.seats[1]?.online],
+    status: statusOf(s),
+    matchNo: s.matchNo,
+    view: s.match ? viewFor(s.match, seat) : null,
+    last: s.last,
+    deadline: s.deadline,
+    now,
+    end: s.end,
+    again: s.again,
+  }
+}

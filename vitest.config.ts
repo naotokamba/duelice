@@ -10,7 +10,17 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**', 'src/routeTree.gen.ts', 'src/router.tsx', 'src/routes/**'],
+      // Worker の入口 server.ts と Durable Object の殻 *-object.ts は cloudflare:workers を読み、workerd の中でしか動かない。
+      // 中身は room.ts、lobby.ts、api.ts の純粋な関数に寄せて単体テストで確かめ、殻は e2e の二人対戦で通す
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/routeTree.gen.ts',
+        'src/router.tsx',
+        'src/routes/**',
+        'src/server.ts',
+        'src/server/*-object.ts',
+      ],
       // 下回ると pnpm test:coverage が失敗する。どれも今の値のすぐ下に置いて、テストの抜けにすぐ気づけるようにする
       thresholds: {
         statements: 98,

@@ -4,12 +4,16 @@
   "account_id": "84aa482c288f619eff337b5e2f5b2c24",
   "compatibility_date": "2025-09-02",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "@tanstack/react-start/server-entry",
+  "main": "src/server.ts",
   "routes": [{ "pattern": "duelice.naotokamba.com", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false,
   "observability": {
     "enabled": true
   },
-  "upload_source_maps": true
+  "upload_source_maps": true,
+  "durable_objects": {
+    "bindings": [{ "name": "LOBBY", "class_name": "Lobby" }, { "name": "ROOM", "class_name": "Room" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Lobby", "Room"] }]
 }

@@ -3,7 +3,7 @@
 // カードの知識は cards.ts の表に集め、ほかのファイルはカードを名前で呼ばずに表の性質で分岐する。
 
 import { readdirSync, readFileSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import { NARROW_QUERY } from './components/useNarrow'
@@ -50,6 +50,71 @@ describe('対局の中身', () => {
         if (ts.isPropertyAccessExpression(n) && bannedCalls.has(n.getText())) found.push(where(sf, n, n.getText()))
       }
     }
+    expect(found).toEqual([])
+  })
+})
+
+/** ファイルの import 先。相対の import は src からの道に直す。例 game/match */
+function imports(file: string): { sf: ts.SourceFile; n: ts.Node; from: string }[] {
+  const sf = parse(file)
+  const list: { sf: ts.SourceFile; n: ts.Node; from: string }[] = []
+  for (const n of nodes(sf)) {
+    if (!(ts.isImportDeclaration(n) || ts.isExportDeclaration(n))) continue
+    const spec = n.moduleSpecifier
+    if (!spec || !ts.isStringLiteral(spec)) continue
+    const from = spec.text.startsWith('.') ? relative(SRC, resolve(dirname(file), spec.text)) : spec.text
+    list.push({ sf, n, from })
+  }
+  return list
+}
+
+/** 時刻と乱数を、外から受け取らずに作る呼び出し */
+const CLOCK_AND_RANDOM = new Set([
+  'Math.random',
+  'Date.now',
+  'performance.now',
+  'crypto.getRandomValues',
+  'crypto.randomUUID',
+])
+
+describe('オンライン対戦', () => {
+  it('取り決め src/online は対局の中身だけを読み、サーバにも画面にも Cloudflare にも頼らない', () => {
+    const found = sources('online').flatMap((file) =>
+      imports(file)
+        .filter(({ from }) => !from.startsWith('game/') && !from.startsWith('online/'))
+        .map(({ sf, n, from }) => where(sf, n, `import ${from}`)),
+    )
+    expect(found).toEqual([])
+  })
+
+  it('サーバ src/server は画面の部品も React も読まない', () => {
+    const found = sources('server').flatMap((file) =>
+      imports(file)
+        .filter(({ from }) => from.startsWith('components/') || from.startsWith('routes/') || from.startsWith('react'))
+        .map(({ sf, n, from }) => where(sf, n, `import ${from}`)),
+    )
+    expect(found).toEqual([])
+  })
+
+  it('部屋とロビーの中身は、時刻も乱数も外から受け取る。Cloudflare に触るのは Durable Object の殻 *-object.ts だけ', () => {
+    const found: string[] = []
+    for (const file of sources('server')) {
+      if (file.endsWith('-object.ts')) continue
+      for (const { sf, n, from } of imports(file)) if (from.startsWith('cloudflare:')) found.push(where(sf, n, from))
+      const sf = parse(file)
+      for (const n of nodes(sf)) {
+        if (ts.isPropertyAccessExpression(n) && CLOCK_AND_RANDOM.has(n.getText())) found.push(where(sf, n, n.getText()))
+      }
+    }
+    expect(found).toEqual([])
+  })
+
+  it('画面 src/components はサーバのコードも Cloudflare も読まない', () => {
+    const found = sources('components').flatMap((file) =>
+      imports(file)
+        .filter(({ from }) => from === 'server' || from.startsWith('server/') || from.startsWith('cloudflare:'))
+        .map(({ sf, n, from }) => where(sf, n, `import ${from}`)),
+    )
     expect(found).toEqual([])
   })
 })
