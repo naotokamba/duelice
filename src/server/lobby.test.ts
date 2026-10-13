@@ -80,6 +80,7 @@ describe('部屋を作るときの中身', () => {
   it('開発のときでも、正の整数でなければ無視する', () => {
     expect(parseCreate({ ...body, stepMs: -1, hp: 1.5 }, true)).toEqual({ name: 'あお', code: '1234' })
     expect(parseCreate({ ...body, stepMs: '3000', hp: 0 }, true)).toEqual({ name: 'あお', code: '1234' })
+    expect(parseCreate({ ...body, stepMs: 0, hp: '4' }, true)).toEqual({ name: 'あお', code: '1234' })
   })
   it('名前か合言葉が正しくなければ作らない', () => {
     expect(parseCreate({ name: '', code: '1234' }, true)).toBeNull()

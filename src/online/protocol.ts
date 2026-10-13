@@ -63,6 +63,8 @@ export interface RoomSnapshot {
   last: { n: number; resolution: Resolution } | null
   /** 今のステップの持ち時間の期限。サーバの時計の時刻 */
   deadline: number | null
+  /** 1ステップの持ち時間 */
+  stepMs: number
   /** 送った時のサーバの時計の時刻。画面は自分の時計とのずれをこれで直す */
   now: number
   end: { reason: EndReason } | null

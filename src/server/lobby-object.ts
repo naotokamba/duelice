@@ -12,6 +12,8 @@ export class Lobby extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
+    // 画面がつながりを保つために送る ping には、起こさずに pong を返す
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     ctx.blockConcurrencyWhile(async () => {
       this.rooms = (await ctx.storage.get<Rooms>(KEY)) ?? {}
     })

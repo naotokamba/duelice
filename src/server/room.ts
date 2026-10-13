@@ -135,8 +135,7 @@ const playing = (s: RoomState): s is RoomState & { match: Match } => s.match !==
 
 /** 画面から届いた行動の形を確かめる。表に無い種類や、置き場の形が崩れたものは null。合法かどうかは act が確かめる */
 export function asAction(raw: unknown): Action | null {
-  if (typeof raw !== 'object' || raw === null) return null
-  const { kind, dice } = raw as { kind?: unknown; dice?: unknown }
+  const { kind, dice } = Object(raw) as { kind?: unknown; dice?: unknown }
   if (kind === 'pass') return { kind: 'pass' }
   if (typeof kind !== 'string' || !Object.hasOwn(ACTION_DEFS, kind)) return null
   if (!Array.isArray(dice) || !dice.every((d) => d === null || Number.isInteger(d))) return null
@@ -210,6 +209,7 @@ export function leave(s: RoomState, seat: PlayerIndex, now: number): { state: Ro
  * 対局していない部屋は、誰もつながっていないまま猶予を過ぎたら消す。対局中は持ち時間が決着をつけるので消さない
  */
 export function tick(s: RoomState, now: number): { state: RoomState; deleted: boolean } {
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: 期限は対局中にだけあり、対局中はいつもある。どちらを確かめても同じ
   const state = playing(s) && s.deadline !== null && now >= s.deadline ? timeout(s) : s
   const empty = !playing(state) && state.emptySince !== null && now - state.emptySince >= EMPTY_GRACE_MS
   return { state, deleted: empty }
@@ -220,10 +220,21 @@ function timeout(s: RoomState & { match: Match }): RoomState {
   return { ...s, match: forfeit(s.match, late), deadline: null, end: { reason: 'timeout' } }
 }
 
-/** 次に時刻を進めるべき時刻。対局中は持ち時間の期限、ほかは誰もいない部屋を消す時刻。どちらも無ければ null */
-export function nextAlarm(s: RoomState): number | null {
-  if (playing(s)) return s.deadline
-  return s.emptySince === null ? null : s.emptySince + EMPTY_GRACE_MS
+/**
+ * 誰かつながっている部屋でも、この間ごとに起きて、本当につながっているかを数え直す。
+ * デプロイで Durable Object が作り直されると、WebSocket は閉じた知らせを残さずに切れる。数え直さないと、誰もいない部屋がいつまでも残る
+ */
+export const PRESENCE_CHECK_MS = 60_000
+
+/**
+ * 次に時刻を進めるべき時刻。対局中は持ち時間の期限、誰もいなければ部屋を消す時刻、ほかはつながりを数え直す時刻。
+ * 部屋がある間は、いつも次の時刻を決めておく
+ */
+export function nextAlarm(s: RoomState, now: number): number {
+  // Stryker disable next-line ConditionalExpression,LogicalOperator: 期限は対局中にだけあり、対局中はいつもある。どちらを確かめても同じ
+  if (playing(s) && s.deadline !== null) return s.deadline
+  if (s.emptySince !== null) return s.emptySince + EMPTY_GRACE_MS
+  return now + PRESENCE_CHECK_MS
 }
 
 /** ロビーの一覧に出す一行。二人そろっていれば対戦中。部屋を作った人がいなければ出さない */
@@ -247,6 +258,7 @@ export function snapshot(s: RoomState, seat: PlayerIndex, now: number): RoomSnap
     view: s.match ? viewFor(s.match, seat) : null,
     last: s.last,
     deadline: s.deadline,
+    stepMs: s.stepMs,
     now,
     end: s.end,
     again: s.again,

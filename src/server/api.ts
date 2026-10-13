@@ -32,8 +32,7 @@ export interface JoinRequest {
 
 /** 名前と合言葉を確かめる。どちらかが正しくなければ null */
 export function parseJoin(body: unknown): JoinRequest | null {
-  if (typeof body !== 'object' || body === null) return null
-  const { name, code } = body as { name?: unknown; code?: unknown }
+  const { name, code } = Object(body) as { name?: unknown; code?: unknown }
   if (typeof name !== 'string' || typeof code !== 'string') return null
   const clean = cleanName(name)
   if (clean === null || !validCode(code)) return null
@@ -50,7 +49,12 @@ export function parseCreate(body: unknown, dev: boolean): CreateRequest | null {
   if (!dev) return join
   const { stepMs, hp } = body as { stepMs?: unknown; hp?: unknown }
   const request: CreateRequest = { ...join }
-  if (typeof stepMs === 'number' && Number.isInteger(stepMs) && stepMs > 0) request.stepMs = stepMs
-  if (typeof hp === 'number' && Number.isInteger(hp) && hp > 0) request.config = { ...DEFAULT_CONFIG, maxHp: hp }
+  if (positive(stepMs)) request.stepMs = stepMs
+  if (positive(hp)) request.config = { ...DEFAULT_CONFIG, maxHp: hp }
   return request
+}
+
+/** 正の整数か */
+function positive(n: unknown): n is number {
+  return Number.isInteger(n) && (n as number) > 0
 }

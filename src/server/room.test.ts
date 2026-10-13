@@ -14,6 +14,7 @@ import {
   leave,
   lobbyRoom,
   nextAlarm,
+  PRESENCE_CHECK_MS,
   type RoomState,
   resignRoom,
   seatOf,
@@ -54,6 +55,7 @@ describe('部屋を作る、入る', () => {
     expect(s.seats).toEqual([{ name: 'あお', token: 'host', online: false }, null])
     expect(statusOf(s)).toBe('waiting')
     expect(s.emptySince).toBe(T0)
+    expect(s).toMatchObject({ match: null, matchNo: 0, last: null, deadline: null, end: null, again: [false, false] })
     expect(lobbyRoom(s)).toEqual({ id: 'room0001', host: 'あお', status: 'waiting', createdAt: T0 })
   })
   it('持ち時間と対局の決まりは、指定がなければふだんのもの', () => {
@@ -84,6 +86,8 @@ describe('部屋を作る、入る', () => {
   it('席の合言葉から席を引く。再読み込みしても同じ席に戻れる', () => {
     const s = playing()
     expect([seatOf(s, 'host'), seatOf(s, 'guest'), seatOf(s, 'other'), seatOf(s, '')]).toEqual([0, 1, null, null])
+    // 席0が空いていても引ける
+    expect(seatOf({ ...s, seats: [null, s.seats[1]] }, 'guest')).toBe(1)
   })
 })
 
@@ -109,9 +113,16 @@ describe('様子を送る', () => {
       matchNo: 1,
       last: null,
       deadline: T0 + START_GRACE_MS + STEP,
+      stepMs: STEP,
       now: T0 + 3,
       end: null,
       again: [false, false],
+    })
+  })
+  it('席が空いていれば、名前もつながりも無いと送る', () => {
+    expect(snapshot({ ...created(), seats: [null, null] }, 0, T0)).toMatchObject({
+      names: [null, null],
+      online: [false, false],
     })
   })
   it('相手を待っている間は、対局の様子を送らない', () => {
@@ -144,7 +155,7 @@ describe('行動を出す', () => {
     expect(r.end).toEqual({ reason: 'hp' })
     expect(r.deadline).toBeNull()
     expect(statusOf(r)).toBe('over')
-    expect(nextAlarm(r)).toBeNull()
+    expect(nextAlarm(r, T0)).toBe(T0 + PRESENCE_CHECK_MS)
   })
   it('同じステップに二度出す、合法でない、決着した後、相手を待っている間の行動は受け付けない', () => {
     const s = fixed(playing())
@@ -184,7 +195,7 @@ describe('持ち時間', () => {
     const s = ok(act(playing(), 0, pass, seeded(1), T0)).state
     const away = setOnline(s, [true, false], T0 + 1000)
     expect(away.deadline).toBe(deadline)
-    expect(nextAlarm(away)).toBe(deadline)
+    expect(nextAlarm(away, T0 + 1000)).toBe(deadline)
     expect(tick(away, deadline).state.match?.state.winner).toBe(0)
   })
   it('つながりが切れても、期限の前に戻って出せば続く', () => {
@@ -203,18 +214,18 @@ describe('持ち時間', () => {
   it('対局中は二人とも切れていても部屋を消さず、期限で決着させる。決着の後は猶予が過ぎていれば消す', () => {
     const gone = setOnline(playing(), [false, false], T0 + 1000)
     expect(gone.emptySince).toBe(T0 + 1000)
-    expect(nextAlarm(gone)).toBe(deadline)
+    expect(nextAlarm(gone, T0 + 1000)).toBe(deadline)
     const r = tick(gone, deadline)
     expect(r.deleted).toBe(true)
     expect(r.state.end).toEqual({ reason: 'timeout' })
   })
-  it('決着した後と、相手を待っている間は時計を止める', () => {
+  it('決着した後と、相手を待っている間は持ち時間の時計を止め、つながりを数え直す時刻だけを決める', () => {
     const over = resignRoom(playing(), 0)
     expect(over.deadline).toBeNull()
-    expect(nextAlarm(over)).toBeNull()
+    expect(nextAlarm(over, T0 + 5)).toBe(T0 + 5 + PRESENCE_CHECK_MS)
     expect(tick(over, T0 + 10 * STEP).state).toBe(over)
     const waiting = setOnline(created(), [true, false], T0)
-    expect(nextAlarm(waiting)).toBeNull()
+    expect(nextAlarm(waiting, T0 + 7)).toBe(T0 + 7 + PRESENCE_CHECK_MS)
   })
 })
 
@@ -288,7 +299,7 @@ describe('部屋を出る', () => {
   it('対局中に出たら、その対局は記録せずに終え、残った人は次の相手を待つ', () => {
     const r = leave(playing(), 1, T0)
     expect(r.state).toMatchObject({ match: null, deadline: null, seats: [{ token: 'host' }, null] })
-    expect(nextAlarm(r.state)).toBeNull()
+    expect(nextAlarm(r.state, T0)).toBe(T0 + PRESENCE_CHECK_MS)
   })
   it('部屋を作った人がいなければ、ロビーには出さない', () => {
     expect(lobbyRoom({ ...created(), seats: [null, null] })).toBeNull()
@@ -296,9 +307,20 @@ describe('部屋を出る', () => {
 })
 
 describe('誰もいない部屋', () => {
+  it('つながりの知らせが届かないまま切れていても、数え直せば誰もいない部屋として猶予を数え、過ぎたら消す', () => {
+    // デプロイで WebSocket が切れると、閉じた知らせは届かず、覚えている様子は二人ともつながったまま
+    const stale = resignRoom(playing(), 1)
+    expect(stale.seats.map((x) => x?.online)).toEqual([true, true])
+    const at = nextAlarm(stale, T0)
+    const counted = setOnline(stale, [false, false], at)
+    expect(tick(counted, at).deleted).toBe(false)
+    expect(nextAlarm(counted, at)).toBe(at + EMPTY_GRACE_MS)
+    expect(tick(counted, at + EMPTY_GRACE_MS).deleted).toBe(true)
+  })
+
   it('作った人がつながらないまま猶予が過ぎたら消す', () => {
     const s = created()
-    expect(nextAlarm(s)).toBe(T0 + EMPTY_GRACE_MS)
+    expect(nextAlarm(s, T0)).toBe(T0 + EMPTY_GRACE_MS)
     expect(tick(s, T0 + EMPTY_GRACE_MS - 1).deleted).toBe(false)
     expect(tick(s, T0 + EMPTY_GRACE_MS).deleted).toBe(true)
   })
@@ -316,7 +338,7 @@ describe('誰もいない部屋', () => {
   })
   it('決着の後に二人とも切れたら、猶予の後に消す', () => {
     const over = setOnline(resignRoom(playing(), 1), [false, false], T0 + 10)
-    expect(nextAlarm(over)).toBe(T0 + 10 + EMPTY_GRACE_MS)
+    expect(nextAlarm(over, T0 + 10)).toBe(T0 + 10 + EMPTY_GRACE_MS)
     expect(tick(over, T0 + 10 + EMPTY_GRACE_MS).deleted).toBe(true)
   })
 })
@@ -342,6 +364,8 @@ describe('画面から届いた行動の形', () => {
       { kind: 'flameStrike', dice: [0.5, 1] },
       { kind: 'flameStrike', dice: ['0'] },
       { kind: 3, dice: [0] },
+      // 配列は表の名前と同じ文字に読めてしまうので、文字であることも確かめる
+      { kind: ['flameStrike'], dice: [0, 1] },
     ]) {
       expect(asAction(raw)).toBeNull()
     }

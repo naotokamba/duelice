@@ -41,6 +41,8 @@ export class Room extends DurableObject<Env> {
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env)
+    // 画面がつながりを保つために送る ping には、起こさずに pong を返す
+    ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     ctx.blockConcurrencyWhile(async () => {
       this.state = (await ctx.storage.get<RoomState>(KEY)) ?? null
     })
@@ -121,10 +123,14 @@ export class Room extends DurableObject<Env> {
     await this.webSocketClose(ws)
   }
 
-  /** 持ち時間の期限か、誰もいない部屋を消す時刻が来た */
+  /**
+   * 持ち時間の期限か、誰もいない部屋を消す時刻か、つながりを数え直す時刻が来た。
+   * 先に今開いている WebSocket からつながりを数え直す。デプロイで切れた WebSocket は、閉じた知らせを残さないため
+   */
   async alarm(): Promise<void> {
     if (!this.state) return
-    const r = tick(this.state, Date.now())
+    const now = Date.now()
+    const r = tick(setOnline(this.state, this.onlineOf(this.state), now), now)
     if (r.deleted) await this.remove()
     else await this.save(r.state)
   }
@@ -154,9 +160,7 @@ export class Room extends DurableObject<Env> {
   private async save(next: RoomState): Promise<void> {
     this.state = next
     await this.ctx.storage.put(KEY, next)
-    const at = nextAlarm(next)
-    if (at === null) await this.ctx.storage.deleteAlarm()
-    else await this.ctx.storage.setAlarm(at)
+    await this.ctx.storage.setAlarm(nextAlarm(next, Date.now()))
     const now = Date.now()
     for (const w of this.ctx.getWebSockets()) {
       const seat = seatOf(next, tokenOf(w))
