@@ -29,6 +29,12 @@ main への push と pull request では、GitHub Actions が `pnpm check` と `
 
 対戦の結果は二つのデッキ、カードの定義の指紋、対局の中身と CPU の指紋、種ごとに `reports/eval/cache` に覚え、同じ組は測り直さない。カードを変えると、そのカードを含む組だけを測り直す。明らかに弱いデッキは理由を添えて `reports/eval/skip.json` に記録し、カードが変わるまで無作為の評価から外す。接戦の組には局数を足す。GitHub Actions の `eval` を手で起動しても走り、結果の表が残る。
 
+## CPU の作り
+
+- CPU は `src/game/cpu.ts`。二ステップの同時手番を行列ゲームとして解く。一ステップ目の要素一つごとに二ステップ目を解くので、行列が大きいときは `src/game/doubleOracle.ts` の double oracle で、均衡に要る要素だけを求める。全ての要素を解いたときと同じ価値の均衡になることを、`cpu.test.ts` が乱数の局面で確かめる
+- 画面の CPU は `src/components/cpuBrain.ts` から Worker `cpu.worker.ts` で考え、画面を止めない。Worker の無いテストの偽の DOM では、その場で考える。考えるのに長くかかると、相手の名前に考え中の印を出す
+- 一手の考える時間は、重いデッキでも、手元の node で 0.5 秒以下を目安にする
+
 ## オンライン対戦の作り
 
 - サーバは Cloudflare の Durable Object。ロビーに一つ、部屋ごとに一つ置く。入口は `src/server.ts` で、`/api` だけを受け、ほかは TanStack Start に任せる

@@ -3,7 +3,7 @@
 // 手元の対戦もオンライン対戦も、自分を席0とした同じ形で渡す。解決の結果は、届いたら公開する。
 // 対局が始まるたびに作り直すので、公開の時計や手元は新しい対局ごとに初めの状態から始まる。
 
-import { CircleCheck, SkipForward, WifiOff } from 'lucide-react'
+import { CircleCheck, Hourglass, SkipForward, WifiOff } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { CardId } from '../game/cards'
 import type { MatchView } from '../game/match'
@@ -41,6 +41,8 @@ interface Props {
   opponent?: string
   /** 相手の画面とのつながりが切れている */
   opponentAway?: boolean
+  /** 相手の CPU が考えている */
+  thinking?: boolean
   /** 今のステップの持ち時間。期限は画面の時計の時刻。無ければ時計を出さない */
   timer?: { deadline: number; stepMs: number } | null
   /** 決着の理由。無ければ体力 */
@@ -60,7 +62,17 @@ function Mark({ icon: Icon, label }: { icon: typeof CircleCheck; label: string }
   )
 }
 
-export function Table({ match, narrow, opponent = '相手', opponentAway, timer, reason, after, onSurrender }: Props) {
+export function Table({
+  match,
+  narrow,
+  opponent = '相手',
+  opponentAway,
+  thinking,
+  timer,
+  reason,
+  after,
+  onSurrender,
+}: Props) {
   const { view, resolved, submit } = match
   const clock = useRevealClock(resolved, view.state.history.length === 0 && view.state.winner === null)
   /** 見せる盤。公開の最中は、解決した直後の盤を見せる */
@@ -135,6 +147,7 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
       {!revealing && board.winner === null && view.opponentReady && <Mark icon={CircleCheck} label="相手は決定した" />}
       {over !== null && after.opponentWaiting && <Mark icon={CircleCheck} label="相手はもう一戦を押した" />}
       {opponentAway && <Mark icon={WifiOff} label="相手の接続が切れている" />}
+      {thinking && <Mark icon={Hourglass} label="相手は考え中" />}
     </>
   )
 

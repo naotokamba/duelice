@@ -4,6 +4,7 @@
 
 import { act, cleanup, fireEvent, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { Thinker } from '../game/cpu'
 import type { GameState } from '../game/types'
 import { seeded } from '../test/helpers'
 import {
@@ -34,8 +35,10 @@ import {
   type User,
   useFakeClock,
 } from '../test/screen'
+import { type CpuSide, respond, type ToCpu } from './cpuMessages'
 import { HOLD_MS, IMPACT_MS, revealMs } from './Exchange'
 import type { Opponent } from './Game'
+import { THINKING_DELAY_MS } from './useLocalMatch'
 import { BANNER_MS } from './useRevealClock'
 
 /** 攻撃も自分が焼ける分も無い公開。構えを見せてから短く進む */
@@ -678,4 +681,49 @@ describe('本物のCPUとの通し', () => {
     }
     expect(screen.getByText('負け', { selector: '.result-text' })).toBeTruthy()
   }, 30_000)
+})
+
+describe('CPU が Worker で考える間', () => {
+  it('自分の決めた手を見せ、長くかかれば相手の名前に考え中の印を出し、答えが届いたら公開する', async () => {
+    const workers: { release: () => void }[] = []
+    // ブラウザの Worker の代わりに、答えを手で返す偽物を置く
+    vi.stubGlobal(
+      'Worker',
+      class {
+        onmessage: ((e: MessageEvent) => void) | null = null
+        onerror: ((e: Event) => void) | null = null
+        side: CpuSide = { thinker: new Thinker() }
+        held: ToCpu[] = []
+        constructor() {
+          workers.push(this)
+        }
+        postMessage(msg: ToCpu) {
+          this.held.push(msg)
+        }
+        release() {
+          for (const msg of this.held.splice(0)) {
+            const answer = respond(this.side, msg)
+            if (answer) this.onmessage?.({ data: answer } as MessageEvent)
+          }
+        }
+        terminate() {}
+      },
+    )
+    try {
+      const user = await start({ rng: lowRoll() })
+      await pass(user)
+      expect(screen.queryByRole('img', { name: '相手は考え中' })).toBeNull()
+      await advance(THINKING_DELAY_MS)
+      expect(screen.getByRole('img', { name: '相手は考え中' })).toBeTruthy()
+      await act(async () => {
+        workers[0].release()
+        await Promise.resolve()
+      })
+      expect(screen.queryByRole('img', { name: '相手は考え中' })).toBeNull()
+      await settle()
+      expect(screen.getByText('Turn 1 - Step 2')).toBeTruthy()
+    } finally {
+      vi.unstubAllGlobals()
+    }
+  })
 })

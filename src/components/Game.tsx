@@ -90,6 +90,7 @@ export function Game({ rng = Math.random, opponent, cpuDeck = randomCpuDeck, roo
       key={round}
       match={local.match}
       narrow={narrow}
+      thinking={local.thinking}
       after={{
         onAgain: () => start(decks),
         leave: { label: decks ? 'カードを選び直す' : '強さを選び直す', onClick: quit },

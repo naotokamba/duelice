@@ -20,6 +20,8 @@ export default defineConfig({
         'src/routes/**',
         'src/server.ts',
         'src/server/*-object.ts',
+        // CPU を考えさせる Worker の入口は、知らせを cpuMessages.ts の respond に渡すだけ。答え方は単体テストで確かめ、入口は e2e で通す
+        'src/components/cpu.worker.ts',
         // カードの強さの評価は、手で動かす重い道具。数え方の純粋な関数は eval/*.test.ts で確かめるが、
         // 働き手を走らせる部分は pnpm eval:pool で動かして確かめる
         'src/eval/**',
