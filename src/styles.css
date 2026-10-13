@@ -215,6 +215,24 @@ button {
   white-space: nowrap;
   color: var(--ink-soft);
 }
+/* 持ち時間の残り。ステップの札の下に小さく出す。動かさず、残りが少なくなったら色だけを変える */
+.countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  font-size: 0.75rem;
+  font-weight: 800;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-soft);
+}
+.countdown svg {
+  width: 12px;
+  height: 12px;
+}
+.countdown.is-hurry {
+  color: var(--hit);
+}
 /* ステップの札。終わったステップを埋め、今のステップを枠で強調する。動かさない */
 .steps {
   display: flex;
@@ -395,9 +413,27 @@ button {
   gap: 0.5rem 1rem;
 }
 .seat-name {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 8em;
   margin: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 1.1rem;
   color: var(--accent);
+}
+/* 名前に添える印。相手が決定した、もう一戦を押した、つながりが切れている。押せるものではないので動かさない */
+.seat-mark {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  margin-left: -0.6rem;
+  color: var(--accent);
+}
+.seat-mark svg {
+  width: 20px;
+  height: 20px;
 }
 .hp {
   display: flex;
@@ -1150,6 +1186,11 @@ button.tab {
   --accent: var(--cpu);
 }
 .clash-name {
+  flex: none;
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 700;
   color: var(--accent);
 }

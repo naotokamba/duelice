@@ -72,7 +72,8 @@ describe('二人の間の段', () => {
   it('決着したら勝敗と次の対局の始め方を出し、メニューには降参を出さない', () => {
     const onAgain = vi.fn()
     const onRelevel = vi.fn()
-    draw({ revealing: true, over: { winner: 0, hp: [5, -2], onAgain, onRelevel }, onSurrender: undefined })
+    const leave = { label: '強さを選び直す', onClick: onRelevel }
+    draw({ revealing: true, over: { winner: 0, hp: [5, -2], onAgain, leave }, onSurrender: undefined })
     expect(screen.getByText('勝ち')).toBeTruthy()
     expect(screen.getByRole('region', { name: '一つ前の結果' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'もう一戦' }))
@@ -90,13 +91,46 @@ describe('二人の間の段', () => {
     [0, [0, -3], '勝ち', '相打ち。0 対 −3 で、あなたの勝ち'],
     [1, [-3, -1], '負け', '相打ち。−3 対 −1 で、あなたの負け'],
   ] as const)('勝敗 %s は、中央には短く、戦闘履歴のいちばん上には詳しく出す', (winner, hp, short, long) => {
-    draw({ revealing: true, over: { winner, hp: [hp[0], hp[1]], onAgain: vi.fn(), onRelevel: vi.fn() } })
+    draw({
+      revealing: true,
+      over: { winner, hp: [hp[0], hp[1]], onAgain: vi.fn(), leave: { label: '戻る', onClick: vi.fn() } },
+    })
     expect(screen.getByText(short, { selector: '.result-text' })).toBeTruthy()
     // 相打ちの説明は中央には出さない
     expect(screen.queryByText(long, { selector: '.result-text' })).toBeNull()
     fireEvent.click(screen.getByRole('button', { name: '戦闘履歴' }))
     const [first] = within(screen.getByRole('dialog', { name: '戦闘履歴' })).getAllByRole('listitem')
     expect(first.textContent).toBe(`決着${long}`)
+  })
+})
+
+describe('オンライン対戦の決着', () => {
+  const leave = { label: 'ロビーへ', onClick: vi.fn() }
+
+  it.each([
+    ['timeout', 0, '時間切れで、あなたの勝ち'],
+    ['timeout', 'draw', '時間切れで、引き分け'],
+    ['resign', 1, '降参で、あなたの負け'],
+  ] as const)('理由 %s で決着したら、戦闘履歴のいちばん上にその理由を書く', (reason, winner, long) => {
+    draw({ history: [], over: { winner, hp: [20, 20], reason, onAgain: vi.fn(), leave } })
+    // 最初のステップで時間切れになり履歴が無くても、決着の行は読める
+    fireEvent.click(screen.getByRole('button', { name: '戦闘履歴' }))
+    const items = within(screen.getByRole('dialog', { name: '戦闘履歴' })).getAllByRole('listitem')
+    expect(items.map((i) => i.textContent)).toEqual([`決着${long}`])
+  })
+
+  it('もう一戦を押した後は、相手を待っていると出して押せなくする', () => {
+    const onAgain = vi.fn()
+    draw({ over: { winner: 0, hp: [5, 0], onAgain, waiting: true, leave } })
+    const wait = screen.getByRole('button', { name: '相手を待っています' }) as HTMLButtonElement
+    expect(wait.disabled).toBe(true)
+    fireEvent.click(screen.getByRole('button', { name: 'ロビーへ' }))
+    expect(leave.onClick).toHaveBeenCalled()
+  })
+
+  it('持ち時間の残りを、ターンとステップの下に出す', () => {
+    draw({ timer: <span role="timer">42</span> })
+    expect(screen.getByRole('timer').closest('.turn-label')).toBeTruthy()
   })
 })
 

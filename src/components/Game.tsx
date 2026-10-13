@@ -31,5 +31,13 @@ export function Game({ rng = Math.random, opponent }: Props) {
   }
 
   if (!local.match) return <Title level={level} setLevel={setLevel} onStart={start} />
-  return <Table key={round} match={local.match} narrow={narrow} play={local.play} onAgain={start} onQuit={local.quit} />
+  return (
+    <Table
+      key={round}
+      match={local.match}
+      narrow={narrow}
+      after={{ onAgain: start, leave: { label: '強さを選び直す', onClick: local.quit } }}
+      onSurrender={local.quit}
+    />
+  )
 }

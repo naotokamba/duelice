@@ -3,6 +3,7 @@
 import { ACTION_DEFS } from '../game/cards'
 import type { Issue } from '../game/hand'
 import type { Action, PlayerIndex, StepReport } from '../game/types'
+import type { EndReason } from '../online/protocol'
 
 /** 公開や履歴に出す行動の名前 */
 export function actionLabel(a: Action): string {
@@ -42,10 +43,18 @@ export function resultText(winner: PlayerIndex | 'draw', viewer: PlayerIndex): s
 
 /**
  * 決着の詳しい文。戦闘履歴に出す。同時に体力が0以下になって決着したときは相打ちと書き、
- * はみ出した体力を見ている側から並べて、残りの多い方の勝ちか、同じで引き分けかを示す
+ * はみ出した体力を見ている側から並べて、残りの多い方の勝ちか、同じで引き分けかを示す。
+ * 持ち時間切れか降参で決着したときは、その理由を書く
  */
-export function endingText(winner: PlayerIndex | 'draw', hp: [number, number], viewer: PlayerIndex): string {
+export function endingText(
+  winner: PlayerIndex | 'draw',
+  hp: [number, number],
+  viewer: PlayerIndex,
+  reason: EndReason = 'hp',
+): string {
   const result = winner === 'draw' ? '引き分け' : winner === viewer ? 'あなたの勝ち' : 'あなたの負け'
+  if (reason === 'timeout') return `時間切れで、${result}`
+  if (reason === 'resign') return `降参で、${result}`
   const mine = hp[viewer]
   const theirs = hp[viewer === 0 ? 1 : 0]
   if (mine > 0 || theirs > 0) return result

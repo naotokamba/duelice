@@ -2,7 +2,9 @@
 // 対局中はヘッダーを出さず、ルールと降参はこの段の右端のメニューにしまう。
 // ステップやターンが切り替わったら、段を幕で覆って知らせる。
 
+import type { ReactNode } from 'react'
 import type { PlayerIndex, StepReport } from '../game/types'
+import type { EndReason } from '../online/protocol'
 import { HistoryButton, Recent } from './History'
 import { MatchMenu } from './MatchMenu'
 import { resultText } from './text'
@@ -10,9 +12,10 @@ import type { Banner } from './useRevealClock'
 
 /**
  * 今のターンとステップ。ターンの下にステップの札を縦に並べる。
- * 終わったステップを埋め、今のステップを枠で強調する。押せるものではないので動かさない
+ * 終わったステップを埋め、今のステップを枠で強調する。押せるものではないので動かさない。
+ * オンライン対戦では、その下に持ち時間の残りを出す
  */
-export function TurnLabel({ turn, step }: { turn: number; step: 1 | 2 }) {
+export function TurnLabel({ turn, step, timer }: { turn: number; step: 1 | 2; timer?: ReactNode }) {
   return (
     <p className="turn-label">
       <span className="sr-only">{`Turn ${turn} - Step ${step}`}</span>
@@ -26,29 +29,41 @@ export function TurnLabel({ turn, step }: { turn: number; step: 1 | 2 }) {
           </span>
         ))}
       </span>
+      {timer}
     </p>
   )
 }
 
+/** 決着した後の操作。もう一戦と、対局をやめる側のボタン */
+export interface AfterMatch {
+  onAgain: () => void
+  /** もう一戦を押して、相手が押すのを待っている */
+  waiting?: boolean
+  /** 相手がもう一戦を押した */
+  opponentWaiting?: boolean
+  /** 対局をやめるボタン。手元の対戦では強さを選び直す、オンライン対戦ではロビーへ */
+  leave: { label: string; onClick: () => void }
+}
+
 /** 決着した後の勝敗と、次の対局の始め方 */
-export interface Over {
+export interface Over extends AfterMatch {
   winner: PlayerIndex | 'draw'
   /** 決着したときの双方の体力。席の順。同時に0以下になったときは、はみ出した分まで持つ */
   hp: [number, number]
-  onAgain: () => void
-  onRelevel: () => void
+  /** 決着の理由。無ければ体力 */
+  reason?: EndReason
 }
 
-function Result({ winner, onAgain, onRelevel }: Over) {
+function Result({ winner, onAgain, waiting, leave }: Over) {
   return (
     <div className="result">
       <p className="result-text">{resultText(winner, 0)}</p>
       <div className="result-actions">
-        <button type="button" className="btn btn-primary" onClick={onAgain}>
-          もう一戦
+        <button type="button" className="btn btn-primary" disabled={waiting} onClick={onAgain}>
+          {waiting ? '相手を待っています' : 'もう一戦'}
         </button>
-        <button type="button" className="btn" onClick={onRelevel}>
-          強さを選び直す
+        <button type="button" className="btn" onClick={leave.onClick}>
+          {leave.label}
         </button>
       </div>
     </div>
@@ -66,11 +81,13 @@ interface Props {
   /** 決着して、最後の公開の動きも終わった */
   over: Over | null
   banner: Banner | null
+  /** 持ち時間の残り。オンライン対戦の、行動を選んでいる間だけ */
+  timer?: ReactNode
   /** 降参。決着した後は渡さない */
   onSurrender?: () => void
 }
 
-export function Arena({ turn, step, history, revealing, lines, over, banner, onSurrender }: Props) {
+export function Arena({ turn, step, history, revealing, lines, over, banner, timer, onSurrender }: Props) {
   return (
     <section className="arena">
       {lines && (
@@ -81,7 +98,7 @@ export function Arena({ turn, step, history, revealing, lines, over, banner, onS
         </ul>
       )}
       <div className="arena-row">
-        <TurnLabel turn={turn} step={step} />
+        <TurnLabel turn={turn} step={step} timer={timer} />
         <div className="arena-main">
           {over && <Result {...over} />}
           {(!revealing || over) && <Recent history={history} />}

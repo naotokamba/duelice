@@ -1,14 +1,17 @@
 // 対局の画面。上に相手の席、中央に二人の間の段、下に自分の席を置き、公開の演出は卓の上に重ねた幕で見せる。
 // 対局の中身は渡された match が決め、ここは盤を見せることと、操作を手元や対局へ渡すことだけをする。
+// 手元の対戦もオンライン対戦も、自分を席0とした同じ形で渡す。解決の結果は、届いたら公開する。
 // 対局が始まるたびに作り直すので、公開の時計や手元は新しい対局ごとに初めの状態から始まる。
 
-import { SkipForward } from 'lucide-react'
+import { CircleCheck, SkipForward, WifiOff } from 'lucide-react'
 import { useMemo, useRef, useState } from 'react'
 import type { CardId } from '../game/cards'
-import type { Match, Resolution } from '../game/match'
+import type { MatchView } from '../game/match'
 import type { Action } from '../game/types'
-import { Arena } from './Arena'
+import type { EndReason } from '../online/protocol'
+import { type AfterMatch, Arena } from './Arena'
 import type { CardPlay } from './Card'
+import { Countdown } from './Countdown'
 import { ConfirmDialog, Modal } from './Dialog'
 import { Die } from './Die'
 import { ClashSide, Exchange } from './Exchange'
@@ -18,23 +21,49 @@ import { currentCard, revealed, type Shown, seatView } from './seatView'
 import { Tray } from './Tray'
 import { issueText, reportLines } from './text'
 import { useHand } from './useHand'
-import { useRevealClock } from './useRevealClock'
+import { type Resolved, useRevealClock } from './useRevealClock'
 
-interface Props {
-  match: Match
-  narrow: boolean
-  /** 自分の行動を出し、ステップを解決した結果を受け取る */
-  play: (mine: Action) => Resolution
-  /** もう一戦 */
-  onAgain: () => void
-  /** 対局をやめてタイトルに戻る。降参と、強さの選び直し */
-  onQuit: () => void
+/** 卓に渡す対局。自分を席0とした向き */
+export interface TableMatch {
+  /** 見せてよい対局の様子。自分が今のステップに出した行動と、相手がもう出したかを含む */
+  view: MatchView
+  /** この対局で一番新しい解決。n が前より増えたら公開する */
+  resolved: Resolved | null
+  /** 自分の行動を出す。解決したら resolved が届く */
+  submit: (action: Action) => void
 }
 
-export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
-  const clock = useRevealClock()
+interface Props {
+  match: TableMatch
+  narrow: boolean
+  /** 相手の名前 */
+  opponent?: string
+  /** 相手の画面とのつながりが切れている */
+  opponentAway?: boolean
+  /** 今のステップの持ち時間。期限は画面の時計の時刻。無ければ時計を出さない */
+  timer?: { deadline: number; stepMs: number } | null
+  /** 決着の理由。無ければ体力 */
+  reason?: EndReason
+  /** 決着した後の操作 */
+  after: AfterMatch
+  /** 降参する。手元の対戦ではタイトルに戻る */
+  onSurrender: () => void
+}
+
+/** 名前に添える印 */
+function Mark({ icon: Icon, label }: { icon: typeof CircleCheck; label: string }) {
+  return (
+    <span className="seat-mark" role="img" aria-label={label} title={label}>
+      <Icon aria-hidden="true" />
+    </span>
+  )
+}
+
+export function Table({ match, narrow, opponent = '相手', opponentAway, timer, reason, after, onSurrender }: Props) {
+  const { view, resolved, submit } = match
+  const clock = useRevealClock(resolved, view.state.history.length === 0 && view.state.winner === null)
   /** 見せる盤。公開の最中は、解決した直後の盤を見せる */
-  const board = clock.reveal?.state ?? match.state
+  const board = clock.reveal?.state ?? view.state
   const hand = useHand(board)
   const seats = useMemo(() => [seatView(board, 0), seatView(board, 1)] as const, [board])
   const passDialog = useRef<HTMLDialogElement>(null)
@@ -44,19 +73,23 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
   const peekDialog = useRef<HTMLDialogElement>(null)
 
   const revealing = clock.reveal !== null
-  const choosing = !revealing && match.state.winner === null
-  /** 決着して、最後の公開の動きも終わった */
-  const over = clock.ended && board.winner !== null ? board.winner : null
+  /** 自分の行動を選べる。公開の最中、決着の後、このステップの行動を出した後は選べない */
+  const choosing = !revealing && view.state.winner === null && view.mine === null
+  /** 決着して、最後の公開の動きも終わった。時間切れや降参なら公開を待たない */
+  const over = board.winner !== null && (clock.ended || !revealing) ? board.winner : null
 
+  /** 自分のカードに置いて見せるダイス。行動を出した後は、出した行動を相手の決定を待つ間も見せる */
   const myShown: Shown | null = clock.reveal
     ? revealed(clock.reveal.report.actions[0])
-    : hand.row && { ...hand.row, complete: hand.action !== null }
+    : view.mine
+      ? revealed(view.mine)
+      : hand.row && { ...hand.row, complete: hand.action !== null }
   const cpuShown = clock.reveal ? revealed(clock.reveal.report.actions[1]) : null
   const myCurrent = currentCard({ revealing, shown: myShown, focus: hand.focus, usable: seats[0].usable })
 
-  /** 自分の行動を出して公開を始める。公開が終わっても、狭い画面では今見ているカードを出し続ける */
+  /** 自分の行動を出す。公開が終わっても、狭い画面では今見ているカードを出し続ける */
   const commit = (mine: Action) => {
-    clock.play(play(mine))
+    submit(mine)
     hand.clear()
     hand.look(myCurrent)
   }
@@ -80,6 +113,13 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
   const hp = (who: 0 | 1) => seats[who].player.hp + clock.unlanded(who)
   const maxHp = board.config.maxHp
   const rolling = !!clock.banner?.turn
+  const marks = (
+    <>
+      {!revealing && board.winner === null && view.opponentReady && <Mark icon={CircleCheck} label="相手は決定した" />}
+      {over !== null && after.opponentWaiting && <Mark icon={CircleCheck} label="相手はもう一戦を押した" />}
+      {opponentAway && <Mark icon={WifiOff} label="相手の接続が切れている" />}
+    </>
+  )
 
   return (
     <main className="table">
@@ -105,12 +145,13 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
         cancel="続ける"
         confirm="降参する"
         danger
-        onConfirm={onQuit}
+        onConfirm={onSurrender}
       />
 
       <Seat
         side="cpu"
-        name="相手"
+        name={opponent}
+        marks={marks}
         hp={hp(1)}
         maxHp={maxHp}
         chant={clock.quiet ? 'none' : seats[1].player.chant}
@@ -133,7 +174,7 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
         <Exchange
           key={board.history.length}
           report={clock.reveal.report}
-          top={<ClashSide side="cpu" name="相手" hp={hp(1)} maxHp={maxHp} />}
+          top={<ClashSide side="cpu" name={opponent} hp={hp(1)} maxHp={maxHp} />}
           bottom={<ClashSide side="me" name="あなた" hp={hp(0)} maxHp={maxHp} />}
         />
       )}
@@ -144,12 +185,9 @@ export function Table({ match, narrow, play, onAgain, onQuit }: Props) {
         history={board.history}
         revealing={revealing}
         lines={clock.reveal && reportLines(clock.reveal.report, 0)}
-        over={
-          over === null
-            ? null
-            : { winner: over, hp: [board.players[0].hp, board.players[1].hp], onAgain, onRelevel: onQuit }
-        }
+        over={over === null ? null : { ...after, winner: over, hp: [board.players[0].hp, board.players[1].hp], reason }}
         banner={clock.banner}
+        timer={timer && !revealing && board.winner === null && <Countdown {...timer} />}
         onSurrender={board.winner === null ? () => surrenderDialog.current?.showModal() : undefined}
       />
 

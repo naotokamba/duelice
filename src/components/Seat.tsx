@@ -13,6 +13,8 @@ interface SeatProps {
   maxHp: number
   /** 詠唱の様子。公開の途中で伏せるときは none を渡す */
   chant: ChantState
+  /** 名前に添える印。相手が決定した、つながりが切れている、など */
+  marks?: ReactNode
   /** 手元のダイス。体力と同じ段に並べる */
   tray: ReactNode
   /** ダイスと体力の段の右端に置くもの。自分の席のパス */
@@ -20,13 +22,16 @@ interface SeatProps {
   cards: ReactNode
 }
 
-export function Seat({ side, name, hp, maxHp, chant, tray, extra, cards }: SeatProps) {
+export function Seat({ side, name, hp, maxHp, chant, marks, tray, extra, cards }: SeatProps) {
   // 高さを抑えるため、ダイスと体力を一つの段に並べる。段は卓の中央側に置く
   const row = (
     <div className="seat-row">
       {tray}
       <div className="seat-status">
-        <h2 className="seat-name">{name}</h2>
+        <h2 className="seat-name" title={name}>
+          {name}
+        </h2>
+        {marks}
         <div className="hp" role="img" aria-label={`体力 ${Math.max(0, hp)} / ${maxHp}`}>
           <HpBar hp={hp} maxHp={maxHp} withMax />
         </div>

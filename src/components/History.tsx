@@ -7,6 +7,7 @@ import { History as HistoryIcon, SkipForward } from 'lucide-react'
 import { type ReactNode, useRef } from 'react'
 import { ACTION_DEFS, type ActionKind, type CardId } from '../game/cards'
 import type { Action, PlayerIndex, StepReport } from '../game/types'
+import type { EndReason } from '../online/protocol'
 import { Modal } from './Dialog'
 import { Die } from './Die'
 import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
@@ -25,19 +26,21 @@ export function Recent({ history }: { history: StepReport[] }) {
   )
 }
 
-/** 決着したときの勝敗と双方の体力。席の順 */
+/** 決着したときの勝敗と双方の体力と理由。席の順。理由が無ければ体力で決着した */
 interface Ending {
   winner: PlayerIndex | 'draw'
   hp: [number, number]
+  reason?: EndReason
 }
 
 /**
  * 戦闘履歴を開く印と、全ての履歴のモーダル。履歴が無いうちは出さない。
- * 決着した後は、いちばん上に決着の行を足し、相打ちならはみ出した体力の比べまで書く
+ * 決着した後は、いちばん上に決着の行を足し、相打ちならはみ出した体力の比べまで、時間切れや降参ならその理由を書く。
+ * 最初のステップで時間切れになっても、決着の行は読めるように出す
  */
 export function HistoryButton({ history, over }: { history: StepReport[]; over?: Ending | null }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  if (history.length === 0) return null
+  if (history.length === 0 && !over) return null
   const items = [...history].reverse()
   return (
     <>
@@ -55,7 +58,7 @@ export function HistoryButton({ history, over }: { history: StepReport[]; over?:
           {over && (
             <li className="history-entry history-end">
               <span className="history-when">決着</span>
-              <span className="history-end-text">{endingText(over.winner, over.hp, 0)}</span>
+              <span className="history-end-text">{endingText(over.winner, over.hp, 0, over.reason)}</span>
             </li>
           )}
           {items.map((r) => (
