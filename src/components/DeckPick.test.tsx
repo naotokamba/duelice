@@ -184,6 +184,7 @@ describe('カードを選ぶ対戦', () => {
     expect(shownCardNames(cpuSeat())).toEqual(['炎撃', '風壁', '魔弾', '魔槍', '氷礫'])
   })
 
+  // 二局を最後まで画面から進めるので、CI の遅い端末では既定の5秒を超えることがある
   it('もう一戦は同じ5枚どうしで戦い、カードを選び直すとカードを選ぶ画面へ戻る', async () => {
     const { user, cpuDeck } = await begin()
     await attackUntilEnd(user)
@@ -194,7 +195,7 @@ describe('カードを選ぶ対戦', () => {
     await attackUntilEnd(user)
     await user.click(button('カードを選び直す'))
     expect(picked()).toEqual(['炎撃', '風壁', '魔弾', '氷礫', '隕石'])
-  })
+  }, 30_000)
 
   it('CPU の5枚は、既定では評価で強かったデッキから選ぶ', async () => {
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
