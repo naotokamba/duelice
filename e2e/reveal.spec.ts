@@ -20,8 +20,9 @@ async function bloodInto(page: Page, theirs: number[], answer: Action) {
     await page.getByRole('button', { name: '決闘を始める' }).click({ timeout: 1000 })
     await expect(step(page, 1, 1)).toBeAttached({ timeout: 1000 })
   }).toPass({ timeout: 60_000 })
-  // 時計を止めているので、ターンの始まりの帯は時計を進めて消す
-  await page.clock.runFor(BANNER_MS)
+  // 時計を入れただけでは時が流れ続け、公開の幕は数秒で閉じる。遅い機械では測り終える前に閉じる。
+  // ターンの始まりの帯が消えるところまで時計を進めて、そこで止める
+  await page.clock.pauseAt(await page.evaluate((ms) => Date.now() + ms, BANNER_MS))
   await tapPlace(page, 6, '血弾のXの枠')
   await tapPlace(page, 5, '血弾のYの枠')
   await confirm(page).click()
