@@ -2,7 +2,7 @@
 // 公開されている情報だけを使い、二ステップの同時手番を最適戦略で解く。
 // 難易度は、最適戦略からどれだけ外れた手を混ぜるかで調整する。
 // 無意味なパスはどの強さでも選ばない。弱さは、パス以外の手の選び方で出す。
-// 二ステップ目は、ほかに使える行動があればパスを候補から外す。どのステップでも、ほかの行動に弱く支配されるパスは外す。
+// どのステップでも、ほかの行動に弱く支配されるパスだけを候補から外す。相手の反撃を外させるパスのように、意味のあるパスは残す。
 // 候補を絞るのは二人とも同じなので、つよいが解く均衡は、この絞った行列ゲームの均衡になる
 
 import { solveMatrixGame } from './matrixGame'
@@ -18,20 +18,12 @@ export const LEVEL_NAMES: Record<Level, string> = {
 }
 
 /** 倒した、倒されたことをダメージ差より重く見る */
-const KILL_BONUS = 30
+export const KILL_BONUS = 30
 
 interface StepGame {
   a0: Action[]
   a1: Action[]
   payoff: number[][] // プレイヤー0から見た得点
-}
-
-/** そのステップで考える行動。二ステップ目は、ほかに使える行動があればパスを外す */
-export function candidates(s: GameState, who: PlayerIndex): Action[] {
-  const all = legalActions(s, who)
-  if (s.step !== 2) return all
-  const acting = all.filter((a) => a.kind !== 'pass')
-  return acting.length > 0 ? acting : all
 }
 
 /**
@@ -123,8 +115,8 @@ export class Thinker {
 
   /** 二人の候補の組ごとに一ステップ解決し、score で得点を付けた行列ゲーム。無意味なパスは外す */
   private build(s: GameState, score: (next: GameState) => number): StepGame {
-    const a0 = candidates(s, 0)
-    const a1 = candidates(s, 1)
+    const a0 = legalActions(s, 0)
+    const a1 = legalActions(s, 1)
     const payoff = a0.map((x) => a1.map((y) => score(resolveStep(s, [x, y]))))
     return prune({ a0, a1, payoff })
   }

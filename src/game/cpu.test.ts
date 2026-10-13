@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { expectEquilibrium } from '../test/equilibrium'
 import { makeState, rollArb, seeded } from '../test/helpers'
 import { CARD_ORDER } from './cards'
-import { candidates, LEVEL_NAMES, type Level, Thinker, weaklyDominated } from './cpu'
+import { KILL_BONUS, LEVEL_NAMES, type Level, Thinker, weaklyDominated } from './cpu'
 import { solveMatrixGame } from './matrixGame'
 import { isLegal, legalActions, newGame, nextTurn, resolveStep, turnOver } from './rules'
 import type { GameState } from './types'
@@ -121,20 +121,63 @@ describe('無意味なパス', () => {
       makeState({ roll: r0, usedDice: d0, usedCards: c0, hp: h0 }, { roll: r1, usedDice: d1, usedCards: c1 }, 2),
     )
 
-  it('二ステップ目は、ほかに使える行動があれば、どの強さでもパスを選ばない', () => {
+  /**
+   * 二ステップ目の、パスを外す前の行列ゲームを who から見て組み立てる。CPU とは別に、公開されている手順だけで作る。
+   * 得点は与えたダメージの差で、倒した、倒されたときは CPU と同じ重みを足す
+   */
+  function fullStep2(s: GameState, who: 0 | 1): { mine: ReturnType<typeof legalActions>; payoff: number[][] } {
+    const other = who === 0 ? 1 : 0
+    const mine = legalActions(s, who)
+    const payoff = mine.map((x) =>
+      legalActions(s, other).map((y) => {
+        const next = resolveStep(s, who === 0 ? [x, y] : [y, x])
+        const taken = next.history[next.history.length - 1].damage
+        const bonus = next.winner === who ? KILL_BONUS : next.winner === other ? -KILL_BONUS : 0
+        return taken[other] - taken[who] + bonus
+      }),
+    )
+    return { mine, payoff }
+  }
+
+  it('二ステップ目も、ほかの行動に弱く支配されるパスだけを外す', () => {
     const t = new Thinker()
     fc.assert(
       fc.property(step2Arb, fc.constantFrom(0, 1) as fc.Arbitrary<0 | 1>, (s, who) => {
-        const canAct = legalActions(s, who).some((a) => a.kind !== 'pass')
+        const full = fullStep2(s, who)
+        const pass = full.mine.findIndex((a) => a.kind === 'pass')
+        const dominated = weaklyDominated(full.payoff, pass)
         for (const level of LEVELS) {
           const opts = t.analyze(s, who, level)
-          if (canAct) expect(opts.some((o) => o.action.kind === 'pass')).toBe(false)
-          // 何も使えないときだけパスする
-          else expect(opts.map((o) => [o.action.kind, o.prob])).toEqual([['pass', 1]])
+          expect(opts.some((o) => o.action.kind === 'pass')).toBe(!dominated)
+          // 何も使えないときはパスだけになる
+          if (full.mine.length === 1) expect(opts.map((o) => [o.action.kind, o.prob])).toEqual([['pass', 1]])
         }
       }),
       { numRuns: 200 },
     )
+  })
+
+  it('二ステップ目に、相手の反撃を外させるパスは残る', () => {
+    // 互いに火球を使って1個ずつ残り、相手は反撃を残している。魔弾を撃てば返されうるので、つよいもパスを混ぜる
+    const s = makeState(
+      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
+      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
+      2,
+    )
+    const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
+    expect(pass?.prob).toBeGreaterThan(0)
+  })
+
+  it('相手に反撃が残っていなければ、魔弾が通る二ステップ目のパスは選ばない', () => {
+    // 相手は反撃を使い切っている。魔弾はどの手に対してもパスと同じか上なので、パスに意味が無い
+    const s = makeState(
+      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
+      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['counter'] },
+      2,
+    )
+    for (const level of LEVELS) {
+      expect(new Thinker().analyze(s, 0, level).some((o) => o.action.kind === 'pass')).toBe(false)
+    }
   })
 
   /**
@@ -236,13 +279,5 @@ describe('無意味なパス', () => {
         0,
       ),
     ).toBe(true)
-  })
-
-  it('候補からパスを外すのは、二ステップ目でほかに使える行動があるときだけ', () => {
-    const roll = [6, 5, 4]
-    expect(candidates(makeState({ roll }, { roll }), 0).some((a) => a.kind === 'pass')).toBe(true)
-    expect(candidates(makeState({ roll }, { roll }, 2), 0).some((a) => a.kind === 'pass')).toBe(false)
-    const spent = makeState({ roll, usedDice: [0, 1, 2] }, { roll }, 2)
-    expect(candidates(spent, 0)).toEqual([{ kind: 'pass' }])
   })
 })

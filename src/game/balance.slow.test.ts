@@ -39,8 +39,8 @@ describe('バランス', () => {
       // 対称なゲームなので0になるはず
       seatAdvantage: round(firstValue / total),
     }
-    // 対称なゲームなので、どちらの席にも有利は無い
-    expect(report.seatAdvantage).toBe(0)
+    // 対称なゲームなので、どちらの席にも有利は無い。小数の末の桁のずれで -0 に丸まることがあるので、近さで比べる
+    expect(report.seatAdvantage).toBeCloseTo(0, 3)
     // 頻度は確率なので合計は1。一ステップ目に使えない行動は選ばれない
     const sum = Object.values(freq).reduce((a, b) => a + b, 0) / total
     expect(sum).toBeCloseTo(1, 6)
