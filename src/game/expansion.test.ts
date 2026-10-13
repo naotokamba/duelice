@@ -8,7 +8,6 @@ import type { ActionKind, CardId } from './cards'
 import {
   actionKey,
   diceValues,
-  extraDiceOf,
   isLegal,
   keptRow,
   legalActions,
@@ -90,23 +89,22 @@ describe('ダイスの数', () => {
 
 describe('過負荷', () => {
   const start = () => makeState(seat(SECOND, { roll: [6, 2, 2] }), { roll: [1, 2, 3] })
-  it('一ステップ目だけに使え、ダイスを2個振り足して、二ステップ目に使える', () => {
-    const s = resolveStep(start(), [act('overload', 0), pass], [[3, 3], []])
-    expect(s.players[0].roll).toEqual([6, 2, 2, 3, 3])
-    expect(s.history[0].extra).toEqual([[3, 3], []])
-    // 振り足した2個と残りの2個で、4個置ける
-    expect(isLegal(s, 0, act('twinDragon', 1, 2, 3, 4))).toBe(true)
-    expect(isLegal(s, 0, act('overload', 1))).toBe(false)
+  it('一ステップ目だけに使え、置いた目のダイスを2個足して、二ステップ目に使える', () => {
+    const s = resolveStep(start(), [act('overload', 1), pass])
+    expect(s.players[0].roll).toEqual([6, 2, 2, 2, 2])
+    expect(s.history[0].added).toEqual([[2, 2], []])
+    // 足した2個と残りの2個で、4個置ける
+    expect(isLegal(s, 0, act('twinDragon', 0, 2, 3, 4))).toBe(true)
+    expect(isLegal(s, 0, act('overload', 0))).toBe(false)
     const later = makeState(seat(SECOND, { roll: [6, 2, 2] }), { roll: [1, 2, 3] }, 2)
     expect(isLegal(later, 0, act('overload', 0))).toBe(false)
   })
-  it('振り足すダイスの数が合わなければ解決しない', () => {
-    expect(() => resolveStep(start(), [act('overload', 0), pass])).toThrow('振り足すダイスの数が違う')
-    expect(() => resolveStep(start(), [act('overload', 0), pass], [[3], []])).toThrow()
-    expect(() => resolveStep(start(), [pass, pass], [[3, 3], []])).toThrow()
+  it('どの目を足すかで、別の手になる', () => {
+    const listed = legalActions(start(), 0).filter((a) => a.kind === 'overload')
+    expect(listed.map((a) => (a.kind === 'pass' ? [] : diceValues(start().players[0], a)))).toEqual([[6], [2]])
   })
-  it('ターンの終わりに、振り足した分だけ自分も焼ける', () => {
-    let s = resolveStep(start(), [act('overload', 0), pass], [[3, 3], []])
+  it('ターンの終わりに、自分も2焼ける', () => {
+    let s = resolveStep(start(), [act('overload', 0), pass])
     expect(s.players[0].hp).toBe(20)
     s = resolveStep(s, [act('twinDragon', 1, 2, 3, 4), pass])
     const last = s.history[1]
@@ -117,11 +115,10 @@ describe('過負荷', () => {
     expect(s.winner).toBe(0)
   })
   it('一ステップ目に倒れれば、ターンの終わりは来ない', () => {
-    const s = resolveStep(
-      makeState(seat(SECOND, { roll: [6, 2, 2], hp: 1 }), { roll: [3, 3, 1] }),
-      [act('overload', 0), act('bullet', 0, 1)],
-      [[1, 1], []],
-    )
+    const s = resolveStep(makeState(seat(SECOND, { roll: [6, 2, 2], hp: 1 }), { roll: [3, 3, 1] }), [
+      act('overload', 0),
+      act('bullet', 0, 1),
+    ])
     expect(s.winner).toBe(1)
     expect(s.history[0].endBurn).toEqual([0, 0])
   })
@@ -155,7 +152,7 @@ describe('延焼', () => {
   it('過負荷で焼ける分も数える', () => {
     const deck: CardId[] = ['wildfire', 'overload', 'barrier', 'bullet', 'interrupt']
     let s = makeState(seat(deck, { roll: [3, 6, 2] }), { roll: [1, 2, 3] })
-    s = resolveStep(s, [act('overload', 0), pass], [[4, 4], []])
+    s = resolveStep(s, [act('overload', 0), pass])
     s = resolveStep(s, [act('wildfire', 1), pass])
     expect(s.history[1].endBurn).toEqual([2, 0])
     expect(s.history[1].strikes).toEqual([
@@ -213,6 +210,33 @@ describe('凍結', () => {
     expect(s.players[1].frozen).toBeNull()
     expect(legalActions(s, 1).length).toBeGreaterThan(1)
   })
+  it('相手の手元の、凍らせる目と同じ目のダイス1個につき2の威力。同じ目が無ければ攻撃しない', () => {
+    const freeze = (theirs: SeatSetup, x = 0) =>
+      resolveStep(makeState(seat(FIRST, { roll: [4, 1, 1] }), theirs, theirs.usedDice ? 2 : 1), [
+        act('freeze', x),
+        pass,
+      ]).history[0]
+    expect(freeze({ roll: [4, 4, 2] }).strikes).toEqual([
+      { from: 0, kind: 'freeze', power: 4, outcome: 'hit', to: 1, dealt: 4, phase: 'main' },
+    ])
+    // 数えるのは、相手がまだ使っていないダイスだけ
+    expect(freeze({ roll: [4, 4, 2], usedDice: [0] }).strikes[0]).toMatchObject({ power: 2 })
+    // 同じ目が無ければ攻撃は放たれず、凍らせる目だけが残る
+    const none = freeze({ roll: [6, 5, 2] })
+    expect(none.strikes).toEqual([])
+    expect(none.damage).toEqual([0, 0])
+    // 好きな目のダイスは、目が決まっていないので数えない
+    expect(freeze({ roll: [WILD, WILD, 1], usedDice: [] }, 1).strikes).toEqual([
+      { from: 0, kind: 'freeze', power: 2, outcome: 'hit', to: 1, dealt: 2, phase: 'main' },
+    ])
+  })
+  it('相手がそのステップに使う同じ目のダイスも、ステップの初めに手元にあれば数える', () => {
+    const s = resolveStep(makeState(seat(FIRST, { roll: [4, 1, 1] }), { roll: [4, 4, 2] }), [
+      act('freeze', 0),
+      act('bullet', 0, 1),
+    ])
+    expect(s.history[0].strikes.find((x) => x.kind === 'freeze')).toMatchObject({ power: 4, dealt: 4 })
+  })
   it('凍らせた目は印の置き場の目', () => {
     const s = resolveStep(makeState(seat(FIRST, { roll: [2, 5, 3] }), { roll: [1, 2, 3] }), [act('freeze', 1), pass])
     expect(s.players[1].frozen).toBe(5)
@@ -238,6 +262,11 @@ describe('闇壁', () => {
     expect(keptRow(s, 1)).not.toBeNull()
     expect(isLegal(s, 0, act('flameStrike', 0, 1))).toBe(true)
     expect(isLegal(s, 0, act('darkWall', 0))).toBe(false)
+  })
+  it('一ステップ目だけに使える', () => {
+    expect(isLegal(makeState(seat(deck, { roll: [3, 1, 2] }), { roll: [1, 2, 3] }, 2), 0, act('darkWall', 0))).toBe(
+      false,
+    )
   })
   it('超えられたら戻らない', () => {
     const s = resolveStep(makeState(seat(deck, { roll: [1, 1, 2] }), { roll: [6, 1, 2] }), [
@@ -320,6 +349,126 @@ describe('風陣', () => {
     expect(s.history[1].strikes).toEqual([
       { from: 0, kind: 'wildfire', power: 14, outcome: 'hit', to: 1, dealt: 14, phase: 'end' },
     ])
+  })
+})
+
+describe('反撃', () => {
+  const guard: CardId[] = ['counter', 'barrier', 'galeWard', 'doubleCast', 'interrupt']
+  const foe: CardId[] = ['flameStrike', 'bullet', 'thunder', 'doubleCast', 'allOut']
+  /** 自分が反撃を X で構え、相手が theirs で攻める */
+  const meet = (x: number, theirs: Action, roll = [6, 4, 1, 5]) =>
+    resolveStep(makeState(seat(guard, { roll: [x, 2, 3] }), seat(foe, { roll })), [act('counter', 0), theirs])
+      .history[0]
+  it('威力6以下の攻撃を打ち消し、攻撃した相手に4返す。打ち消した攻撃はどちらにも当たらない', () => {
+    // 炎撃は X に4で6。相手は自分も1焼ける
+    const r = meet(5, act('flameStrike', 1, 2))
+    expect(r.strikes).toEqual([
+      { from: 1, kind: 'flameStrike', power: 6, outcome: 'countered', to: 0, dealt: 0, phase: 'main' },
+      { from: 0, kind: 'counter', power: 4, outcome: 'returned', to: 1, dealt: 4, phase: 'main' },
+    ])
+    expect(r.damage).toEqual([0, 5])
+    expect(r.burn).toEqual([0, 1])
+  })
+  it('障壁で減らない攻撃も、先に当たる攻撃も打ち消す', () => {
+    expect(meet(5, act('bullet', 0, 1), [3, 3, 1]).strikes.map((x) => x.outcome)).toEqual(['countered', 'returned'])
+    const fast = meet(5, act('thunder', 0, 2), [5, 4, 1])
+    expect(fast.strikes).toEqual([
+      { from: 1, kind: 'thunder', power: 5, outcome: 'countered', to: 0, dealt: 0, phase: 'fast' },
+      { from: 0, kind: 'counter', power: 4, outcome: 'returned', to: 1, dealt: 4, phase: 'fast' },
+    ])
+    expect(fast.cancelled).toEqual([false, false])
+  })
+  it('6より大きい攻撃は打ち消さずに当たり、一つも打ち消さなければ、構えた目を自分が受ける', () => {
+    // 炎撃は X に6で8
+    const r = meet(5, act('flameStrike', 0, 2))
+    expect(r.strikes).toEqual([
+      { from: 1, kind: 'flameStrike', power: 8, outcome: 'hit', to: 0, dealt: 8, phase: 'main' },
+    ])
+    expect(r.burn).toEqual([5, 1])
+    expect(r.damage).toEqual([13, 1])
+  })
+  it('攻撃が来なければ、構えた目を自分が受ける。威力0の凍結は攻撃に数えない', () => {
+    expect(meet(3, pass).damage).toEqual([3, 0])
+    const deck: CardId[] = ['freeze', 'bullet', 'thunder', 'doubleCast', 'allOut']
+    const r = resolveStep(makeState(seat(guard, { roll: [3, 2, 1] }), seat(deck, { roll: [6, 1, 1] })), [
+      act('counter', 0),
+      act('freeze', 0),
+    ]).history[0]
+    expect(r.strikes).toEqual([])
+    expect(r.damage).toEqual([3, 0])
+  })
+  it('二重詠唱の攻撃をいくつ打ち消しても、返すのは一度だけ', () => {
+    // 相手は二重詠唱で、全開1個の1と、炎撃の4で攻める
+    const r = meet(
+      2,
+      along(play('doubleCast', 0), play('allOut', 1, null, null, null), play('flameStrike', 2, 3)),
+      [6, 4, 2, 1],
+    )
+    expect(r.strikes).toEqual([
+      { from: 1, kind: 'allOut', power: 1, outcome: 'countered', to: 0, dealt: 0, phase: 'main' },
+      { from: 1, kind: 'flameStrike', power: 4, outcome: 'countered', to: 0, dealt: 0, phase: 'main' },
+      { from: 0, kind: 'counter', power: 4, outcome: 'returned', to: 1, dealt: 4, phase: 'main' },
+    ])
+    expect(r.damage).toEqual([0, 5])
+  })
+  it('二重詠唱で守りと重ねれば、打ち消せない攻撃は守りが減らし、反撃は外れる', () => {
+    const s = resolveStep(makeState(seat(guard, { roll: [1, 5, 2] }), seat(foe, { roll: [6, 1, 3] })), [
+      along(play('doubleCast', 0), play('counter', 2), play('barrier', 1)),
+      act('flameStrike', 0, 1),
+    ])
+    const r = s.history[0]
+    // 炎撃 8 は打ち消せず、風壁 10 に防ぎきられて3を返される。反撃は2を自分が受ける
+    expect(r.strikes).toEqual([
+      { from: 1, kind: 'flameStrike', power: 8, outcome: 'guarded', to: 0, dealt: 0, phase: 'main' },
+      { from: 0, kind: 'barrier', power: 3, outcome: 'returned', to: 1, dealt: 3, phase: 'main' },
+    ])
+    expect(r.damage).toEqual([2, 4])
+  })
+  it('先に当たる攻撃とほかの攻撃を続けて打ち消しても、返すのは一度だけ', () => {
+    const r = meet(
+      5,
+      along(play('doubleCast', 0), play('thunder', 1, 2), play('allOut', 3, null, null, null)),
+      [6, 4, 2, 1],
+    )
+    expect(r.strikes.map((x) => [x.kind, x.outcome, x.phase])).toEqual([
+      ['thunder', 'countered', 'fast'],
+      ['counter', 'returned', 'fast'],
+      ['allOut', 'countered', 'main'],
+    ])
+    expect(r.damage).toEqual([0, 4])
+  })
+  it('打ち消す構えは、相手が打ち消したのでなく、自分が打ち消したときだけ外れない', () => {
+    // 二人とも二重詠唱で反撃を構えて攻める。こちらの氷礫2は相手の反撃に打ち消され、相手の炎撃8はこちらの反撃では打ち消せない
+    const both: CardId[] = ['counter', 'flameStrike', 'interrupt', 'doubleCast', 'barrier']
+    const s = resolveStep(makeState(seat(both, { roll: [1, 2, 3] }), seat(both, { roll: [1, 6, 1, 3] })), [
+      along(play('doubleCast', 0), play('counter', 1), play('interrupt', 2)),
+      along(play('doubleCast', 0), play('counter', 3), play('flameStrike', 1, 2)),
+    ])
+    const r = s.history[0]
+    // こちらは返された4と、炎撃の8と、外した反撃の2を受ける。相手は炎撃で1焼けるだけで、反撃は外していない
+    expect(r.damage).toEqual([14, 1])
+  })
+  it('風陣は、一緒に構えた反撃が打ち消しても、返す攻撃が来なければ外れる', () => {
+    const s = resolveStep(makeState(seat(guard, { roll: [1, 3, 3, 2] }), seat(foe, { roll: [6, 4, 1, 2] })), [
+      along(play('doubleCast', 0), play('counter', 3), play('galeWard', 1, 2)),
+      along(play('doubleCast', 3), play('allOut', 2, null, null, null)),
+    ])
+    // 全開の1は打ち消して4返す。風陣に返す攻撃は来ないので、置いた3と3の合計を受ける
+    expect(s.history[0].damage).toEqual([6, 4])
+  })
+  it('風陣と重ねれば、小さい攻撃は打ち消し、大きい攻撃は返す。どちらも外れない', () => {
+    const s = resolveStep(makeState(seat(guard, { roll: [1, 3, 3, 2] }), seat(foe, { roll: [6, 4, 1, 2] })), [
+      along(play('doubleCast', 0), play('counter', 3), play('galeWard', 1, 2)),
+      along(play('doubleCast', 3), play('allOut', 2, null, null, null), play('flameStrike', 0, 1)),
+    ])
+    const r = s.history[0]
+    expect(r.strikes.map((x) => [x.kind, x.outcome, x.to, x.dealt])).toEqual([
+      ['allOut', 'countered', 0, 0],
+      ['flameStrike', 'reflected', 1, 8],
+      ['counter', 'returned', 1, 4],
+    ])
+    // 相手は炎撃で4焼ける
+    expect(r.damage).toEqual([0, 16])
   })
 })
 
@@ -475,12 +624,12 @@ describe('錬成', () => {
     expect(done.players[0].carry).toBe(6)
     expect(nextTurn(done, () => 0).players[0].roll).toEqual([1, 1, 1, 6])
   })
-  it('振り足す行動と一緒なら振り足さず、そのステップの後に残ったダイスを全て捨てる', () => {
+  it('ダイスを足す行動と一緒なら足さず、戻るダイスも含めて、そのステップの後に残ったダイスを全て捨てる', () => {
     const both: CardId[] = ['doubleCast', 'overload', 'transmute', 'darkWall', 'flameStrike']
     const s = makeState(seat(both, { roll: [1, 2, 3, 4] }), { roll: [1, 2, 3] })
     const a = along(play('doubleCast', 0), play('overload', 1), play('transmute', 2))
-    expect(extraDiceOf(s, 0, a)).toBe(0)
     const done = resolveStep(s, [a, pass])
+    expect(done.history[0].added).toEqual([[], []])
     expect(done.players[0].roll).toEqual([1, 2, 3, 4, WILD, WILD, WILD])
     expect(done.players[0].usedDice).toEqual([0, 1, 2, 3])
   })
@@ -524,7 +673,30 @@ describe('二重詠唱', () => {
     // 炎撃 8 は風壁 10 に防ぎきられ、3を返される。氷礫は2当たる。相手は自分も1焼ける
     expect(s.history[0].damage).toEqual([0, 6])
     expect(s.players[0].usedCards).toEqual(['doubleCast', 'interrupt', 'barrier'])
-    expect(s.players[0].usedDice).toEqual([0, 1, 2])
+    // 二重詠唱に置いたダイスは戻る
+    expect(s.players[0].usedDice).toEqual([1, 2])
+  })
+  it('二重詠唱に置いたダイスは、使った後に戻り、次のステップで使える。防ぎきって戻ったことにはしない', () => {
+    const s = resolveStep(start(), [along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2)), pass])
+    expect(s.history[0].refunded).toEqual([false, false])
+    expect(placeableDice(s.players[0])).toEqual([0])
+    expect(isLegal(s, 0, act('darkWall', 0))).toBe(false)
+    expect(isLegal(s, 0, act('flameStrike', 0, null))).toBe(false)
+    // 先に倒れて起きなかったなら、戻らない
+    const down = resolveStep(
+      makeState(seat(deck, { roll: [3, 4, 5], hp: 1 }), seat(['thunder', ...deck.slice(1)], { roll: [6, 1, 2] })),
+      [along(play('doubleCast', 0), play('interrupt', 1)), act('thunder', 0, 1)],
+    )
+    expect(down.history[0].cancelled).toEqual([true, false])
+    expect(down.history[0].refunded).toEqual([false, false])
+    expect(down.players[0].usedDice).toEqual([])
+    // 席を入れ替えても同じ
+    const flipped = resolveStep(
+      makeState(seat(['thunder', ...deck.slice(1)], { roll: [6, 1, 2] }), seat(deck, { roll: [3, 4, 5], hp: 1 })),
+      [act('thunder', 0, 1), along(play('doubleCast', 0), play('interrupt', 1))],
+    )
+    expect(flipped.history[0].cancelled).toEqual([false, true])
+    expect(flipped.history[0].refunded).toEqual([false, false])
   })
   it('二つの攻撃は、守りの量の残りから置いた順に減らされ、守りは一度だけ返す', () => {
     const s = resolveStep(makeState(seat(deck, { roll: [1, 6, 1, 2] }), { roll: [3, 1, 2] }), [
@@ -549,7 +721,8 @@ describe('二重詠唱', () => {
       ['returned', 3],
     ])
     expect(s.history[0].refunded).toEqual([false, true])
-    expect(s.players[1].usedDice).toEqual([0, 1])
+    // 闇壁のダイスは防ぎきって戻り、二重詠唱のダイスはいつも戻る
+    expect(s.players[1].usedDice).toEqual([1])
   })
   it('一緒に使う行動の順が違っても同じ手で、合法手には一つだけ並ぶ', () => {
     const s = start()
@@ -729,10 +902,10 @@ describe('残響', () => {
       { roll: [1, 2, 3] },
       2,
     )
-    // 二ステップ目に振り足しても次のステップが無いので振らない
-    expect(extraDiceOf(end, 0, act('echo', 1))).toBe(0)
     const s = resolveStep(end, [act('echo', 1), pass])
     const r = s.history[0]
+    // 二ステップ目にダイスを足しても次のステップが無いので足さない
+    expect(r.added).toEqual([[], []])
     // 過負荷は使った分ともう一度出した分で2回焼け、延焼はこのターンに焼けた分の倍を与える
     expect(r.endBurn).toEqual([4, 0])
     expect(r.strikes.filter((x) => x.phase === 'end')).toEqual([

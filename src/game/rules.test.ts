@@ -324,6 +324,7 @@ describe('攻撃の行方', () => {
     // 背水は失った体力で威力が増える。体力が減っていなければ 2
     const stand: Action = { kind: 'lastStand', dice: [0, 1] }
     expect(strikes(movesFor([[1, 1], []], [stand, pass]))[0]).toMatchObject({ power: 2, dealt: 2 })
+    expect(strikes(movesFor([[], [1, 1]], [pass, stand]))[0]).toMatchObject({ power: 2, dealt: 2 })
   })
   it('詠唱を崩すのは、詠唱を崩す性質を持つ行動だけ', () => {
     const by = (a: Action, vals: number[]) => movesFor([vals, []], [a, pass])[0]

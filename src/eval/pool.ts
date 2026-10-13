@@ -277,6 +277,7 @@ async function main() {
 
   if (phases.has('sample')) {
     report.cards = cardStats(sample, elo, all)
+    report.lengths = lengthsOf(all)
     // 明らかに弱いデッキは、理由を添えて次から見送る
     const weak = sample.filter((k) => {
       const n = games.get(k) ?? 0
@@ -390,7 +391,25 @@ function replacementCheck(rr: [string, string][]) {
   return out
 }
 
-/** カードごとの、無作為なデッキでの強さへの寄与と、使われ方 */
+/** これ以上のターンかかった対局を、長い対局として数える。我慢比べの兆しを見る */
+const LONG_TURNS = 8
+
+/** 対局の長さ。平均のターン、引き分けの割合、長い対局の割合 */
+function lengthOf(games: GameRecord[]) {
+  const n = games.length
+  return {
+    turns: n > 0 ? mean(games.map((g) => g.turns)) : 0,
+    draws: n > 0 ? games.filter((g) => g.winner === 'draw').length / n : 0,
+    long: n > 0 ? games.filter((g) => g.turns >= LONG_TURNS).length / n : 0,
+  }
+}
+
+/** 無作為なデッキどうしの全ての対局の長さ。カードごとの長さと比べる基準 */
+function lengthsOf(pairs: [string, string][]) {
+  return lengthOf(pairs.flatMap(([a, b]) => Object.values(store.pair(a, b).games)))
+}
+
+/** カードごとの、無作為なデッキでの強さへの寄与と、使われ方と、それを持つデッキの対局の長さ */
 function cardStats(sample: string[], elo: Map<string, number>, pairs: [string, string][]) {
   const avg = mean(sample.map((k) => elo.get(k) ?? 0))
   return POOL.map((c) => {
@@ -399,6 +418,7 @@ function cardStats(sample: string[], elo: Map<string, number>, pairs: [string, s
     let used = 0
     let firstSteps = 0
     let first = 0
+    const played: GameRecord[] = []
     for (const [a, b] of pairs) {
       for (const k of [a, b]) {
         if (!deckOf(k).includes(c)) continue
@@ -408,6 +428,7 @@ function cardStats(sample: string[], elo: Map<string, number>, pairs: [string, s
           firstSteps += s.steps[0]
           used += s.cards[c] ?? 0
           first += s.first[c] ?? 0
+          played.push(g)
         }
       }
     }
@@ -419,6 +440,8 @@ function cardStats(sample: string[], elo: Map<string, number>, pairs: [string, s
       usage: steps > 0 ? used / steps : 0,
       /** 持っている側の一ステップ目のうち、このカードを使った割合 */
       firstUsage: firstSteps > 0 ? first / firstSteps : 0,
+      /** このカードを持つデッキの対局の長さ。両方が持つ対局は二度数える */
+      length: lengthOf(played),
     }
   })
 }

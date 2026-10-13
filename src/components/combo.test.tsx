@@ -95,9 +95,9 @@ describe('二重詠唱', () => {
     await put(user, trayDie(2), '二重詠唱の1つ目の枠')
     expect(blockedReason()).toBe('ほかのカードにも置く')
     await user.click(mySeat().getByRole('button', { name: '氷礫' }))
-    await put(user, trayDie(5), '氷礫の1つ目の枠')
+    await put(user, trayDie(4), '氷礫の1つ目の枠')
     await user.click(mySeat().getByRole('button', { name: '凍結' }))
-    await put(user, trayDie(4), '凍結のXの枠')
+    await put(user, trayDie(5), '凍結のXの枠')
     // 置いたカードの名前は、どれもダイスが置いてあると伝える
     for (const name of ['二重詠唱', '氷礫', '凍結']) {
       expect(mySeat().getByRole('button', { name }).getAttribute('aria-description')).toBe('ダイスが置いてある')
@@ -108,7 +108,7 @@ describe('二重詠唱', () => {
     expect(myCard('二重詠唱').getByRole('button', { name: '決定' })).toBeTruthy()
     await user.click(button('決定'))
     await settle()
-    // 氷礫の2点と、凍結の2点
+    // 氷礫の2点と、相手の手元の5が1個なので凍結の2点
     expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()
   })
 })

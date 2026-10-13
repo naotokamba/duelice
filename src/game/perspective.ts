@@ -42,7 +42,7 @@ export function flipReport(r: StepReport): StepReport {
     chants: swap(r.chants),
     cancelled: swap(r.cancelled),
     refunded: swap(r.refunded),
-    extra: swap(r.extra),
+    added: swap(r.added),
   }
 }
 

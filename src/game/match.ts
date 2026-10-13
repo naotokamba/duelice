@@ -3,17 +3,7 @@
 // 出す順は問わない。出した行動は、両方そろって公開されるまで相手には見せない。
 // 演出の時間や画面の都合はここに持たない。画面は解決の結果を受け取り、自分の都合で見せる。
 
-import {
-  type Decks,
-  extraDiceOf,
-  isLegal,
-  newGame,
-  nextTurn,
-  resolveStep,
-  rollDice,
-  STARTER_DECKS,
-  turnOver,
-} from './rules'
+import { type Decks, isLegal, newGame, nextTurn, resolveStep, STARTER_DECKS, turnOver } from './rules'
 import type { Action, Config, GameState, PlayerIndex, Rng, StepReport } from './types'
 import { DEFAULT_CONFIG } from './types'
 
@@ -43,7 +33,7 @@ export function newMatch(rng: Rng, config: Config = DEFAULT_CONFIG, decks: Decks
 
 /**
  * who の行動を受け付ける。両方そろったらステップを解決し、ターンの終わりなら振り直して次のターンへ進める。
- * rng は、ダイスを振り足す行動があればそのダイスを振るときと、振り直すときだけ使う
+ * rng は、ターンの終わりにダイスを振り直すときだけ使う
  */
 export function submit(match: Match, who: PlayerIndex, action: Action, rng: Rng): Submitted {
   const { state, pending } = match
@@ -54,11 +44,7 @@ export function submit(match: Match, who: PlayerIndex, action: Action, rng: Rng)
   both[who] = action
   const [a0, a1] = both
   if (a0 === null || a1 === null) return { ok: true, match: { state, pending: both }, resolved: null }
-  const extra: [number[], number[]] = [
-    rollDice(extraDiceOf(state, 0, a0), rng),
-    rollDice(extraDiceOf(state, 1, a1), rng),
-  ]
-  const after = resolveStep(state, [a0, a1], extra)
+  const after = resolveStep(state, [a0, a1])
   const report = after.history[after.history.length - 1]
   const next = after.winner === null && turnOver(after) ? nextTurn(after, rng) : after
   return { ok: true, match: { state: next, pending: [null, null] }, resolved: { state: after, report } }

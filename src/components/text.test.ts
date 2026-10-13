@@ -34,7 +34,7 @@ describe('拡張のカードの公開の文', () => {
     const r = resolveStep(pool([6, 1, 3], [6, 1, 3], 1, 4), [{ kind: 'thunder', dice: [0, 1] }, fire]).history[0]
     expect(reportLines(r, 0)).toEqual(['あなたの迅雷 6点', '相手は先に倒れて、炎撃は起きなかった'])
   })
-  it('防ぎきってダイスが戻ったこと、振り足した目、ターンの終わりに焼けた分と延焼の点を書く', () => {
+  it('防ぎきってダイスが戻ったこと、足したダイスの目と数、ターンの終わりに焼けた分と延焼の点を書く', () => {
     let s = pool([3, 1, 2], [3, 1, 2])
     s = resolveStep(s, [{ kind: 'darkWall', dice: [0] }, fire])
     expect(reportLines(s.history[0], 0)).toEqual([
@@ -44,8 +44,8 @@ describe('拡張のカードの公開の文', () => {
       '相手は炎撃で自分も 1点受けた',
     ])
     s = { ...s, players: [{ ...s.players[0], usedCards: [] }, s.players[1]] }
-    s = resolveStep({ ...s, step: 1 }, [{ kind: 'overload', dice: [0] }, pass], [[5, 6], []])
-    expect(reportLines(s.history[1], 0)).toContain('あなたはダイスを振り足して 5と6')
+    s = resolveStep({ ...s, step: 1 }, [{ kind: 'overload', dice: [0] }, pass])
+    expect(reportLines(s.history[1], 0)).toContain('あなたは 3 のダイスを2個足した')
     s = resolveStep(s, [{ kind: 'wildfire', dice: [1] }, pass])
     expect(reportLines(s.history[2], 0)).toEqual([
       'あなたは 1 で延焼を放った',
@@ -61,6 +61,32 @@ describe('拡張のカードの公開の文', () => {
       'あなたは 1と2 で風陣を張った',
       '相手は何もしなかった',
       'あなたの風陣に返す攻撃が来ず、自分が 3点受けた',
+    ])
+  })
+  it('打ち消された攻撃と、打ち消して返した点を書く。打ち消す攻撃が来なかったら、外して受けた点を書く', () => {
+    const deck = ['counter', 'flameStrike', 'barrier', 'bullet', 'interrupt'] as const
+    const s = makeState({ roll: [2, 4, 1], deck }, { roll: [4, 1, 3], deck })
+    const r = resolveStep(s, [{ kind: 'counter', dice: [0] }, fire]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは 2 で反撃に構えた。4点を返した',
+      '相手の炎撃 6点、反撃に打ち消された',
+      '相手は炎撃で自分も 1点受けた',
+    ])
+    const calm = resolveStep(s, [{ kind: 'counter', dice: [0] }, pass]).history[0]
+    expect(reportLines(calm, 0)).toEqual([
+      'あなたは 2 で反撃に構えた',
+      '相手は何もしなかった',
+      'あなたの反撃に打ち消す攻撃が来ず、自分が 2点受けた',
+    ])
+  })
+  it('凍らせる目が相手の手元に無ければ、攻撃せずに凍らせたと書く', () => {
+    const deck = ['freeze', 'flameStrike', 'barrier', 'bullet', 'interrupt'] as const
+    const s = makeState({ roll: [5, 1, 1], deck }, { roll: [6, 4, 2], deck })
+    const r = resolveStep(s, [{ kind: 'freeze', dice: [0] }, pass]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは 5 で凍らせた',
+      '相手は何もしなかった',
+      '相手は次のステップに 5 の目を置けない',
     ])
   })
   it('凍らせる攻撃は、当たった点と、凍らされた側が次のステップに置けない目を書く', () => {

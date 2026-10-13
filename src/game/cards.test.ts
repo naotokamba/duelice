@@ -18,8 +18,11 @@ import {
 } from './cards'
 import { stepDamage } from './rules'
 
-/** 席の行動と置いた目。hp を書くと、ステップの前の体力がそれになる。最大は20 */
-type Side = { kind: ActionKind | 'pass'; vals: number[]; hp?: number }
+/**
+ * 席の行動と置いた目。hp を書くと、ステップの前の体力がそれになる。最大は20。
+ * foe を書くと、相手がステップの初めにまだ使っていないダイスの目がそれになる
+ */
+type Side = { kind: ActionKind | 'pass'; vals: number[]; hp?: number; foe?: number[] }
 interface Case {
   name: string
   a: Side
@@ -31,6 +34,8 @@ interface Case {
 const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals })
 /** 体力が hp まで減った席 */
 const hurt = (hp: number, side: Side): Side => ({ ...side, hp })
+/** 相手の手元に foe の目のダイスが残っている席 */
+const facing = (foe: number[], side: Side): Side => ({ ...side, foe })
 
 const SPEC: Case[] = [
   // 炎撃
@@ -116,9 +121,31 @@ const SPEC: Case[] = [
     expect: [3, 5],
   },
   // 凍結
-  { name: '凍結は目に関係なく2', a: s('freeze', 4), b: s('pass'), expect: [0, 2] },
-  { name: '凍結は風壁の目の倍だけ減り、3を返される', a: s('freeze', 6), b: s('barrier', 1), expect: [3, 0] },
-  { name: '凍結しても、同じステップの攻撃は受ける', a: s('freeze', 4), b: s('flameStrike', 5, 1), expect: [7, 3] },
+  // 相手がステップの初めにまだ使っていないダイスのうち、凍らせる目と同じ目のもの1個につき2の威力
+  {
+    name: '凍結は、相手の手元の同じ目のダイス1個につき2',
+    a: facing([4, 4, 1], s('freeze', 4)),
+    b: s('pass'),
+    expect: [0, 4],
+  },
+  {
+    name: '凍結は、相手の手元に同じ目が無ければ攻撃しない',
+    a: facing([1, 2, 3], s('freeze', 4)),
+    b: s('pass'),
+    expect: [0, 0],
+  },
+  {
+    name: '凍結は風壁の目の倍だけ減り、3を返される',
+    a: facing([6, 6, 1], s('freeze', 6)),
+    b: s('barrier', 1),
+    expect: [3, 2],
+  },
+  {
+    name: '凍結しても、同じステップの攻撃は受ける',
+    a: facing([4], s('freeze', 4)),
+    b: s('flameStrike', 5, 1),
+    expect: [7, 3],
+  },
   // 闇壁
   { name: '闇壁は置いた目の倍を減らし、返さない', a: s('darkWall', 2), b: s('flameStrike', 6, 1), expect: [4, 1] },
   { name: '闇壁で防ぎきれば何も受けない', a: s('darkWall', 3), b: s('flameStrike', 4, 2), expect: [0, 2] },
@@ -181,6 +208,24 @@ const SPEC: Case[] = [
   },
   { name: '双竜は闇壁の目の倍だけ減る', a: s('twinDragon', 1, 1, 6, 6), b: s('darkWall', 5), expect: [0, 10] },
   { name: '双竜も風陣に返される', a: s('twinDragon', 1, 1, 6, 6), b: s('galeWard', 5, 5), expect: [20, 0] },
+  // 反撃
+  // 威力6以下の攻撃を、障壁で減らない攻撃も先に当たる攻撃も打ち消して、4返す。一つも打ち消さなければ、置いた目を自分が受ける
+  {
+    name: '反撃は威力6以下の攻撃を打ち消して4返す。炎撃なら自分も焼ける',
+    a: s('counter', 3),
+    b: s('flameStrike', 4, 1),
+    expect: [0, 5],
+  },
+  { name: '反撃は魔弾も打ち消す', a: s('counter', 2), b: s('bullet', 1, 1), expect: [0, 4] },
+  { name: '反撃は迅雷も打ち消す', a: s('counter', 1), b: s('thunder', 6, 1), expect: [0, 4] },
+  {
+    name: '反撃は6より大きい攻撃を打ち消さず、置いた目も受ける',
+    a: s('counter', 2),
+    b: s('flameStrike', 5, 1),
+    expect: [9, 1],
+  },
+  { name: '反撃に攻撃が来なければ、置いた目を自分が受ける', a: s('counter', 5), b: s('pass'), expect: [5, 0] },
+  { name: '反撃どうしは、どちらも置いた目を受ける', a: s('counter', 2), b: s('counter', 6), expect: [2, 6] },
   // 錬成、二重詠唱、残響。それ自身はダメージを出さない。効果はターンをまたぐ決まりなので expansion.test.ts で確かめる
   { name: '錬成はダメージを出さない', a: s('transmute', 6), b: s('pass'), expect: [0, 0] },
   { name: '錬成しても、同じステップの攻撃は受ける', a: s('transmute', 6), b: s('interrupt', 3), expect: [2, 0] },
@@ -188,8 +233,8 @@ const SPEC: Case[] = [
   { name: '残響そのものはダメージを出さない', a: s('echo', 6), b: s('flameStrike', 5, 1), expect: [7, 1] },
 ]
 
-/** ステップの前の様子。体力を書かなければ満タン */
-const ctxOf = (side: Side): PowerCtx => ({ hp: side.hp ?? 20, maxHp: 20 })
+/** ステップの前の様子。体力を書かなければ満タンで、相手の手元のダイスを書かなければ無い */
+const ctxOf = (side: Side): PowerCtx => ({ hp: side.hp ?? 20, maxHp: 20, foe: side.foe ?? [] })
 
 function run(c: Case): [number, number] {
   return stepDamage(
@@ -236,6 +281,7 @@ describe('定義表の整合性', () => {
       '錬成',
       '二重詠唱',
       '残響',
+      '反撃',
     ])
   })
   it('持ち込めるのは、表にある互いに違うカードを5枚', () => {
@@ -252,12 +298,15 @@ describe('定義表の整合性', () => {
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('風壁')
   })
-  it('効果の値は、攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目ならその目で、どれでもない詠唱は 0', () => {
+  it('効果の値は、攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目や足す目ならその目で、どれでもない詠唱は 0', () => {
     expect(effectValue(ACTION_DEFS.flameStrike, [4, 1])).toBe(6)
     expect(effectValue(ACTION_DEFS.barrier, [3])).toBe(6)
     expect(effectValue(ACTION_DEFS.spearChant, [5])).toBe(0)
-    // 凍結は攻撃もするので、効果の値は威力
-    expect(effectValue(ACTION_DEFS.freeze, [5])).toBe(2)
+    // 凍結は攻撃もするので、効果の値は威力。相手の手元の同じ目のダイスで決まり、様子を渡さなければ無いとみなす
+    expect(effectValue(ACTION_DEFS.freeze, [5])).toBe(0)
+    expect(effectValue(ACTION_DEFS.freeze, [5], { hp: 20, maxHp: 20, foe: [5, 2, 5] })).toBe(4)
+    // 足す目は印の置き場の目
+    expect(effectValue(ACTION_DEFS.overload, [3])).toBe(3)
     expect(effectValue(ACTION_DEFS.meditate, [2])).toBe(2)
     expect(effectValue(ACTION_DEFS.wildfire, [2])).toBe(0)
     // 様子を渡さなければ、体力は減っていないとみなす
@@ -273,6 +322,15 @@ describe('定義表の整合性', () => {
       if (!has((o) => !!ACTION_DEFS[o].guard)) missing.push(`${k} と受けるダメージを減らす相手`)
     }
     expect(missing).toEqual([])
+  })
+  it('攻撃しない行動と、威力が0になりうる攻撃は、公開の文を持つ', () => {
+    for (const k of ACTION_KINDS) {
+      const d = ACTION_DEFS[k]
+      const vals = Array<number>(Math.max(...d.dice)).fill(3)
+      const silent = !d.power || d.power(vals, { hp: 20, maxHp: 20, foe: [] }) === 0
+      if (silent && !d.chant && !d.multi) expect(d.done, k).toMatch(/\S/)
+    }
+    expect(ACTION_DEFS.freeze.done).toBe('凍らせた')
   })
   it('全ての行動が仕様表に一度は登場する', () => {
     const covered = new Set(SPEC.flatMap((c) => [c.a.kind, c.b.kind]))
@@ -324,12 +382,15 @@ describe('定義表の整合性', () => {
       // 攻撃を返す構えと、先に当たる性質は、攻撃と組み合わさって意味を持つ
       if (d.reflects) expect(d.power, k).toBeUndefined()
       if (d.fast) expect(d.power, k).toBeDefined()
-      // 振り足したダイスは次のステップで使うので、二ステップ目には使えない
-      if (d.extraDice) expect(d.step, k).toBe(1)
-      // 返す攻撃が来なかったときに受ける分は、返す構えだけが持つ
-      if (d.missBurn) expect(d.reflects, k).toBe(true)
-      // 置けなくする目と持ち越す目は、印の置き場の目
-      if (d.freezes || d.carries) expect(d.face.mark, k).toBeDefined()
+      // 足したダイスは次のステップで使うので、二ステップ目には使えない
+      if (d.copies) expect(d.step, k).toBe(1)
+      // 攻撃が来なかったときに受ける分は、返す構えか打ち消す構えだけが持つ
+      if (d.missBurn) expect(!!d.reflects || d.cancels !== undefined, k).toBe(true)
+      // 打ち消したら返す分は、打ち消す構えだけが持つ。打ち消す構えは攻撃しない
+      if (d.riposte) expect(d.cancels, k).toBeDefined()
+      if (d.cancels !== undefined) expect(d.power, k).toBeUndefined()
+      // 置けなくする目と持ち越す目と足す目は、印の置き場の目
+      if (d.freezes || d.carries || d.copies) expect(d.face.mark, k).toBeDefined()
     }
   })
 })

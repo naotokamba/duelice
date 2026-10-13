@@ -24,7 +24,16 @@ export interface Report {
   swap?: { into: CardId; out: CardId; vsStarter: Rate; elo: number }[]
   swapStarterElo?: number
   replacement?: { context: CardId; from: CardId; to: CardId; mean: number; worse: number; opponents: number }[]
-  cards?: { card: CardId; decks: number; contribution: number; usage: number; firstUsage: number }[]
+  cards?: {
+    card: CardId
+    decks: number
+    contribution: number
+    usage: number
+    firstUsage: number
+    length?: Lengths
+  }[]
+  /** 無作為なデッキどうしの全ての対局の長さ */
+  lengths?: Lengths
   skips?: { deck: string; reason: string }[]
   meta?: {
     decks: { deck: string; elo: number; fun: Fun }[]
@@ -37,6 +46,13 @@ export interface Report {
   estimateCheck?: { deck: CardId[]; variants: Record<string, Rate> }
   mechanics?: { multi: Record<string, number>; wild: number[]; echoed: Partial<Record<CardId, number>> }
   elo: { deck: string; elo: number; games: number }[]
+}
+
+/** 対局の長さ。平均のターン、引き分けの割合、長い対局の割合 */
+export interface Lengths {
+  turns: number
+  draws: number
+  long: number
 }
 
 interface Names {
@@ -102,6 +118,24 @@ export function renderMarkdown(r: Report, { deckName, name }: Names): string {
       .sort((a, b) => b.contribution - a.contribution)
       .map((c) => [name(c.card), signed(c.contribution), pct(c.usage), pct(c.firstUsage), String(c.decks)])
     out.push(table(['カード', '寄与', '使用率', '一手目の使用率', '含むデッキ'], rows))
+
+    const all = r.lengths
+    const lengths = r.cards.filter((c) => c.length)
+    if (all && lengths.length > 0) {
+      out.push('## カードごとの対局の長さ')
+      out.push(
+        '無作為な5枚のデッキの対局のうち、そのカードを持つ側の対局の平均ターン、引き分けの割合、8ターン以上かかった割合。' +
+          `全ての対局では ${all.turns.toFixed(1)} ターン、引き分け ${pct(all.draws)}、8ターン以上 ${pct(all.long)}。` +
+          '長いほうから並べる。守りばかりで攻めない我慢比べを生むカードを見つけるため。',
+      )
+      const len = [...lengths]
+        .sort((a, b) => (b.length?.turns ?? 0) - (a.length?.turns ?? 0))
+        .map((c) => {
+          const l = c.length as Lengths
+          return [name(c.card), l.turns.toFixed(1), pct(l.draws), pct(l.long)]
+        })
+      out.push(table(['カード', 'ターン', '引き分け', '8ターン以上'], len))
+    }
   }
 
   if (r.meta) {

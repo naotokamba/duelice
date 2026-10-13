@@ -7,7 +7,7 @@
 
 import { SkipForward } from 'lucide-react'
 import { type CSSProperties, Fragment, type ReactNode } from 'react'
-import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
+import { ACTION_DEFS, type ActionDef, type CardId, effectValue } from '../game/cards'
 import { effectParts } from '../game/face'
 import type { Move, PlayerIndex, StepReport, Strike } from '../game/types'
 import { BurnGlyph, ChantGlyph, PartGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
@@ -115,10 +115,12 @@ function attackMark(piercing: boolean | undefined, power: number): ReactNode {
 
 /**
  * 効果の印を、実際に出た値で描く。攻撃は放った威力、守りは減らす量。
- * ほかの効果は、カード面の最初の印を出た値で描く。詠唱、凍らせた目、振り足す数、持ち越す目など
+ * ほかの効果は、カード面の最初の印を出た値で描く。詠唱、凍らせた目、足すダイスの数、持ち越す目など
  */
 function moveMark(m: Move, strike?: Strike): ReactNode {
   const def = ACTION_DEFS[m.kind]
+  // 凍らせる効果は、威力が0で攻撃を放たなかったなら、凍らせた目を書く
+  if (def.freezes && !strike) return frostMark(m.vals)
   // 威力は放った時の体力で変わることがあるので、放った攻撃の記録があればその威力を書く
   if (def.power) return attackMark(def.piercing, strike?.power ?? effectValue(def, m.vals))
   if (def.guard) return <ShieldGlyph value={def.guard(m.vals)} />
@@ -131,6 +133,9 @@ function moveMark(m: Move, strike?: Strike): ReactNode {
 function liveMoves(report: StepReport, who: PlayerIndex): Move[] {
   return report.moves[who].filter((m) => !report.cancelled[who] || ACTION_DEFS[m.kind].fast)
 }
+
+/** 飛んでくる矢印の上に置く構え。守り、攻撃を返す構え、攻撃を打ち消す構え */
+const stops = (def: ActionDef) => !!def.guard || !!def.reflects || def.cancels !== undefined
 
 /** 名乗りや構えに出す効果。行動の回数を増やすカードの効果は、ほかに効果があれば名前で分かるので出さない */
 function shownMoves(moves: Move[]): Move[] {
@@ -190,8 +195,8 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
           {list.map((s, i) => {
             const x = laneX(list, s)
             const other = otherOf(s.from)
-            // 構えに返された攻撃も、構えの縁で止まり、放った側に星が出る
-            const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
+            // 構えに返された攻撃も、構えの縁で止まり、放った側に星が出る。打ち消された攻撃も構えの縁で止まる
+            const stops = s.outcome === 'guarded' || s.outcome === 'reflected' || s.outcome === 'countered'
             return [
               <Arrow
                 key={`a${i}`}
@@ -350,7 +355,7 @@ const asideAt = (x: number, y: number, delay: number, dx: number) => {
 
 /**
  * 構えの印を、効果ごとに出す。守りと返す構えは、飛んでくる矢印の上に置く。
- * 詠唱や、凍らせる、振り足す、持ち越すなど攻撃を止めない効果は、矢印や守りと重ならないように横へずらして並べる。
+ * 詠唱や、凍らせる、ダイスを足す、持ち越すなど攻撃を止めない効果は、矢印や守りと重ならないように横へずらして並べる。
  * 横へずらした印は、名前を印の下に添え、舞台の左端からはみ出さないようにする
  */
 function Stance({ who, report, x, aside, incoming }: StanceProps) {
@@ -364,7 +369,7 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     )
   }
   const moves = shownMoves(liveMoves(report, who))
-  const blocking = moves.some((m) => ACTION_DEFS[m.kind].guard || ACTION_DEFS[m.kind].reflects)
+  const blocking = moves.some((m) => stops(ACTION_DEFS[m.kind]))
   /** 横へずらす印の数。守りや矢印があれば、一つ目からずらす */
   let side = aside || blocking ? 1 : 0
   return moves.map((m, i) => {
@@ -372,9 +377,11 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
     const cls = `stance card-${def.card}`
     // 印の横に技の名前を添える
     const name = <span className="stance-name">{def.label}</span>
-    if (def.guard || def.reflects) {
-      // 止めた守りや返した構えは当たった時に揺れる。貫通された構えは、矢印が通る時に薄くなる
-      const pierced = incoming?.outcome === 'pierced'
+    if (stops(def)) {
+      // 止めた守りや返した構えや打ち消した構えは当たった時に揺れる。貫通された構えは、矢印が通る時に薄くなる。
+      // 打ち消す構えは、上限より大きい攻撃が通るときも薄くなる
+      const pierced =
+        incoming?.outcome === 'pierced' || (def.cancels !== undefined && !!incoming && incoming.outcome !== 'countered')
       const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
       return (
         <div

@@ -59,10 +59,10 @@ describe('手元のダイス', () => {
     for (const d of wild) expect(d.querySelectorAll('.pip:not(.pip-empty)')).toHaveLength(0)
   })
 
-  it('持ち越したダイスと振り足したダイスは、押せるまま角の印と説明を付ける', () => {
+  it('持ち越したダイスと効果で足したダイスは、押せるまま角の印と説明を付ける', () => {
     const deck = ['overload', 'freeze', 'meditate', 'barrier', 'allOut'] as const
     const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3] })
-    const next = resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }], [[5, 3], []])
+    const next = resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }])
     render(
       <Tray
         seat={seatView(next, 0)}
@@ -77,8 +77,8 @@ describe('手元のダイス', () => {
       ['2の目', null],
       ['1の目', null],
       ['4の目', '前のターンから持ち越した'],
-      ['5の目', '振り足した'],
-      ['3の目', '振り足した'],
+      ['6の目', '効果で足した'],
+      ['6の目', '効果で足した'],
     ])
     expect(dice[2].querySelector('.die-badge')).not.toBeNull()
     expect(dice[0].querySelector('.die-badge')).toBeNull()
@@ -112,7 +112,7 @@ describe('手元のダイス', () => {
     expect(trayCount(seat(), [])).toBe(3)
     const deck = ['overload', 'freeze', 'meditate', 'barrier', 'allOut'] as const
     const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3] })
-    const next = seatView(resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }], [[5, 3], []]), 0)
+    const next = seatView(resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }]), 0)
     expect(trayCount(next, [])).toBe(5)
     expect(trayCount(next, [{ card: 'allOut', kind: 'allOut', slots: [4, null, null, null], complete: true }])).toBe(4)
   })

@@ -8,7 +8,7 @@ import { flipReport, flipState, other, resolutionFor, stateFor } from './perspec
 import { isLegal, resolveStep } from './rules'
 import type { GameState, StepReport } from './types'
 
-/** 局面と、双方の合法な行動と、振り足すダイスの目。スターターどうしの局面も、5枚ずつ持ち込んだ局面も作る */
+/** 局面と、双方の合法な行動。スターターどうしの局面も、5枚ずつ持ち込んだ局面も作る */
 const stateWithActsArb = playArb(fc.oneof(stateArb, poolStateArb))
 
 describe('見る側の入れ替え', () => {
@@ -17,9 +17,9 @@ describe('見る側の入れ替え', () => {
   })
   it('入れ替えた盤で解決すると、解決してから入れ替えたのと同じになる。攻撃の並びまで同じ', () => {
     fc.assert(
-      fc.property(stateWithActsArb, ({ s, acts, extra }) => {
-        const flipped = resolveStep(flipState(s), [acts[1], acts[0]], [extra[1], extra[0]])
-        expect(flipped).toEqual(flipState(resolveStep(s, acts, extra)))
+      fc.property(stateWithActsArb, ({ s, acts }) => {
+        const flipped = resolveStep(flipState(s), [acts[1], acts[0]])
+        expect(flipped).toEqual(flipState(resolveStep(s, acts)))
       }),
     )
   })

@@ -13,7 +13,8 @@ describe('席の様子', () => {
     const view = seatView(makeState({ roll: [6, 2, 1], deck, hp: 9 }, { roll: [1, 2, 3] }), 0)
     expect([...view.active.keys()]).toEqual(deck)
     expect([...view.rows.keys()]).toEqual(deck)
-    expect(view.ctx).toEqual({ hp: 9, maxHp: 20 })
+    // 様子には、相手の手元のまだ使っていないダイスの目も持つ
+    expect(view.ctx).toEqual({ hp: 9, maxHp: 20, foe: [1, 2, 3] })
     expect([...seatView(makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] }), 1).active.keys()]).toEqual(STARTER)
   })
   it('使えるカードと、カードごとに今使える行を求める', () => {
@@ -94,13 +95,13 @@ describe('ダイスの印', () => {
     expect(diceMarks(s, 1)).toEqual([null, null, null])
   })
 
-  it('このターンに振り足したダイスは、持ち越したダイスのさらに後ろに並ぶ', () => {
+  it('このターンに効果で足したダイスは、持ち越したダイスのさらに後ろに並ぶ', () => {
     const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3], deck })
-    const next = resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }], [[5, 3], []])
-    expect(next.players[0].roll).toEqual([6, 2, 1, 4, 5, 3])
+    const next = resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }])
+    expect(next.players[0].roll).toEqual([6, 2, 1, 4, 6, 6])
     expect(diceMarks(next, 0)).toEqual([null, null, null, 'carried', 'extra', 'extra'])
     expect(seatView(next, 0).marks).toEqual(diceMarks(next, 0))
-    // 前のターンに振り足したダイスは数えない
+    // 前のターンに足したダイスは数えない
     expect(diceMarks({ ...next, turn: 2 }, 0)).toEqual([null, null, null, 'carried', 'carried', 'carried'])
   })
 
@@ -145,14 +146,14 @@ describe('一緒に使ったカード', () => {
       ['darkWall', [2]],
     ])
   })
-  it('二ステップ目には、一緒に使ったカードにもダイスが残る。防ぎきって戻ったダイスは残さない', () => {
+  it('二ステップ目には、一緒に使ったカードにもダイスが残る。防ぎきって戻ったダイスと、いつも戻るダイスは残さない', () => {
     const state = makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] })
-    // 相手の氷礫を闇壁が防ぎきって、闇壁のダイスだけが戻る
+    // 相手の氷礫を闇壁が防ぎきって、闇壁のダイスも戻る。二重詠唱のダイスはいつも戻る
     const done = resolveStep(state, [both, { kind: 'interrupt', dice: [0] }])
-    expect(seatView(done, 0).kept.map((r) => r.card)).toEqual(['doubleCast', 'interrupt'])
-    // 何も防がなければ、どれも残る
+    expect(seatView(done, 0).kept.map((r) => r.card)).toEqual(['interrupt'])
+    // 何も防がなければ、二重詠唱のほかは残る
     const calm = resolveStep(state, [both, { kind: 'pass' }])
-    expect(seatView(calm, 0).kept.map((r) => r.card)).toEqual(['doubleCast', 'interrupt', 'darkWall'])
+    expect(seatView(calm, 0).kept.map((r) => r.card)).toEqual(['interrupt', 'darkWall'])
   })
   it('狭い画面では、公開の間は最後に置いたカードを、選んでいる間は最初に置いたカードを出す', () => {
     const shown = revealed(both)

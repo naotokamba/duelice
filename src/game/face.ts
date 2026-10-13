@@ -32,12 +32,12 @@ export function effectParts(kind: ActionKind, vals?: number[], ctx: PowerCtx = U
 }
 
 /**
- * 印の値。焼ける印なら自分が焼ける量、返す攻撃が来なかったときの印なら自分が受ける量、
- * 凍らせる目や持ち越す目の印なら印の置き場の目、ほかの印なら効果の値
+ * 印の値。焼ける印なら自分が焼ける量、返す攻撃や打ち消す攻撃が来なかったときの印なら自分が受ける量、
+ * 凍らせる目や持ち越す目の印なら印の置き場の目、ほかの印なら効果の値。足す目は効果の値が印の置き場の目になる
  */
 function partValue(def: ActionDef, part: EffectPart, vals: number[], ctx: PowerCtx): string {
   if (part.icon === 'burn' && def.burn) return String(def.burn(vals))
-  if (part.icon === 'miss' && def.missBurn) return String(def.missBurn(vals))
+  if ((part.icon === 'miss' || part.icon === 'whiff') && def.missBurn) return String(def.missBurn(vals))
   if (part.icon === 'frost' || part.icon === 'carry') return String(vals[0])
   return String(effectValue(def, vals, ctx))
 }

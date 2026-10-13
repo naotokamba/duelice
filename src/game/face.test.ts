@@ -32,8 +32,8 @@ describe('カード面', () => {
     ['allOut', [1, 2, 3, 4], 'damage:16'],
     // 背水は目に関係なく、満タンなら2。失った体力で増えることは数を持たない印で示す
     ['lastStand', [5, 1], 'damage:2 wound'],
-    // 凍結は目に関係なく2を当て、印の置き場の目を凍らせる。瞑想は印の置き場の目をそのまま書く
-    ['freeze', [4], 'damage:2 frost:4'],
+    // 凍結は相手の手元の同じ目1個につき2を当て、印の置き場の目を凍らせる。瞑想は印の置き場の目をそのまま書く
+    ['freeze', [4], 'shards:2 frost:4'],
     ['meditate', [2], 'carry:2'],
     ['darkWall', [3], 'guard:6 refund'],
     // 風陣は、返す攻撃が来なかったら置いた目の合計を自分が受ける
@@ -41,12 +41,15 @@ describe('カード面', () => {
     ['thunder', [5, 1], 'damage:5 fast'],
     // 延焼は倍率を書く
     ['wildfire', [3], 'ignite:2'],
-    ['overload', [3], 'extra:2 endBurn:2'],
+    // 過負荷は、足すダイス1個ずつに置いた目を書く
+    ['overload', [3], 'extra:3 extra:3 endBurn:2'],
     ['twinDragon', [1, 1, 2, 2], 'damage:20'],
     // 錬成と二重詠唱は決まった数を書き、残響は数を持たない
     ['transmute', [4], 'forge:3'],
-    ['doubleCast', [4], 'multi:2'],
+    ['doubleCast', [4], 'multi:2 back'],
     ['echo', [4], 'repeat'],
+    // 反撃は打ち消せる上限と返す量を書き、打ち消す攻撃が来なかったときに受ける量は置いた目
+    ['counter', [3], 'cancel:6 riposte:4 whiff:3'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
@@ -82,7 +85,7 @@ describe('カード面', () => {
     expect(faceParts(bare, [5, 2])[1]).toEqual({ icon: 'miss', value: '7', text: undefined })
   })
   it('目が決まるまでは記号のまま書き、置いたら印ごとの値にする', () => {
-    expect(flat(effectParts('freeze'))).toBe('damage:2 frost:X')
+    expect(flat(effectParts('freeze'))).toBe('shards:2 frost:X')
     expect(flat(effectParts('galeWard'))).toBe('reflect miss:Y')
     expect(flat(effectParts('meditate', [5]))).toBe('carry:5')
   })
@@ -229,8 +232,13 @@ describe('カード面', () => {
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
       const icons = new Set(def.face.effect.map((p) => p.icon).filter(Boolean))
-      // 攻撃は、貫通するかどうかで星の印を使い分ける
-      expect(icons.has('damage'), kind).toBe(!!def.power && !def.piercing)
+      // 攻撃は、貫通するかどうかで星の印を使い分ける。相手の手元の目で威力が決まる攻撃は、ダイスを添えた星にする
+      const vals0 = Array<number>(slotsOf(def)).fill(3)
+      const matched =
+        !!def.power &&
+        def.power(vals0, { hp: 20, maxHp: 20, foe: [] }) !== def.power(vals0, { hp: 20, maxHp: 20, foe: [3, 3] })
+      expect(icons.has('shards'), kind).toBe(matched)
+      expect(icons.has('damage'), kind).toBe(!!def.power && !def.piercing && !matched)
       expect(icons.has('pierce'), kind).toBe(!!def.power && !!def.piercing)
       expect(icons.has('guard'), kind).toBe(!!def.guard)
       expect(icons.has('thorns'), kind).toBe(!!def.thorns)
@@ -246,10 +254,14 @@ describe('カード面', () => {
       expect(icons.has('frost'), kind).toBe(!!def.freezes)
       expect(icons.has('refund'), kind).toBe(!!def.refund)
       expect(icons.has('reflect'), kind).toBe(!!def.reflects)
-      expect(icons.has('miss'), kind).toBe(!!def.missBurn)
+      expect(icons.has('miss') || icons.has('whiff'), kind).toBe(!!def.missBurn)
+      expect(icons.has('whiff'), kind).toBe(def.cancels !== undefined)
+      expect(icons.has('cancel'), kind).toBe(def.cancels !== undefined)
+      expect(icons.has('riposte'), kind).toBe(!!def.riposte)
+      expect(icons.has('back'), kind).toBe(!!def.returnsDice)
       expect(icons.has('fast'), kind).toBe(!!def.fast)
       expect(icons.has('ignite'), kind).toBe(!!def.ignite)
-      expect(icons.has('extra'), kind).toBe(!!def.extraDice)
+      expect(icons.has('extra'), kind).toBe(!!def.copies)
       expect(icons.has('carry'), kind).toBe(!!def.carries)
     }
   })
@@ -258,7 +270,17 @@ describe('カード面', () => {
       ACTION_DEFS[kind].face.effect.find((p) => p.icon === icon)?.value
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
-      if (def.extraDice) expect(written(kind, 'extra'), kind).toBe(String(def.extraDice))
+      // ダイスを足す行動は、足すダイスの数だけ足す印を並べ、どれにも印の置き場の記号を書く
+      if (def.copies) {
+        const extras = def.face.effect.filter((p) => p.icon === 'extra')
+        expect(
+          extras.map((p) => p.value),
+          kind,
+        ).toEqual(Array(def.copies).fill(def.face.mark))
+      }
+      // 打ち消す構えは、打ち消せる上限と、打ち消したら返す量を書く
+      if (def.cancels !== undefined) expect(written(kind, 'cancel'), kind).toBe(String(def.cancels))
+      if (def.riposte) expect(written(kind, 'riposte'), kind).toBe(String(def.riposte))
       // ターンの終わりに焼ける行動の炎は、焼ける量を書く
       if (def.endBurn) expect(written(kind, 'endBurn'), kind).toBe(String(def.endBurn))
       // 焼けた分を与える行動は、倍率を書く
@@ -266,7 +288,7 @@ describe('カード面', () => {
     }
   })
   it('数を持たない印は、記号の無い攻撃のカード面に並べても、置いた個数から値を入れない', () => {
-    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'repeat'])
+    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'repeat', 'back'])
     // 記号を持たず、置いた個数で威力が決まる仮のカード
     const def = { ...ACTION_DEFS.allOut, face: { effect: BARE_ICONS.map((icon) => ({ icon })) } }
     expect(faceParts(def, [1, 1])).toEqual(BARE_ICONS.map((icon) => ({ icon })))

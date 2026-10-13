@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Match } from '../game/match'
-import type { Action, GameState } from '../game/types'
+import type { Action, GameState, StepReport } from '../game/types'
 import { EMPTY_GRACE_MS, REVEAL_GRACE_MS, START_GRACE_MS } from '../online/protocol'
 import { actionOf, makeState, seeded } from '../test/helpers'
 import {
@@ -384,7 +384,7 @@ describe('保存されていた部屋', () => {
         ...g,
         players: g.players.map((p) => strip(p, ['deck', 'frozen', 'burned', 'carry', 'last', 'acted'])),
         history: g.history.map((r) => ({
-          ...strip(r, ['endBurn', 'cancelled', 'refunded', 'extra', 'moves']),
+          ...strip(r, ['endBurn', 'cancelled', 'refunded', 'added', 'moves']),
           strikes: r.strikes.map((x) => strip(x, ['phase'])),
         })),
       }) as unknown as GameState
@@ -428,6 +428,24 @@ describe('保存されていた部屋', () => {
     })
     const saved = { ...s, match: { ...s.match, state: { ...s.match.state, players: old } } } as unknown as RoomState
     expect(restoreRoom(saved)).toEqual(s)
+  })
+  it('振り足したダイスの欄で保存された記録は、それを手元に足したダイスとして読む', () => {
+    const s0 = ok(act(fixed(playing()), 0, { kind: 'interrupt', dice: [0] }, seeded(1), T0 + 10)).state
+    const s = ok(act(s0, 1, { kind: 'barrier', dice: [0] }, seeded(1), T0 + 20)).state
+    if (!s.match || !s.last) throw new Error('対局と解決が要る')
+    const old = (r: StepReport) => {
+      const { added: _, ...rest } = r
+      return { ...rest, extra: [[3, 3], []] }
+    }
+    const saved = {
+      ...s,
+      match: { ...s.match, state: { ...s.match.state, history: s.match.state.history.map(old) } },
+      last: { ...s.last, resolution: { ...s.last.resolution, report: old(s.last.resolution.report) } },
+    } as unknown as RoomState
+    const restored = restoreRoom(saved)
+    expect(restored.match?.state.history.map((r) => r.added)).toEqual([[[3, 3], []]])
+    expect(restored.last?.resolution.report.added).toEqual([[3, 3], []])
+    expect(restored.last?.resolution.report).not.toHaveProperty('extra')
   })
   it('対局の無い部屋もそのまま', () => {
     const s = created()

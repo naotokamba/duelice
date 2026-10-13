@@ -5,19 +5,19 @@
 // どのステップでも、ほかの行動に弱く支配されるパスだけを候補から外す。相手が守りを残していて、自分も焼ける攻撃が防がれうるときのように、意味のあるパスは残す。
 // 候補を絞るのは二人とも同じなので、つよいが解く均衡は、この絞った行列ゲームの均衡になる。
 // 先読みはターンの終わりまで。次のターンに持ち越すものは、体力に換算した見積もりで足す。
-// ダイスを振り足す行動は、振り足すダイスの出方を全て数え、その確率で重みを付けた平均を得点にする。
+// ターンの中で起きることに乱数は無いので、一ステップの得点は、双方の行動を解決した盤から一つに決まる。
 // 行列ゲームが大きいときは、全ての要素を求めずに、必要な行と列だけを足していく double oracle で同じ均衡を求める。
 // 要素一つに二ステップ目まで解く一ステップ目では、これで求める要素が数分の一に減る。
 
 import { type At, dominatedLazily, flipped, LazyMatrix, solveLazily } from './doubleOracle'
 import { type MatrixSolution, solveMatrixGame } from './matrixGame'
-import { extraDiceOf, freeDice, legalActions, resolveTrusted } from './rules'
+import { freeDice, legalActions, resolveTrusted } from './rules'
 import type { Action, GameState, PlayerIndex, Rng } from './types'
 
 /**
  * CPU の考え方の版。考え方を変えたら上げる。強さの評価の記録は、この版ごとに分けて取り直す
  */
-export const CPU_VERSION = 4
+export const CPU_VERSION = 5
 
 /** 次のターンに持ち越すものを、体力に換算した見積もり */
 export interface Estimates {
@@ -29,31 +29,6 @@ export interface Estimates {
 
 /** 見積もりの既定値。違う見積もりの CPU どうしを戦わせて、確かめながら決める */
 export const ESTIMATES: Estimates = { carry: 1.5, freeze: 0.5 }
-
-/** 振り足すダイスの出方。数ごとに一度だけ数える */
-const outcomeCache = new Map<number, { dice: number[]; p: number }[]>()
-
-/** n 個のダイスの出方と、その確率。目の並びは問わないので、組ごとにまとめる */
-export function rollOutcomes(n: number): { dice: number[]; p: number }[] {
-  const hit = outcomeCache.get(n)
-  if (hit) return hit
-  const out = countOutcomes(n)
-  outcomeCache.set(n, out)
-  return out
-}
-
-function countOutcomes(n: number): { dice: number[]; p: number }[] {
-  if (n === 0) return [{ dice: [], p: 1 }]
-  const out: { dice: number[]; p: number }[] = []
-  for (const rest of countOutcomes(n - 1))
-    for (let v = rest.dice.at(-1) ?? 1; v <= 6; v++) out.push({ dice: [...rest.dice, v], p: 0 })
-  const fact = (k: number): number => (k <= 1 ? 1 : k * fact(k - 1))
-  for (const o of out) {
-    const counts = [1, 2, 3, 4, 5, 6].map((v) => o.dice.filter((d) => d === v).length)
-    o.p = fact(n) / counts.reduce((acc, c) => acc * fact(c), 1) / 6 ** n
-  }
-  return out
-}
 
 export type Level = 'easy' | 'normal' | 'hard'
 
@@ -247,17 +222,7 @@ export class Thinker {
   private lazy(s: GameState, score: (next: GameState) => number): LazyStep {
     const a0 = this.legal(s, 0)
     const a1 = this.legal(s, 1)
-    return { a0, a1, m: new LazyMatrix(a0.length, a1.length, (i, j) => this.expected(s, [a0[i], a1[j]], score)) }
-  }
-
-  /** 双方の行動を解決した得点。ダイスを振り足す行動があれば、出方の確率で重みを付けた平均 */
-  private expected(s: GameState, acts: [Action, Action], score: (next: GameState) => number): number {
-    const [n0, n1] = [extraDiceOf(s, 0, acts[0]), extraDiceOf(s, 1, acts[1])]
-    if (n0 === 0 && n1 === 0) return score(resolveTrusted(s, acts, [[], []]))
-    let sum = 0
-    for (const e0 of rollOutcomes(n0))
-      for (const e1 of rollOutcomes(n1)) sum += e0.p * e1.p * score(resolveTrusted(s, acts, [e0.dice, e1.dice]))
-    return sum
+    return { a0, a1, m: new LazyMatrix(a0.length, a1.length, (i, j) => score(resolveTrusted(s, [a0[i], a1[j]]))) }
   }
 
   /** 今のステップの行列ゲームを、全ての要素を求めて、指定したプレイヤーの視点で返す。弱く支配されるパスは外す */

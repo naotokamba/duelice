@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { deckArb, makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, UNHURT } from './cards'
 import { forfeit, type Match, newMatch, resign, type Submitted, submit, viewFor } from './match'
-import { extraDiceOf, isLegal, keptRow, legalActions, turnOver } from './rules'
+import { isLegal, keptRow, legalActions, turnOver } from './rules'
 import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
 import { DEFAULT_CONFIG } from './types'
@@ -237,7 +237,7 @@ describe('対局全体の性質', () => {
       { numRuns: 60 },
     )
   })
-  it('持ち込んだ5枚の対局も、出す順によらず同じに進み、振り足すダイスは解決するときに振る', () => {
+  it('持ち込んだ5枚の対局も、出す順によらず同じに進み、足したダイスと好きな目のダイスが手元に加わる', () => {
     fc.assert(
       fc.property(seedArb, deckArb, deckArb, (seed, d0, d1) => {
         const rng = seeded(seed)
@@ -260,8 +260,8 @@ describe('対局全体の性質', () => {
           for (const who of [0, 1] as const) {
             const a = pair[who]
             const happened = a.kind !== 'pass' && !res.report.cancelled[who]
-            const n = happened ? extraDiceOf(before, who, a) : 0
-            expect(res.report.extra[who]).toHaveLength(extraDiceOf(before, who, a))
+            const n = res.report.added[who].length
+            if (!happened) expect(n).toBe(0)
             // 一ステップ目に好きな目のダイスを得たら、その数だけ後ろに加わる
             const forged =
               before.step === 1 && happened ? res.report.moves[who].map((m) => ACTION_DEFS[m.kind].transmute ?? 0) : []

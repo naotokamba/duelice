@@ -33,8 +33,11 @@ function moveLine(report: StepReport, who: PlayerIndex, name: string, m: Move, s
   const other: PlayerIndex = who === 0 ? 1 : 0
   const done = `${name}は ${m.vals.join('と')} で${def.done ?? def.label}`
   if (!s) return done
-  // 攻撃を受けた側の構え。守りか、攻撃を返す構え
-  const stances = liveMoves(report, other).filter((x) => ACTION_DEFS[x.kind].guard || ACTION_DEFS[x.kind].reflects)
+  // 攻撃を受けた側の構え。守りか、攻撃を返す構えか、打ち消す構え
+  const stances = liveMoves(report, other).filter((x) => {
+    const d = ACTION_DEFS[x.kind]
+    return d.guard || d.reflects || d.cancels !== undefined
+  })
   const answer = stances.map((x) => ACTION_DEFS[x.kind].label).join('と')
   const head = `${name}の${def.label} ${s.power}点`
   switch (s.outcome) {
@@ -42,13 +45,17 @@ function moveLine(report: StepReport, who: PlayerIndex, name: string, m: Move, s
       return `${head}、${answer}をすり抜けた`
     case 'reflected':
       return `${head}、${answer}に返されて自分が ${s.dealt}点受けた`
+    case 'countered': {
+      const by = stances.filter((x) => ACTION_DEFS[x.kind].cancels !== undefined)
+      return `${head}、${by.map((x) => ACTION_DEFS[x.kind].label).join('と')}に打ち消された`
+    }
     case 'guarded': {
       const guards = stances.filter((x) => ACTION_DEFS[x.kind].guard)
       const vals = guards.flatMap((x) => x.vals)
       return `${head}、${guards.map((x) => ACTION_DEFS[x.kind].label).join('と')} ${vals.join('と')} に削られて ${s.dealt}点`
     }
     case 'returned':
-      // 守りが攻撃を受けて返した。守った目も添える
+      // 守りや打ち消す構えが攻撃を受けて返した。構えた目も添える
       return `${done}。${s.dealt}点を返した`
     default:
       return head
@@ -132,6 +139,19 @@ function liveMoves(report: StepReport, who: PlayerIndex): Move[] {
 }
 
 /**
+ * who の構えのうち、攻撃が来ずに外して、自分が受けた構え。返す構えは返した攻撃が、打ち消す構えは打ち消した攻撃が一つも無かったもの
+ */
+function missedWards(report: StepReport, who: PlayerIndex): Move[] {
+  const reflected = report.strikes.some((s) => s.outcome === 'reflected' && s.from !== who)
+  const countered = report.strikes.some((s) => s.outcome === 'countered' && s.to === who)
+  return liveMoves(report, who).filter((m) => {
+    const def = ACTION_DEFS[m.kind]
+    if (!def.missBurn || def.missBurn(m.vals) <= 0) return false
+    return !((def.reflects && reflected) || (def.cancels !== undefined && countered))
+  })
+}
+
+/**
  * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
  * 守りがダメージを返したならそれを、詠唱したならその結果を、自分も受けたダメージがあればその量を、後に添える
  */
@@ -159,18 +179,23 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
     if (frost.length > 0) lines.push(`${name}は次のステップに ${Math.max(...frost)} の目を置けない`)
   }
   for (const [who, name] of order) {
-    // 自分が受けた分のうち、炎で焼けた分と、返す構えに返す攻撃が来ずに受けた分を分けて書く
+    // 自分が受けた分のうち、炎で焼けた分と、構えに攻撃が来ずに受けた分を分けて書く
     const live = liveMoves(report, who)
     const burners = live.filter((m) => (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0) > 0)
     const burnt = burners.reduce((sum, m) => sum + (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0), 0)
-    const ward = live.find((m) => ACTION_DEFS[m.kind].missBurn)
-    const missed = report.burn[who] - burnt
     const by = [...new Set(burners.map((m) => ACTION_DEFS[m.kind].label))].join('と')
     if (burnt > 0) lines.push(`${name}は${by}で自分も ${burnt}点受けた`)
-    if (ward && missed > 0)
-      lines.push(`${name}の${ACTION_DEFS[ward.kind].label}に返す攻撃が来ず、自分が ${missed}点受けた`)
+    for (const m of missedWards(report, who)) {
+      const def = ACTION_DEFS[m.kind]
+      const what = def.cancels === undefined ? '返す' : '打ち消す'
+      lines.push(`${name}の${def.label}に${what}攻撃が来ず、自分が ${def.missBurn?.(m.vals)}点受けた`)
+    }
     if (report.refunded[who]) lines.push(`${name}は防ぎきって、ダイスが戻った`)
-    if (report.extra[who].length > 0) lines.push(`${name}はダイスを振り足して ${report.extra[who].join('と')}`)
+    const added = report.added[who]
+    if (added.length > 0) {
+      const kinds = [...new Set(added)].map((v) => `${v} のダイスを${added.filter((x) => x === v).length}個`)
+      lines.push(`${name}は ${kinds.join('と、')}足した`)
+    }
   }
   for (const [who, name] of order) {
     const late = report.endBurn[who]

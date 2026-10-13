@@ -151,21 +151,42 @@ describe('公開の舞台', () => {
 
 describe('拡張のカードの公開', () => {
   const deck = ['freeze', 'overload', 'galeWard', 'wildfire', 'lastStand'] as const
-  it('振り足すといった攻撃しない行動は、名乗りの札と構えにカード面の最初の印を出た値で出す。凍らせる攻撃は、名乗りの札に威力を、構えに凍らせた目を出す', () => {
-    const s = makeState({ roll: [5, 1, 1], deck }, { roll: [2, 3, 1], deck })
-    const report = resolveStep(
-      s,
-      [
-        { kind: 'freeze', dice: [0] },
-        { kind: 'overload', dice: [0] },
-      ],
-      [[], [4, 4]],
-    ).history[0]
+  it('ダイスを足すといった攻撃しない行動は、名乗りの札と構えにカード面の最初の印を出た値で出す。凍らせる攻撃は、名乗りの札に威力を、構えに凍らせた目を出す', () => {
+    // 相手の手元に 5 が1個あるので、5 を凍らせる攻撃は2点
+    const s = makeState({ roll: [5, 1, 1], deck }, { roll: [5, 3, 1], deck })
+    const report = resolveStep(s, [
+      { kind: 'freeze', dice: [0] },
+      { kind: 'overload', dice: [0] },
+    ]).history[0]
     const d = draw(report)
-    expect(d.plates).toEqual(['過負荷2', '凍結2'])
+    expect(d.plates).toEqual(['過負荷5', '凍結2'])
     expect(d.one('.stance.card-freeze .glyph-frost')?.textContent).toBe('5')
-    expect(d.one('.stance.card-overload .glyph-extra')?.textContent).toBe('2')
-    expect(d.stances.map((e) => e.textContent)).toEqual(['5凍結', '2過負荷'])
+    expect(d.one('.stance.card-overload .glyph-extra')?.textContent).toBe('5')
+    expect(d.stances.map((e) => e.textContent)).toEqual(['5凍結', '5過負荷'])
+  })
+
+  it('凍らせる目が相手の手元に無ければ、攻撃は放たず、名乗りの札にも凍らせた目を出す', () => {
+    const s = makeState({ roll: [5, 1, 1], deck }, { roll: [2, 3, 1], deck })
+    const d = draw(resolveStep(s, [{ kind: 'freeze', dice: [0] }, pass]).history[0])
+    expect(d.arrows).toEqual([])
+    expect(d.plates).toEqual(['パス', '凍結5'])
+    expect(d.one('.plate.card-freeze .glyph-frost')?.textContent).toBe('5')
+  })
+
+  it('打ち消す構えは矢印の通り道に印を出し、打ち消された矢印は構えで止まる。打ち消せない攻撃が通れば構えは薄くなる', () => {
+    const guard = ['counter', 'barrier', 'bullet', 'spear', 'interrupt'] as const
+    const s = makeState({ roll: [4, 1, 1] }, { roll: [3, 3, 1], deck: guard })
+    const d = draw(resolveStep(s, [fire, { kind: 'counter', dice: [0] }]).history[0])
+    expect(d.one('.stance.card-counter.is-blocking .glyph-cancel')?.textContent).toBe('6')
+    expect(d.arrows.map((e) => e.className)).toEqual([
+      'arrow is-up card-flameStrike is-spent',
+      'arrow is-down card-counter',
+    ])
+    cleanup()
+    const big = makeState({ roll: [6, 1, 1] }, { roll: [3, 3, 1], deck: guard })
+    const through = draw(resolveStep(big, [fire, { kind: 'counter', dice: [0] }]).history[0])
+    expect(through.one('.stance.card-counter.is-pierced')).not.toBeNull()
+    expect(through.arrows.map((e) => e.className)).toEqual(['arrow is-up card-flameStrike'])
   })
 
   it('受けた攻撃を返す構えは、守りと同じく矢印の通り道に印を出し、返された矢印は構えで止まる', () => {

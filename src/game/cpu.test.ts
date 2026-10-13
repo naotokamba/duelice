@@ -10,7 +10,6 @@ import {
   LEVEL_NAMES,
   type Level,
   pick,
-  rollOutcomes,
   stakesOf,
   Thinker,
   weaklyDominated,
@@ -297,21 +296,6 @@ describe('無意味なパス', () => {
 })
 
 describe('拡張のカードの見積もり', () => {
-  it('振り足すダイスの出方は、目の組ごとに確率をまとめ、合計は1', () => {
-    expect(rollOutcomes(0)).toEqual([{ dice: [], p: 1 }])
-    const one = rollOutcomes(1)
-    expect(one.map((o) => o.dice)).toEqual([[1], [2], [3], [4], [5], [6]])
-    for (const o of one) expect(o.p).toBeCloseTo(1 / 6, 12)
-    const two = rollOutcomes(2)
-    expect(two).toHaveLength(21)
-    expect(two.reduce((a, o) => a + o.p, 0)).toBeCloseTo(1, 12)
-    expect(two.find((o) => o.dice.join() === '3,3')?.p).toBeCloseTo(1 / 36, 12)
-    expect(two.find((o) => o.dice.join() === '2,5')?.p).toBeCloseTo(2 / 36, 12)
-    expect(rollOutcomes(3).reduce((a, o) => a + o.p, 0)).toBeCloseTo(1, 12)
-    // 二度目は数え直さずに同じものを返す
-    expect(rollOutcomes(2)).toBe(two)
-  })
-
   /** 二ステップ目に、自分は deck の1個のダイスだけを持ち、相手はダイスを持たない盤 */
   const lastDie = (deck: CardId[]) => makeState({ roll: [5], deck }, { roll: [] }, 2)
   const evOf = (t: Thinker, s: GameState, kind: string) =>
@@ -329,29 +313,28 @@ describe('拡張のカードの見積もり', () => {
   })
   it('相手に残した凍結は見積もりの分だけ得点に入り、相手から見れば失点になる', () => {
     const deck: CardId[] = ['meditate', 'freeze', 'barrier', 'bullet', 'interrupt']
-    // 凍結は2を当てるので、その分も得点に入る
-    expect(evOf(new Thinker(), lastDie(deck), 'freeze')).toBeCloseTo(2 + ESTIMATES.freeze, 9)
+    // 相手の手元に同じ目のダイスが無いので、凍結は攻撃しない
+    expect(evOf(new Thinker(), lastDie(deck), 'freeze')).toBeCloseTo(ESTIMATES.freeze, 9)
     const t = new Thinker({ carry: 0, freeze: 3 })
-    expect(evOf(t, lastDie(deck), 'freeze')).toBeCloseTo(5, 9)
+    expect(evOf(t, lastDie(deck), 'freeze')).toBeCloseTo(3, 9)
     // 席を入れ替えても、凍らせた側の得になる
     const flipped = makeState({ roll: [] }, { roll: [5], deck }, 2)
     const seen = t.analyze(flipped, 1, 'hard').find((o) => o.action.kind === 'freeze')
-    expect(seen?.ev).toBeCloseTo(5, 9)
+    expect(seen?.ev).toBeCloseTo(3, 9)
   })
-  it('ダイスを振り足す行動の得点は、振り足すダイスの出方ごとの二ステップ目の価値の、確率で重みを付けた平均', () => {
+  it('ダイスを足す行動の得点は、足した目のダイスで解いた二ステップ目の価値', () => {
     const deck: CardId[] = ['overload', 'twinDragon', 'barrier', 'bullet', 'interrupt']
     const s = makeState({ roll: [4, 4, 1], deck }, { roll: [] })
     const t = new Thinker()
     const g = t.game(s, 0)
-    const row = g.mine.findIndex((a) => a.kind === 'overload' && a.dice[0] === 2)
+    const row = g.mine.findIndex((a) => a.kind === 'overload' && a.dice[0] === 0)
     expect(row).toBeGreaterThanOrEqual(0)
-    const want = rollOutcomes(2).reduce((acc, o) => {
-      const next = resolveStep(s, [g.mine[row], { kind: 'pass' }], [o.dice, []])
-      return acc + o.p * solveMatrixGame(new Thinker().game(next, 0).payoff).value
-    }, 0)
+    const next = resolveStep(s, [g.mine[row], { kind: 'pass' }])
+    expect(next.players[0].roll).toEqual([4, 4, 1, 4, 4])
+    const want = solveMatrixGame(new Thinker().game(next, 0).payoff).value
     expect(g.payoff[row][0]).toBeCloseTo(want, 9)
-    // 振り足した2個が4のゾロ目なら双竜で20、ターンの終わりに2焼けるので、少なくともその分は見込む
-    expect(want).toBeGreaterThan((1 / 36) * (20 - 2))
+    // 4のダイスを2個足せば4個になり、双竜で20を当てて倒せる。ターンの終わりに2焼ける
+    expect(want).toBeCloseTo(20 - 2 + KILL_BONUS, 9)
   })
   it('見積もりは CPU の版と一緒に記録に残せる', () => {
     expect(CPU_VERSION).toBeGreaterThanOrEqual(2)

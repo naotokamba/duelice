@@ -214,7 +214,7 @@ function signatureOf(def: ActionDef, vals: number[], maxHp: number): string {
   const power = def.power
   // Stryker disable next-line ArithmeticOperator,ArrayDeclaration,ObjectLiteral: 体力の範囲が少しずれても、威力を持たない行動に何を並べても、様子を渡さなくても、今の表の行動は同じに見分けられる。体力で威力の変わる行動は、今は目で威力が変わらない
   const powers = power ? Array.from({ length: maxHp }, (_, i) => power(vals, { hp: i + 1, maxHp })) : []
-  const mark = def.freezes || def.carries ? vals[0] : null
+  const mark = def.freezes || def.carries || def.copies ? vals[0] : null
   return JSON.stringify([vals.length, powers, def.guard?.(vals), def.burn?.(vals), def.missBurn?.(vals), mark])
 }
 
@@ -329,46 +329,70 @@ export const FRESH: readonly [PowerCtx, PowerCtx] = [
   { hp: DEFAULT_CONFIG.maxHp, maxHp: DEFAULT_CONFIG.maxHp },
 ]
 
-/** 威力を決めるときに読む、who の様子 */
+const otherOf = (i: PlayerIndex): PlayerIndex => (i === 0 ? 1 : 0)
+
+/** 威力を決めるときに読む、who の様子。相手のまだ使っていないダイスの目は、好きな目のダイスを除いて並べる */
 export function ctxOf(state: GameState, who: PlayerIndex): PowerCtx {
-  return { hp: state.players[who].hp, maxHp: state.config.maxHp }
+  const foe = state.players[otherOf(who)]
+  const left = freeDice(foe).map((d) => foe.roll[d])
+  // Stryker disable next-line MethodExpression,ConditionalExpression: 好きな目のダイスの WILD は1から6のどの目とも違うので、相手の目を読む今の表の威力は変わらない
+  const seen = left.filter((v) => v !== WILD)
+  return { hp: state.players[who].hp, maxHp: state.config.maxHp, foe: seen }
 }
 
-const otherOf = (i: PlayerIndex): PlayerIndex => (i === 0 ? 1 : 0)
+/** 目の中で一番大きいもの。無ければ null */
+const largest = (vals: number[]): number | null => (vals.length === 0 ? null : Math.max(...vals))
 
 /** 守りの減らす量の合計 */
 const guardOf = (moves: readonly Move[]) => moves.reduce((sum, m) => sum + (defOf(m).guard?.(m.vals) ?? 0), 0)
 
 /**
- * 一つのステップの、ぶつかり合いの途中。守りの残りの量と、守りが返したかを、先に当たる攻撃から続けて持つ
+ * 一つのステップの、ぶつかり合いの途中。守りの残りの量と、守りが返したかと、打ち消したかを、先に当たる攻撃から続けて持つ
  */
 interface Field {
   /** 双方の守りが、まだ減らせる量 */
   pool: [number, number]
   /** 双方の守りが、減らせる攻撃を受けて、もう返したか */
   returned: [boolean, boolean]
+  /** 双方の打ち消す構えが、攻撃を打ち消したか。打ち消したら返すのは、ステップに1回 */
+  countered: [boolean, boolean]
 }
+
+/** 打ち消せる攻撃の威力の上限。構えが重なれば大きい方。打ち消す構えが無ければ0で、威力0の攻撃は放たれないので何も打ち消さない */
+const cancelOf = (moves: readonly Move[]): number => Math.max(0, ...moves.map((m) => defOf(m).cancels ?? 0))
 
 /**
  * phase の時に放たれた攻撃を全て、その行方とともに返す。fast は先に当たる攻撃、main はほかの攻撃。
+ * 威力が0の攻撃は放たれない。
+ * 受けた側が打ち消す構えなら、上限以下の攻撃は、障壁で減らない攻撃も含めて打ち消され、どちらにも当たらない。
  * 受けた側が攻撃を返す構えなら、障壁で減る攻撃は攻撃した側にそのまま当たる。
  * 受けた側が守っていれば、障壁で減る攻撃を、置いた順に守りの量の残りから減らす。
  * 減らせる攻撃を受けた守りのうち、返す性質を持つものは、守りのカードごとにステップに1回、攻撃した側へ返す。
+ * 攻撃を打ち消した構えのうち、返す性質を持つものも、ステップに1回、攻撃した側へ返す。
  * 攻撃した側への返しは、攻撃した側の守りでは減らない
  */
 function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx], phase: Phase, f: Field) {
   const out: Strike[] = []
   // Stryker disable next-line ArrayDeclaration: 空の配列でも、まだ受けていない側は undefined で、受けていないと読む
   const hit: [boolean, boolean] = [false, false]
+  // Stryker disable next-line ArrayDeclaration: 同じ
+  const stopped: [boolean, boolean] = [false, false]
   for (const from of [0, 1] as const) {
     const to = otherOf(from)
     const answer = moves[to]
     const reflects = answer.some((m) => defOf(m).reflects)
     const guards = answer.some((m) => defOf(m).guard)
+    const cap = cancelOf(answer)
     for (const m of moves[from]) {
       const def = defOf(m)
       if (!def.power || !!def.fast !== (phase === 'fast')) continue
       const power = def.power(m.vals, ctx[from])
+      if (power <= 0) continue
+      if (power <= cap) {
+        stopped[to] = true
+        out.push({ from, kind: m.kind, power, outcome: 'countered', to, dealt: 0, phase })
+        continue
+      }
       if (reflects && !def.piercing) {
         out.push({ from, kind: m.kind, power, outcome: 'reflected', to: from, dealt: power, phase })
         continue
@@ -384,14 +408,22 @@ function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, Powe
       out.push({ from, kind: m.kind, power, outcome, to, dealt: power, phase })
     }
   }
-  // 返しは、返した先の席の順に並べる
+  // 返しは、返した先の席の順に並べる。一つの席への返しは、守りの返し、打ち消した構えの返しの順
   for (const to of [0, 1] as const) {
     const by = otherOf(to)
-    if (!hit[by] || f.returned[by]) continue
-    f.returned[by] = true
-    for (const m of moves[by]) {
-      const back = defOf(m).thorns
-      if (back) out.push({ from: by, kind: m.kind, power: back, outcome: 'returned', to, dealt: back, phase })
+    if (hit[by] && !f.returned[by]) {
+      f.returned[by] = true
+      for (const m of moves[by]) {
+        const back = defOf(m).thorns
+        if (back) out.push({ from: by, kind: m.kind, power: back, outcome: 'returned', to, dealt: back, phase })
+      }
+    }
+    if (stopped[by] && !f.countered[by]) {
+      f.countered[by] = true
+      for (const m of moves[by]) {
+        const back = defOf(m).riposte
+        if (back) out.push({ from: by, kind: m.kind, power: back, outcome: 'returned', to, dealt: back, phase })
+      }
     }
   }
   return out
@@ -401,7 +433,7 @@ function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, Powe
 export interface Clash {
   /** 先に当たる攻撃、ほかの攻撃の順に並べた、攻撃とその行方 */
   strikes: Strike[]
-  /** 双方が炎で自分も焼けて受けるダメージ。返す構えで返す攻撃が来ず、自分が受けた分も含む */
+  /** 双方が炎で自分も焼けて受けるダメージ。返す構えや打ち消す構えに攻撃が来ず、自分が受けた分も含む */
   burn: [number, number]
   /** 先に当たる攻撃で倒れて、先に当たる攻撃のほかの効果が起きなかった側。何もしなかった側も倒れれば入る */
   cancelled: [boolean, boolean]
@@ -420,7 +452,7 @@ export interface Clash {
  */
 export function clash(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx] = FRESH): Clash {
   // Stryker disable next-line ArrayDeclaration: 空の配列でも、まだ返していない側は undefined で、返していないと読む
-  const f: Field = { pool: [guardOf(moves[0]), guardOf(moves[1])], returned: [false, false] }
+  const f: Field = { pool: [guardOf(moves[0]), guardOf(moves[1])], returned: [false, false], countered: [false, false] }
   const first = attacks(moves, ctx, 'fast', f)
   const hp = [ctx[0].hp, ctx[1].hp]
   for (const s of first) hp[s.to] -= s.dealt
@@ -431,10 +463,15 @@ export function clash(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx,
   ) as [Move[], Move[]]
   const list = [...first, ...attacks(live, ctx, 'main', f)]
   const burn = burnOf(live)
-  // 受けた攻撃を返す構えで、相手の攻撃を一つも返さなければ、外した分を自分が受ける
+  // 受けた攻撃を返す構えで相手の攻撃を一つも返さなければ、打ち消す構えで一つも打ち消さなければ、外した分を自分が受ける
   for (const i of [0, 1] as const) {
-    if (list.some((s) => s.outcome === 'reflected' && s.from !== i)) continue
-    burn[i] += live[i].reduce((sum, m) => sum + (defOf(m).missBurn?.(m.vals) ?? 0), 0)
+    const reflected = list.some((s) => s.outcome === 'reflected' && s.from !== i)
+    const countered = list.some((s) => s.outcome === 'countered' && s.to === i)
+    burn[i] += live[i].reduce((sum, m) => {
+      const def = defOf(m)
+      const caught = (def.reflects && reflected) || (def.cancels !== undefined && countered)
+      return caught ? sum : sum + (def.missBurn?.(m.vals) ?? 0)
+    }, 0)
   }
   const damage: [number, number] = [...burn]
   for (const s of list) damage[s.to] += s.dealt
@@ -470,20 +507,6 @@ export function breaksChant(by: readonly Move[]): boolean {
 }
 
 /**
- * 行動で振り足すダイスの数。振り足したダイスは次のステップに使うので、二ステップ目には振らない。
- * 好きな目のダイスを得る効果と一緒なら、振り足したダイスも捨てるので振らない
- */
-export function extraDiceOf(state: GameState, who: PlayerIndex, a: Action): number {
-  if (state.step === 2) return 0
-  const moves = movesOf(state.players[who], a)
-  if (moves.some((m) => defOf(m).transmute)) return 0
-  return moves.reduce((sum, m) => sum + (defOf(m).extraDice ?? 0), 0)
-}
-
-/** 目の中で一番大きいもの。無ければ null */
-const largest = (vals: number[]): number | null => (vals.length === 0 ? null : Math.max(...vals))
-
-/**
  * ターンの終わりに起きること。このターンに起きた効果の、ターンの終わりに自分も焼ける分を払い、
  * それを足したこのターンに焼けた分に延焼の倍率を掛けて、延焼の性質を持つ効果を起こした回数だけ、相手に与える。障壁では減らない
  */
@@ -505,34 +528,28 @@ function turnEnd(players: readonly [PlayerState, PlayerState]): { endBurn: [numb
 
 /**
  * 双方の行動を同時に解決して次の状態を返す。不正な行動や、決着した後の解決は例外にする。
- * extra は双方が振り足したダイスの目で、振り足す行動をした側はその数だけ渡す。乱数は外で振る。
  * 二ステップ目なら、ターンの終わりに起きることもここで解決する。
  * ターン終わりの振り直しは nextTurn で行う。対局を進めるときは match.ts の submit を使う
  */
-export function resolveStep(
-  state: GameState,
-  acts: [Action, Action],
-  extra: [number[], number[]] = [[], []],
-): GameState {
+export function resolveStep(state: GameState, acts: [Action, Action]): GameState {
   if (state.winner !== null) throw new Error('ゲームは終了している')
   acts.forEach((a, i) => {
     if (!isLegal(state, i as PlayerIndex, a)) throw new Error(`不正な行動: ${JSON.stringify(a)}`)
-    if (extra[i].length !== extraDiceOf(state, i as PlayerIndex, a))
-      throw new Error(`振り足すダイスの数が違う: ${JSON.stringify(extra[i])}`)
   })
-  return resolveTrusted(state, acts, extra)
+  return resolveTrusted(state, acts)
 }
 
 /**
  * 合法と分かっている行動を、確かめずに解決する。CPU が合法手の列挙から選んだ手を、先読みで何度も解決するときに使う。
  * 決着した後の盤や、不正な行動を渡したときの結果は決めていない。対局を進めるときは resolveStep を使う
  */
-export function resolveTrusted(state: GameState, acts: [Action, Action], extra: [number[], number[]]): GameState {
+export function resolveTrusted(state: GameState, acts: [Action, Action]): GameState {
   const vals: [number[], number[]] = [diceValues(state.players[0], acts[0]), diceValues(state.players[1], acts[1])]
   const moves: [Move[], Move[]] = [movesOf(state.players[0], acts[0]), movesOf(state.players[1], acts[1])]
   const c = clash(moves, [ctxOf(state, 0), ctxOf(state, 1)])
   const chants: [ChantResult, ChantResult] = [null, null]
   const refunded: [boolean, boolean] = [false, false]
+  const added: [number[], number[]] = [[], []]
 
   const update = (p: PlayerState, i: PlayerIndex): PlayerState => {
     const theirs = c.live[otherOf(i)]
@@ -556,12 +573,18 @@ export function resolveTrusted(state: GameState, acts: [Action, Action], extra: 
       chants[i] = broken ? 'broken' : 'kept'
     }
     if (parts.some((x) => ACTION_DEFS[x.kind].needsCharge)) chant = 'none'
-    // 障壁で減る攻撃を全て防ぎきったら、防ぎきると戻る守りに置いたダイスが戻る
-    const back = new Set(parts.filter((x) => ACTION_DEFS[x.kind].refund && c.blocked[i]).flatMap((x) => filled(x.dice)))
-    refunded[i] = back.size > 0
-    let roll = [...p.roll, ...extra[i]]
-    let usedDice = [...p.usedDice, ...actionDice(a).filter((d) => !back.has(d))]
+    // 障壁で減る攻撃を全て防ぎきったら、防ぎきると戻る守りに置いたダイスが戻る。いつも戻るカードに置いたダイスも戻る
+    const guarded = parts.filter((x) => ACTION_DEFS[x.kind].refund && c.blocked[i])
+    refunded[i] = guarded.length > 0
+    const back = new Set(
+      [...guarded, ...parts.filter((x) => ACTION_DEFS[x.kind].returnsDice)].flatMap((x) => filled(x.dice)),
+    )
     const forged = largest(mine.map((m) => defOf(m).transmute ?? 0).filter((n) => n > 0))
+    // 一ステップ目に、印の目のダイスを足す。好きな目のダイスを得るなら、足したダイスも捨てるので足さない
+    if (state.step === 1 && forged === null)
+      added[i] = mine.flatMap((m) => Array<number>(defOf(m).copies ?? 0).fill(m.vals[0]))
+    let roll = [...p.roll, ...added[i]]
+    let usedDice = [...p.usedDice, ...actionDice(a).filter((d) => !back.has(d))]
     if (state.step === 1 && forged !== null) {
       // 残ったダイスを全て捨て、好きな目のダイスを得る
       usedDice = roll.map((_, k) => k)
@@ -609,7 +632,7 @@ export function resolveTrusted(state: GameState, acts: [Action, Action], extra: 
     chants,
     cancelled: c.cancelled,
     refunded,
-    extra,
+    added,
   }
   return { ...state, players, history: [...state.history, report], winner: winnerOf(players), step: 2 }
 }

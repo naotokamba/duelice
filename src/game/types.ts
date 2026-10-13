@@ -41,7 +41,7 @@ export type ChantState = 'none' | 'charged' | 'broken'
 
 export interface PlayerState {
   hp: number
-  /** このターンのダイスの目。振り足したり持ち越したりすると、3個より多くなる。好きな目のダイスは WILD */
+  /** このターンのダイスの目。効果で足したり持ち越したりすると、3個より多くなる。好きな目のダイスは WILD */
   roll: number[]
   usedDice: number[]
   usedCards: CardId[]
@@ -74,10 +74,10 @@ export const DEFAULT_CONFIG: Config = {
 }
 
 /**
- * 攻撃が相手の構えに当たってどうなったか。当たった、守りに削られた、守りをすり抜けた、構えに返されて自分に当たった。
- * returned は、守りが攻撃を受けて、攻撃した側へ返したダメージ
+ * 攻撃が相手の構えに当たってどうなったか。当たった、守りに削られた、守りをすり抜けた、構えに返されて自分に当たった、構えに打ち消された。
+ * returned は、守りや打ち消す構えが攻撃を受けて、攻撃した側へ返したダメージ
  */
-export type Outcome = 'hit' | 'guarded' | 'pierced' | 'reflected' | 'returned'
+export type Outcome = 'hit' | 'guarded' | 'pierced' | 'reflected' | 'countered' | 'returned'
 
 /**
  * 攻撃が当たった時。fast は相手の行動より先、main はステップの行動と同時、end はターンの終わり。
@@ -94,7 +94,7 @@ export interface Strike {
   outcome: Outcome
   /** ダメージを受けた側。構えに返された攻撃は、放った側 */
   to: PlayerIndex
-  /** to が受けたダメージ。守りに削られたら、削られた後の値 */
+  /** to が受けたダメージ。守りに削られたら、削られた後の値。打ち消されたら0 */
   dealt: number
   phase: Phase
 }
@@ -127,8 +127,8 @@ export interface StepReport {
   cancelled: [boolean, boolean]
   /** 守りで防ぎきって、置いたダイスが戻った側 */
   refunded: [boolean, boolean]
-  /** 双方が振り足したダイスの目 */
-  extra: [number[], number[]]
+  /** 双方が、このステップの効果で手元に足したダイスの目。次のステップに使える */
+  added: [number[], number[]]
 }
 
 export interface GameState {

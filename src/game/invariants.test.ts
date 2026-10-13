@@ -13,7 +13,6 @@ import {
   clash,
   ctxOf,
   diceValues,
-  extraDiceOf,
   isLegal,
   legalActions,
   movesOf,
@@ -27,7 +26,7 @@ import {
   turnOver,
 } from './rules'
 import { filled, MARK_SLOT, readsMark, requiredSlots, slotsOf } from './slots'
-import type { Action, GameState, Move, Play, PlayerIndex, StepReport } from './types'
+import type { Action, GameState, Move, Phase, Play, PlayerIndex, StepReport } from './types'
 import { DEFAULT_CONFIG, WILD } from './types'
 
 const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
@@ -35,7 +34,7 @@ const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
 /** スターターどうしの局面か、選べるカードから5枚ずつ持ち込んだ局面 */
 const anyStateArb: fc.Arbitrary<GameState> = fc.oneof(stateArb, poolStateArb)
 
-/** 局面と、その局面の双方の合法手から一つずつと、振り足すダイスの目 */
+/** 局面と、その局面の双方の合法手から一つずつ */
 const anyPlayArb = playArb(anyStateArb)
 
 /** 双方の様子 */
@@ -215,16 +214,8 @@ describe('合法手の列挙', () => {
           for (const same of byKey.values()) {
             const [a, b] = [same[0], same[same.length - 1]]
             const acts = (x: Action): [Action, Action] => (who === 0 ? [x, answer] : [answer, x])
-            // 振り足すダイスは同じ目にそろえる
-            const extra = (x: Action): [number[], number[]] => {
-              const e = [
-                Array(extraDiceOf(s, 0, acts(x)[0])).fill(3),
-                Array(extraDiceOf(s, 1, acts(x)[1])).fill(3),
-              ] as [number[], number[]]
-              return e
-            }
-            const ra = resolveStep(s, acts(a), extra(a))
-            const rb = resolveStep(s, acts(b), extra(b))
+            const ra = resolveStep(s, acts(a))
+            const rb = resolveStep(s, acts(b))
             expect(board(s, rb, who, b)).toEqual(board(s, ra, who, a))
           }
         }
@@ -369,7 +360,7 @@ describe('ダメージ', () => {
       }),
     )
   })
-  it('攻撃しない側が相手に与えるダメージは、守りが返した分と、構えが返した攻撃だけ。相手が自分で自分が焼けた分は除く', () => {
+  it('攻撃しない側が相手に与えるダメージは、守りや打ち消す構えが返した分と、構えが返した攻撃だけ。相手が自分で自分が焼けた分は除く', () => {
     fc.assert(
       fc.property(anyPlayArb, ({ s, acts }) => {
         const moves = movesOfBoth(s, acts)
@@ -381,14 +372,14 @@ describe('ダメージ', () => {
             c.strikes.filter((x) => x.outcome === 'reflected' && x.to === other(i)).map((x) => x.dealt),
           )
           expect(c.damage[other(i)] - c.burn[other(i)]).toBe(returned + reflected)
-          // 返すのは返す性質を持つ守りと、攻撃を返す構えだけ
-          if (!moves[i].some((m) => defOf(m).thorns)) expect(returned).toBe(0)
+          // 返すのは返す性質を持つ守りと打ち消す構えと、攻撃を返す構えだけ
+          if (!moves[i].some((m) => defOf(m).thorns || defOf(m).riposte)) expect(returned).toBe(0)
           if (!moves[i].some((m) => defOf(m).reflects)) expect(reflected).toBe(0)
         }
       }),
     )
   })
-  it('自分も焼けるのは、自分も焼ける効果と、相手の攻撃を一つも返さなかった返す構えだけで、受ける量は置いた目から決まる。焼けた分は受けたダメージに入る', () => {
+  it('自分も焼けるのは、自分も焼ける効果と、相手の攻撃を一つも返さなかった返す構えと、一つも打ち消さなかった打ち消す構えだけで、受ける量は置いた目から決まる。焼けた分は受けたダメージに入る', () => {
     fc.assert(
       fc.property(anyPlayArb, ({ s, acts }) => {
         const moves = movesOfBoth(s, acts)
@@ -397,8 +388,15 @@ describe('ダメージ', () => {
         for (const i of [0, 1] as const) {
           const live = liveOf(moves[i], c.cancelled[i])
           expect(c.live[i]).toEqual(live)
-          const returned = c.strikes.some((x) => x.outcome === 'reflected' && x.from === other(i))
-          const miss = returned ? 0 : sum(live.map((m) => defOf(m).missBurn?.(m.vals) ?? 0))
+          const reflected = c.strikes.some((x) => x.outcome === 'reflected' && x.from === other(i))
+          const countered = c.strikes.some((x) => x.outcome === 'countered' && x.to === i)
+          const miss = sum(
+            live.map((m) => {
+              const d = defOf(m)
+              const caught = (d.reflects && reflected) || (d.cancels !== undefined && countered)
+              return caught ? 0 : (d.missBurn?.(m.vals) ?? 0)
+            }),
+          )
           expect(c.burn[i]).toBe(sum(live.map((m) => defOf(m).burn?.(m.vals) ?? 0)) + miss)
           expect(c.damage[i]).toBeGreaterThanOrEqual(c.burn[i])
           // 倒れる前の効果から決まる焼ける分は、起きた効果から決まる焼ける分と同じか多い
@@ -420,8 +418,10 @@ describe('ダメージ', () => {
           // その時に起きている効果。先に当たる攻撃の時は全て、ほかの攻撃の時は倒れて起きなかった効果を除く
           const now = phase === 'fast' ? moves : c.live
           const here = list.filter((x) => x.phase === phase)
+          // 威力が0の攻撃は放たれない
+          const fired = (from: 0 | 1, m: Move) => (defOf(m).power?.(m.vals, ctxOf(s, from)) ?? 0) > 0
           const want = ([0, 1] as const).flatMap((from) =>
-            now[from].filter((m) => defOf(m).power && fast(m) === (phase === 'fast')).map((m) => ({ from, m })),
+            now[from].filter((m) => fired(from, m) && fast(m) === (phase === 'fast')).map((m) => ({ from, m })),
           )
           expect(here.map((x) => [x.from, x.kind])).toEqual(want.map(({ from, m }) => [from, m.kind]))
           here.forEach((x, k) => {
@@ -431,6 +431,12 @@ describe('ダメージ', () => {
             expect(x.power).toBe(def.power?.(m.vals, ctxOf(s, x.from)))
             expect(x.dealt).toBeGreaterThanOrEqual(0)
             expect(x.dealt).toBeLessThanOrEqual(x.power)
+            // 打ち消す構えの上限以下の攻撃は、貫通する攻撃も打ち消され、どちらにも当たらない
+            const caps = answer.flatMap((b) => (defOf(b).cancels === undefined ? [] : [defOf(b).cancels as number]))
+            if (caps.length > 0 && x.power <= Math.max(...caps)) {
+              expect(x).toMatchObject({ outcome: 'countered', to: other(x.from), dealt: 0 })
+              return
+            }
             if (answer.some((b) => defOf(b).reflects) && !def.piercing) {
               // 構えに返された攻撃は、放った側にそのまま当たる
               expect(x).toMatchObject({ outcome: 'reflected', to: x.from, dealt: x.power })
@@ -450,20 +456,31 @@ describe('ダメージ', () => {
           const total = sum(moves[d].map((m) => defOf(m).guard?.(m.vals) ?? 0))
           const cut = sum(guarded.map((x) => x.power - x.dealt))
           expect(cut).toBe(Math.min(total, sum(guarded.map((x) => x.power))))
-          // 守りが返すのは、減らせる攻撃を受けたときだけ。返す性質を持つ守りごとに一度、最初に受けた時に返す
+          // 守りが返すのは、減らせる攻撃を受けたときだけ。返す性質を持つ守りごとに一度、最初に受けた時に返す。
+          // 打ち消す構えが返すのは、攻撃を打ち消したときだけ。返す性質を持つ構えごとに一度、最初に打ち消した時に返す。
+          // 同じ時なら、守りの返しが先に並ぶ
           const returns = c.strikes.filter((x) => x.outcome === 'returned' && x.from === d)
-          const backs = guarded.length === 0 ? [] : liveOf(moves[d], false).filter((m) => defOf(m).thorns)
-          expect(returns).toEqual(
-            backs.map((m) => ({
-              from: d,
-              kind: m.kind,
-              power: defOf(m).thorns,
-              outcome: 'returned',
-              to: other(d),
-              dealt: defOf(m).thorns,
-              phase: guarded[0].phase,
-            })),
-          )
+          const stopped = c.strikes.filter((x) => x.to === d && x.outcome === 'countered')
+          const back = (m: Move, power: number, phase: Phase) => ({
+            from: d,
+            kind: m.kind,
+            power,
+            outcome: 'returned',
+            to: other(d),
+            dealt: power,
+            phase,
+          })
+          const mine = liveOf(moves[d], false)
+          const thorns =
+            guarded.length === 0
+              ? []
+              : mine.filter((m) => defOf(m).thorns).map((m) => back(m, defOf(m).thorns as number, guarded[0].phase))
+          const ripostes =
+            stopped.length === 0
+              ? []
+              : mine.filter((m) => defOf(m).riposte).map((m) => back(m, defOf(m).riposte as number, stopped[0].phase))
+          const order = (x: { phase: Phase }) => (x.phase === 'fast' ? 0 : 1)
+          expect(returns).toEqual([...thorns, ...ripostes].sort((a, b) => order(a) - order(b)))
           // 守りきったかは、減らせる攻撃を一つ以上受けて、全て0にしたか
           expect(c.blocked[d]).toBe(guarded.length > 0 && guarded.every((x) => x.dealt === 0))
         }
@@ -537,8 +554,8 @@ describe('効果', () => {
 describe('状態の更新', () => {
   it('解決すると、HPはダメージ分だけ減り、起きた行動の使ったダイスとカードと効果が記録される', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
-        const next = resolveStep(s, acts, extra)
+      fc.property(anyPlayArb, ({ s, acts }) => {
+        const next = resolveStep(s, acts)
         const report = next.history[next.history.length - 1]
         expect(report.moves).toEqual(movesOfBoth(s, acts))
         for (const i of [0, 1] as const) {
@@ -551,19 +568,25 @@ describe('状態の更新', () => {
           const happened = a.kind !== 'pass' && !report.cancelled[i]
           const live = liveIn(report, i)
           const forged = happened && s.step === 1 && live.some((m) => defOf(m).transmute)
+          // 一ステップ目に起きた、ダイスを足す効果の印の目のダイスが足される。好きな目のダイスを得たら足さない
+          const added =
+            happened && s.step === 1 && !forged
+              ? live.flatMap((m) => Array<number>(defOf(m).copies ?? 0).fill(m.vals[0]))
+              : []
+          expect(report.added[i]).toEqual(added)
           if (forged) {
             // 好きな目のダイスを得たら、残ったダイスは全て捨て、後ろに好きな目のダイスが加わる
             const n = Math.max(...live.map((m) => defOf(m).transmute ?? 0))
-            expect(after.roll).toEqual([...before.roll, ...extra[i], ...Array(n).fill(WILD)])
-            expect([...after.usedDice].sort((x, y) => x - y)).toEqual([...before.roll, ...extra[i]].map((_, k) => k))
+            expect(after.roll).toEqual([...before.roll, ...Array(n).fill(WILD)])
+            expect([...after.usedDice].sort((x, y) => x - y)).toEqual(before.roll.map((_, k) => k))
           } else if (happened) {
-            // 防ぎきって戻ったダイスは、戻る守りに置いたダイスで、使っていないことになる
+            // 防ぎきって戻ったダイスと、いつも戻るカードに置いたダイスは、使っていないことになる
             const back = partsOf(a)
-              .filter((x) => ACTION_DEFS[x.kind].refund && report.refunded[i])
+              .filter((x) => (ACTION_DEFS[x.kind].refund && report.refunded[i]) || ACTION_DEFS[x.kind].returnsDice)
               .flatMap((x) => filled(x.dice))
             expect(after.usedDice).toEqual([...before.usedDice, ...actionDice(a).filter((d) => !back.includes(d))])
-            // 振り足したダイスは、起きた行動のものだけ後ろに加わる
-            expect(after.roll).toEqual([...before.roll, ...extra[i]])
+            // 足したダイスは後ろに加わる
+            expect(after.roll).toEqual([...before.roll, ...added])
           } else {
             expect(after.usedDice).toEqual(before.usedDice)
             expect(after.roll).toEqual(before.roll)
@@ -601,15 +624,22 @@ describe('状態の更新', () => {
           const taken = sum(late.filter((x) => x.to === i).map((x) => x.dealt))
           expect(report.damage[i]).toBe(c.damage[i] + report.endBurn[i] + taken)
         }
-        expect(report.extra).toEqual(extra)
+        // 打ち消された攻撃はどちらにも当たらず、威力は打ち消した構えの上限以下
+        for (const x of report.strikes.filter((y) => y.outcome === 'countered')) {
+          expect(x.dealt).toBe(0)
+          const caps = liveIn(report, x.to).flatMap((m) => (defOf(m).cancels === undefined ? [] : [defOf(m).cancels]))
+          expect(x.power).toBeLessThanOrEqual(Math.max(...(caps as number[])))
+        }
+        // ステップの間に放たれた攻撃の威力は1以上。威力が0の攻撃は放たれない
+        for (const x of report.strikes.filter((y) => y.phase !== 'end')) expect(x.power).toBeGreaterThan(0)
         expect(report.values).toEqual([diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])])
       }),
     )
   })
   it('ターンの終わりに起きることは、二ステップ目にだけ起き、そのターンに起きた効果から決まる', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
-        const next = resolveStep(s, acts, extra)
+      fc.property(anyPlayArb, ({ s, acts }) => {
+        const next = resolveStep(s, acts)
         const report = next.history[next.history.length - 1]
         const late = report.strikes.filter((x) => x.phase === 'end')
         if (s.step === 1) {
@@ -631,8 +661,8 @@ describe('状態の更新', () => {
   })
   it('勝敗はHPと一致する。同時に0以下なら体力の残りが多い方が勝ち、同じなら引き分け', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
-        const next = resolveStep(s, acts, extra)
+      fc.property(anyPlayArb, ({ s, acts }) => {
+        const next = resolveStep(s, acts)
         const [a, b] = next.players.map((p) => p.hp)
         const dead = [a <= 0, b <= 0]
         const both = a === b ? 'draw' : a > b ? 0 : 1
@@ -643,9 +673,9 @@ describe('状態の更新', () => {
   })
   it('席を入れ替えて解決すると、結果も入れ替わる', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
-        const a = resolveStep(s, acts, extra)
-        const b = resolveStep(swapSeats(s), [acts[1], acts[0]], [extra[1], extra[0]])
+      fc.property(anyPlayArb, ({ s, acts }) => {
+        const a = resolveStep(s, acts)
+        const b = resolveStep(swapSeats(s), [acts[1], acts[0]])
         expect(swapSeats(b).players).toEqual(a.players)
         expect(swapSeats(b).winner).toEqual(a.winner)
       }),
@@ -653,8 +683,8 @@ describe('状態の更新', () => {
   })
   it('詠唱の状態は、起きた詠唱の効果と発動の行動でしか変わらず、詠唱は相手が詠唱を崩す効果を起こしたときだけ崩れる', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
-        const next = resolveStep(s, acts, extra)
+      fc.property(anyPlayArb, ({ s, acts }) => {
+        const next = resolveStep(s, acts)
         const report = next.history[next.history.length - 1]
         for (const i of [0, 1] as const) {
           const happened = acts[i].kind !== 'pass' && !report.cancelled[i]
@@ -671,9 +701,9 @@ describe('状態の更新', () => {
   })
   it('元の状態を書き換えない', () => {
     fc.assert(
-      fc.property(anyPlayArb, ({ s, acts, extra }) => {
+      fc.property(anyPlayArb, ({ s, acts }) => {
         const snapshot = structuredClone(s)
-        resolveStep(s, acts, extra)
+        resolveStep(s, acts)
         expect(s).toEqual(snapshot)
       }),
     )
@@ -687,7 +717,7 @@ describe('対局全体', () => {
         const { states } = playRandom(seed, 60, decks)
         for (const s of states) {
           for (const p of s.players) {
-            // 持ち越すと1個、振り足すと2個ずつ、好きな目のダイスを得ると3個増える
+            // 持ち越すと1個、効果で足すと2個ずつ、好きな目のダイスを得ると3個増える
             expect(p.roll.length).toBeGreaterThanOrEqual(s.config.diceCount)
             expect(p.roll.length).toBeLessThanOrEqual(s.config.diceCount + 5)
             if (!decks) expect(p.roll).toHaveLength(s.config.diceCount)

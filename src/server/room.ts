@@ -113,9 +113,13 @@ function restorePlayer(
 
 /**
  * 保存されていた記録。先に当たる攻撃やターンの終わりの欄が無ければ、何も起きなかった値を入れる。
- * 効果の欄が無ければ、カードの行動を一つずつ出した記録なので、行動と置いた目から作る
+ * 効果の欄が無ければ、カードの行動を一つずつ出した記録なので、行動と置いた目から作る。
+ * 手元に足したダイスの欄が無く、振り足したダイスの欄 extra があれば、振り足したダイスも手元に足したダイスなので、それを使う
  */
-function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded' | 'extra' | 'moves'>): StepReport {
+function restoreReport(
+  saved: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded' | 'added' | 'moves'> & { extra?: [number[], number[]] },
+): StepReport {
+  const { extra, ...r } = saved
   const moveOf = (i: 0 | 1): Move[] => {
     const a = r.actions[i]
     return a.kind === 'pass' ? [] : [{ kind: a.kind, vals: r.values[i] }]
@@ -127,7 +131,7 @@ function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded'
     endBurn: r.endBurn ?? [0, 0],
     cancelled: r.cancelled ?? [false, false],
     refunded: r.refunded ?? [false, false],
-    extra: r.extra ?? [[], []],
+    added: r.added ?? extra ?? [[], []],
   }
 }
 

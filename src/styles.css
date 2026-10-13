@@ -36,6 +36,7 @@
   --transmute: var(--neutral);
   --doubleCast: var(--neutral);
   --echo: var(--neutral);
+  --counter: var(--barrier);
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --flameStrike-ink: #a22d18;
   --barrier-ink: #1f6b3c;
@@ -56,6 +57,7 @@
   --transmute-ink: var(--neutral-ink);
   --doubleCast-ink: var(--neutral-ink);
   --echo-ink: var(--neutral-ink);
+  --counter-ink: var(--barrier-ink);
   /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
   --burn: #c2410c;
   /* 風の守りが吹き返すダメージの渦。白い数との差は 5.3:1 */
@@ -115,6 +117,7 @@
     --transmute: var(--neutral);
     --doubleCast: var(--neutral);
     --echo: var(--neutral);
+    --counter: var(--barrier);
     --flameStrike-ink: #f28069;
     --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
@@ -134,6 +137,7 @@
     --transmute-ink: var(--neutral-ink);
     --doubleCast-ink: var(--neutral-ink);
     --echo-ink: var(--neutral-ink);
+    --counter-ink: var(--barrier-ink);
     --burn: #e8692a;
     --gust: #2f9e63;
   }
@@ -780,7 +784,7 @@ button.die {
     0 0 0 3px var(--me),
     0 8px 14px rgba(29, 34, 51, 0.25);
 }
-/* 持ち越した、振り足した、凍ったダイスの角の印。ダイスの右上に小さな丸を重ねる */
+/* 持ち越した、効果で足した、凍ったダイスの角の印。ダイスの右上に小さな丸を重ねる */
 .die-badge {
   position: absolute;
   top: -7px;
@@ -1018,6 +1022,11 @@ button.die {
   --spell: var(--echo);
   --spell-ink: var(--echo-ink);
   --card-ink: var(--echo-ink);
+}
+.card-counter {
+  --spell: var(--counter);
+  --spell-ink: var(--counter-ink);
+  --card-ink: var(--counter-ink);
 }
 .card-head {
   display: flex;
@@ -1421,6 +1430,34 @@ button.fx[aria-describedby] {
   stroke-width: 5;
   stroke-linecap: round;
   stroke-linejoin: round;
+}
+/* 構えに攻撃が来なかったら受ける。炎の右下に、下の面の色の丸を重ねる */
+.glyph-miss {
+  overflow: visible;
+}
+.glyph-miss .late-clock circle {
+  fill: var(--glyph-bg, var(--table));
+  stroke: var(--burn);
+  stroke-width: 5;
+}
+.glyph-miss .late-clock path {
+  fill: none;
+  stroke: var(--burn);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* 同じ目のダイス1個ごとのダメージ。星の右下に、下の面の色のダイスを重ねる */
+.glyph-shards {
+  overflow: visible;
+}
+.glyph-shards .shards-die rect {
+  fill: var(--glyph-bg, var(--table));
+  stroke: var(--hit);
+  stroke-width: 5;
+}
+.glyph-shards .shards-die circle {
+  fill: var(--hit);
 }
 /* 凍結の印の真ん中の丸。結晶の線が目に重ならないよう、下の面の色で抜く */
 .glyph-frost .frost-core {

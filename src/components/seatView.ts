@@ -28,7 +28,7 @@ export interface SeatView {
   kept: PlacedRow[]
   /** 席の様子。失った体力で威力の変わるカードの値に効く */
   ctx: PowerCtx
-  /** ダイスごとの印。前のターンから持ち越した、このターンに振り足した、凍って次のステップに置けない。印の無いダイスは null */
+  /** ダイスごとの印。前のターンから持ち越した、このターンに効果で足した、凍って次のステップに置けない。印の無いダイスは null */
   marks: (DieMark | null)[]
 }
 
@@ -49,19 +49,19 @@ export function seatView(board: GameState, who: PlayerIndex): SeatView {
 }
 
 /**
- * ダイスごとの印。ターンの初めに振ったダイスの後ろに、持ち越したダイス、このターンに振り足したダイスの順に並ぶ。
+ * ダイスごとの印。ターンの初めに振ったダイスの後ろに、持ち越したダイス、このターンに効果で足したダイスの順に並ぶ。
  * まだ使っていないダイスのうち、凍らされた目のものは凍って置けない。好きな目のダイスは、目の無い面で見分けるので印を付けない
  */
 export function diceMarks(board: GameState, who: PlayerIndex): (DieMark | null)[] {
   const p = board.players[who]
   const rolled = board.config.diceCount
-  const extra = board.history.filter((r) => r.turn === board.turn).reduce((n, r) => n + r.extra[who].length, 0)
+  const added = board.history.filter((r) => r.turn === board.turn).reduce((n, r) => n + r.added[who].length, 0)
   const free = freeDice(p)
   const wild = p.roll.filter((v) => v === WILD).length
   return p.roll.map((v, i) => {
     if (v === WILD) return null
     if (free.includes(i) && v === p.frozen) return 'frozen'
-    if (i >= p.roll.length - wild - extra) return 'extra'
+    if (i >= p.roll.length - wild - added) return 'extra'
     return i >= rolled ? 'carried' : null
   })
 }

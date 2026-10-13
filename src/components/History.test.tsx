@@ -91,6 +91,21 @@ describe('戦闘履歴のモーダルの内訳', () => {
     expect(marks(kept1, 'me')).toEqual(['glyph-chant is-kept'])
   })
 
+  it('打ち消された攻撃は、撃った側に威力の星、打ち消した側に打ち消した威力の印と返した分の風の渦。外さなかったので炎は無い', () => {
+    const report = resolveStep(
+      makeState(
+        { roll: [6, 6, 1], deck: ['flameStrike', 'barrier', 'bullet', 'spear', 'interrupt'] },
+        { roll: [2, 3, 5], deck: ['counter', 'barrier', 'bullet', 'spear', 'interrupt'] },
+      ),
+      [
+        { kind: 'bullet', dice: [0, 1] },
+        { kind: 'counter', dice: [0] },
+      ],
+    ).history[0]
+    const [entry] = open([report])
+    expect(marks(entry, 'cpu')).toEqual(['glyph-mark glyph-cancel 4', 'glyph-thorns 4'])
+  })
+
   it('印は読み上げず、同じ中身を公開の文で読み上げる', () => {
     const report = guarded()
     const [entry] = open([report])

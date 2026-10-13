@@ -1,5 +1,5 @@
 // カードを選ぶ対戦を、本物のブラウザで通す。タイトルの入口からカードを選び、選んだ5枚と CPU の5枚で対局し、一手進める。
-// 過負荷で振り足し、相手の凍結を受けて、手元にダイスが4個並び、凍ったダイスがある二ステップ目でも、画面に収まるかを測る。
+// 過負荷でダイスを足し、相手の凍結を受けて、手元にダイスが4個並び、凍ったダイスがある二ステップ目でも、画面に収まるかを測る。
 
 import { expect, type Page, test } from '@playwright/test'
 import { confirm, cpuSeat, mySeat, open, step } from './fixture'
@@ -10,7 +10,7 @@ const ADD = ['全開', '過負荷', '双竜', '瞑想']
 
 /**
  * 出目と CPU の手と5枚を固定して、タイトルからカードを選ぶ画面へ進む。
- * 自分は 2,5,4、CPU は 5,3,1 を振る。自分が過負荷で振り足すのは 5,6。CPU は一ステップ目に 5 を凍らせる
+ * 自分は 2,5,4、CPU は 5,3,1 を振る。CPU は一ステップ目に 5 を凍らせる
  */
 async function toPick(page: Page) {
   await open(page, {
@@ -19,7 +19,6 @@ async function toPick(page: Page) {
         [2, 5, 4],
         [5, 3, 1],
       ],
-      [[5, 6], []],
     ],
     opponent: [{ kind: 'freeze', dice: [0] }],
     cpuDeck: ['barrier', 'interrupt', 'freeze', 'darkWall', 'meditate'],
@@ -44,7 +43,7 @@ async function look(page: Page, narrow: boolean, card: string) {
   if (narrow) await mySeat(page).getByRole('button', { name: card, exact: true }).click()
 }
 
-/** 5枚を選んで対戦を始め、一ステップ目に過負荷を使って、手元に4個のダイスが並ぶ二ステップ目まで進める */
+/** 5枚を選んで対戦を始め、一ステップ目に 2 で過負荷を使って、2 を2個足し、手元に4個のダイスが並ぶ二ステップ目まで進める */
 async function secondStep(page: Page, narrow: boolean) {
   await toPick(page)
   for (const c of DROP) await toggle(page, c).click()
@@ -53,17 +52,18 @@ async function secondStep(page: Page, narrow: boolean) {
   await expect(step(page, 1, 1)).toBeAttached()
   await look(page, narrow, '過負荷')
   await myDie(page, 2).click()
-  await mySeat(page).getByRole('button', { name: '過負荷の1つ目の枠に置く' }).click()
+  await mySeat(page).getByRole('button', { name: '過負荷のXの枠に置く' }).click()
   await confirm(page).click()
   await expect(step(page, 1, 2)).toBeAttached({ timeout: 15_000 })
-  await expect(mySeat(page).getByRole('group', { name: 'ダイス' }).getByRole('img')).toHaveCount(2)
-  await expect(myDie(page, 6)).toBeVisible()
+  // 凍らされた 5 だけが押せない絵になる
+  await expect(mySeat(page).getByRole('group', { name: 'ダイス' }).getByRole('img')).toHaveCount(1)
+  await expect(myDie(page, 2)).toHaveCount(2)
 }
 
-/** 二ステップ目に全開へ 6 を置いて、決定を押せる状態にする */
+/** 二ステップ目に全開へ足した 2 を置いて、決定を押せる状態にする */
 async function placeAllOut(page: Page, narrow: boolean) {
   await look(page, narrow, '全開')
-  await myDie(page, 6).click()
+  await myDie(page, 2).first().click()
   await mySeat(page).getByRole('button', { name: '全開の1つ目の枠に置く' }).click()
   await expect(confirm(page)).toBeEnabled()
 }
@@ -71,22 +71,22 @@ async function placeAllOut(page: Page, narrow: boolean) {
 test.describe('カードを選ぶ対戦', () => {
   test.use({ viewport: { width: 1280, height: 900 } })
 
-  test('タイトルからカードを選び、CPU の5枚と対局して、振り足しと凍結を見ながら一手進める', async ({ page }) => {
+  test('タイトルからカードを選び、CPU の5枚と対局して、足したダイスと凍結を見ながら一手進める', async ({ page }) => {
     await toPick(page)
     // 覚えていなければ、スターターの5枚を選んだ状態から始まる
     await expect(toggle(page, '炎撃')).toHaveAttribute('aria-pressed', 'true')
     await expect(toggle(page, '隕石')).toBeDisabled()
     await secondStep(page, false)
-    // 振り足した 6 は、押せるまま振り足したと伝える
-    await expect(myDie(page, 6)).toHaveAttribute('aria-description', '振り足した')
+    // 足した 2 は、押せるまま効果で足したと伝える
+    await expect(myDie(page, 2).first()).toHaveAttribute('aria-description', '効果で足した')
     await placeAllOut(page, false)
 
     await expect(cpuSeat(page).getByRole('listitem', { name: '凍結' })).toBeVisible()
     const tray = mySeat(page).getByRole('group', { name: 'ダイス' })
-    // 凍らされた 5 は押せず、凍って置けないと伝える。振り足した 5 も凍っている
+    // 凍らされた 5 は押せず、凍って置けないと伝える
     const frozen = tray.getByRole('img', { name: '5の目' })
-    await expect(frozen).toHaveCount(2)
-    await expect(frozen.first()).toHaveAttribute('aria-description', '凍って置けない')
+    await expect(frozen).toHaveCount(1)
+    await expect(frozen).toHaveAttribute('aria-description', '凍って置けない')
     await expect(myDie(page, 4)).toBeVisible()
 
     await confirm(page).click()
@@ -166,8 +166,8 @@ for (const size of SIZES) {
 test.describe('手元のダイスが5個', () => {
   test.use({ viewport: { width: 360, height: 640 } })
 
-  test('瞑想で持ち越し、次のターンに過負荷で振り足して5個並んでも、幅 360 の端末に収まる', async ({ page }) => {
-    // 1ターン目は 2 を瞑想で持ち越す。2ターン目は 3,3,6 と持ち越した 2 で始め、2 で過負荷をかけて 4,5 を振り足す
+  test('瞑想で持ち越し、次のターンに過負荷でダイスを足して5個並んでも、幅 360 の端末に収まる', async ({ page }) => {
+    // 1ターン目は 2 を瞑想で持ち越す。2ターン目は 3,3,6 と持ち越した 2 で始め、2 で過負荷をかけて 2 を2個足す
     await open(page, {
       turns: [
         [
@@ -178,7 +178,6 @@ test.describe('手元のダイスが5個', () => {
           [3, 3, 6],
           [1, 1, 1],
         ],
-        [[4, 5], []],
       ],
       cpuDeck: ['barrier', 'interrupt', 'freeze', 'darkWall', 'meditate'],
     })
@@ -202,7 +201,7 @@ test.describe('手元のダイスが5個', () => {
 
     await look(page, true, '過負荷')
     await myDie(page, 2).click()
-    await mySeat(page).getByRole('button', { name: '過負荷の1つ目の枠に置く' }).click()
+    await mySeat(page).getByRole('button', { name: '過負荷のXの枠に置く' }).click()
     await confirm(page).click()
     await expect(step(page, 2, 2)).toBeAttached({ timeout: 15_000 })
     await expect(mySeat(page).getByRole('group', { name: 'ダイス' }).getByRole('button')).toHaveCount(5)

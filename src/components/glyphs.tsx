@@ -66,6 +66,24 @@ export function Star({ value }: { value?: string }) {
   )
 }
 
+/** 相手の手元の、同じ目のダイス1個ごとのダメージ。星の右下に、目を一つ打ったダイスを添える */
+export function ShardsGlyph({ value }: { value?: string }) {
+  return (
+    <svg className="glyph-star glyph-shards" viewBox="-50 -50 100 100" aria-hidden="true">
+      <polygon points={STAR} />
+      {value && (
+        <Value cx={-4} cy={-4} size={starText(value)}>
+          {value}
+        </Value>
+      )}
+      <g className="shards-die" transform="translate(32 32)">
+        <rect x={-15} y={-15} width={30} height={30} rx={7} />
+        <circle r={4.5} />
+      </g>
+    </svg>
+  )
+}
+
 /**
  * 貫通ダメージ。普通のダメージと同じ大きさの星を、矢印が斜めに突き抜けている。
  * 矢印は星の後ろを通り、星の外に柄と穂先が出る。星が印の枠いっぱいなので、矢印は枠の外まではみ出して描く
@@ -310,6 +328,16 @@ export function RefundGlyph() {
   )
 }
 
+/** 打ち消せる攻撃の威力の上限。斜線で消した丸の中に、上限を書く */
+export function CancelGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-cancel" value={value}>
+      <circle r={40} />
+      <path d="M-28 28 28-28" />
+    </Mark>
+  )
+}
+
 /** 受けた攻撃を返す。壁に当たって折り返す矢印 */
 export function ReflectGlyph() {
   return (
@@ -345,7 +373,7 @@ export function IgniteGlyph({ value }: { value?: string }) {
   )
 }
 
-/** 振り足すダイスの数。ダイスの角に足す印 */
+/** 次のステップに足すダイス1個。ダイスの角に足す印を付け、中に足す目を書く */
 export function ExtraGlyph({ value }: { value?: string }) {
   return (
     <Mark className="glyph-extra" value={value}>
@@ -428,6 +456,20 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `受けた攻撃を相手に返す。${GUARD_LABEL}で減らない攻撃は返さない`, glyph: <ReflectGlyph /> }
     case 'miss':
       return { label: `返す攻撃が来なかったら、自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} miss /> }
+    case 'cancel':
+      return {
+        label: `威力${v}以下の攻撃を打ち消す。${GUARD_LABEL}で減らない攻撃も、先に当たる攻撃も打ち消す`,
+        glyph: <CancelGlyph value={v} />,
+      }
+    case 'riposte':
+      return { label: `攻撃を打ち消したら、相手に${v}ダメージを返す`, glyph: <ThornsGlyph value={v} /> }
+    case 'whiff':
+      return { label: `打ち消す攻撃が来なかったら、自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} miss /> }
+    case 'shards':
+      return {
+        label: `相手の手元にある、置いた目と同じ目のダイス1個につき${v}ダメージを与える`,
+        glyph: <ShardsGlyph value={v} />,
+      }
     case 'fast':
       return { label: '相手より先に当たる。倒したら相手の行動は起きない', glyph: <FastGlyph /> }
     case 'ignite':
@@ -436,7 +478,7 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
         glyph: <IgniteGlyph value={v} />,
       }
     case 'extra':
-      return { label: `ダイスを${v}個振り足す。次のステップで使える`, glyph: <ExtraGlyph value={v} /> }
+      return { label: `目が${v}のダイスを1個足す。次のステップで使える`, glyph: <ExtraGlyph value={v} /> }
     case 'carry':
       return { label: `${v}の目のダイスを次のターンへ持ち越す`, glyph: <CarryGlyph value={v} /> }
     case 'forge':
@@ -448,6 +490,8 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `このステップに、さらに${v}枚までカードを使える`, glyph: <MultiGlyph value={v} /> }
     case 'repeat':
       return { label: '直前のステップに自分が出した効果を、同じ目でもう一度出す', glyph: <RepeatGlyph /> }
+    case 'back':
+      return { label: '置いたダイスは、使った後に戻り、次のステップで使える', glyph: <RefundGlyph /> }
   }
 }
 

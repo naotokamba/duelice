@@ -17,9 +17,11 @@ export interface CardDef {
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない。
  * wound は失った体力で威力が増えること、frost は相手が次のステップに置けない目、refund は防ぎきったらダイスが戻ること、
  * reflect は受けた攻撃を返すこと、miss は返す攻撃が来なかったら自分が受けるダメージ、fast は相手より先に当たること、
+ * cancel は打ち消せる攻撃の威力の上限、riposte は打ち消したら相手に返すダメージ、whiff は打ち消す攻撃が来なかったら自分が受けるダメージ、
+ * shards は相手の手元の、印の目と同じ目のダイス1個ごとに与えるダメージ、
  * ignite はターンの終わりに焼けた分の何倍かを与えることで、倍率を数に書く。
- * extra は振り足すダイスの数、carry は次のターンへ持ち越す目、forge は得る好きな目のダイスの数、
- * multi はさらに使えるカードの枚数、repeat は直前のステップの効果をもう一度出すこと
+ * extra は次のステップに足すダイス1個とその目、carry は次のターンへ持ち越す目、forge は得る好きな目のダイスの数、
+ * multi はさらに使えるカードの枚数、repeat は直前のステップの効果をもう一度出すこと、back は置いたダイスが次のステップに戻ること
  */
 export type EffectIcon =
   | 'damage'
@@ -35,6 +37,10 @@ export type EffectIcon =
   | 'refund'
   | 'reflect'
   | 'miss'
+  | 'cancel'
+  | 'riposte'
+  | 'whiff'
+  | 'shards'
   | 'fast'
   | 'ignite'
   | 'extra'
@@ -42,9 +48,19 @@ export type EffectIcon =
   | 'forge'
   | 'multi'
   | 'repeat'
+  | 'back'
 
 /** 数を持たない印。置いた目や個数から値を入れない */
-export const BARE_ICONS: readonly EffectIcon[] = ['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'repeat']
+export const BARE_ICONS: readonly EffectIcon[] = [
+  'chant',
+  'disrupt',
+  'wound',
+  'refund',
+  'reflect',
+  'fast',
+  'repeat',
+  'back',
+]
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -90,6 +106,8 @@ export interface Face {
 export interface PowerCtx {
   hp: number
   maxHp: number
+  /** 相手が、そのステップの初めにまだ使っていないダイスの目。好きな目のダイスは含めない。様子を渡さないときは無い */
+  foe?: readonly number[]
 }
 
 /** 体力が減っていない様子。様子を渡さずに効果の値を求めるときに使う */
@@ -113,7 +131,8 @@ export interface ActionDef {
    * 攻撃の威力。障壁の前の値。
    * vals はダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす。
    * face.mark のある行動では印の置き場が必ず埋まっているので、vals[0] が印の置き場の目になる。
-   * ctx は使った側の、ステップを解決する前の体力
+   * ctx は使った側の、ステップを解決する前の体力と、相手のまだ使っていないダイスの目。
+   * 威力が0の攻撃は、攻撃として放たれない
    */
   power?: (vals: number[], ctx: PowerCtx) => number
   /** 障壁を無視する。受けた攻撃を返す構えにも返されない */
@@ -129,10 +148,19 @@ export interface ActionDef {
   thorns?: number
   /** 守りで防ぎきったら、置いたダイスが戻り、同じターンの次のステップで使える。障壁で減る攻撃を防ぎきったときだけ */
   refund?: boolean
+  /** 置いたダイスが、使った後にいつも戻り、同じターンの次のステップで使える */
+  returnsDice?: boolean
   /** 同じステップに受けた攻撃を、攻撃した相手に返す。障壁で減らない攻撃は返さない */
   reflects?: boolean
   /**
-   * 受けた攻撃を返す構えで、返した攻撃が一つも無かったら、自分が受けるダメージ。vals は power と同じ。
+   * 同じステップに受けた、威力がこの数以下の攻撃を打ち消す。障壁で減らない攻撃も、先に当たる攻撃も打ち消す。
+   * 受けた攻撃を返す構えや守りより先に効き、この数より大きい攻撃には効かない
+   */
+  cancels?: number
+  /** 攻撃を打ち消したら、攻撃した相手に返すダメージ。ステップに1回。攻撃した側の守りでは減らない */
+  riposte?: number
+  /**
+   * 受けた攻撃を返す構えか打ち消す構えで、返した攻撃や打ち消した攻撃が一つも無かったら、自分が受けるダメージ。vals は power と同じ。
    * 炎で焼けた分と同じく障壁では減らず、記録では焼けた分に数える
    */
   missBurn?: (vals: number[]) => number
@@ -147,8 +175,11 @@ export interface ActionDef {
   burn?: (vals: number[]) => number
   /** ターンの終わりに、このターンに自分が焼けて受けたダメージの合計の、この倍のダメージを相手に与える。障壁では減らない */
   ignite?: number
-  /** 使うとダイスをこの数だけ振り足す。振り足したダイスは同じターンの次のステップで使える */
-  extraDice?: number
+  /**
+   * 一ステップ目に使うと、印の置き場の目と同じ目のダイスを、この数だけ手元に足す。足したダイスは二ステップ目に使える。
+   * 好きな目のダイスを得る効果と一緒なら、足したダイスも捨てる。二ステップ目に起きても何もしない
+   */
+  copies?: number
   /** 使ったターンの終わりに、炎で自分も焼けて受けるダメージ */
   endBurn?: number
   /**
@@ -203,6 +234,7 @@ const CARDS = {
   transmute: { name: '錬成' },
   doubleCast: { name: '二重詠唱' },
   echo: { name: '残響' },
+  counter: { name: '反撃' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -327,13 +359,15 @@ const ACTIONS = {
     card: 'freeze',
     label: '凍結',
     dice: [1],
-    // 目に関係なく2の威力。相手の次のステップに、X と同じ目のダイスを置けなくする
-    power: () => 2,
+    // 相手の手元の、X と同じ目のダイス1個につき2の威力。相手の次のステップに、X と同じ目のダイスを置けなくする
+    // Stryker disable next-line ArrayDeclaration: 相手の目を渡さないときの空の並び。何を入れても置いた目と同じにならないので、威力は0のまま
+    power: (v, c) => 2 * (c.foe ?? []).filter((d) => d === v[0]).length,
     freezes: true,
+    done: '凍らせた',
     face: {
       mark: 'X',
       effect: [
-        { icon: 'damage', value: '2' },
+        { icon: 'shards', value: '2' },
         { icon: 'frost', value: 'X' },
       ],
     },
@@ -342,7 +376,8 @@ const ACTIONS = {
     card: 'darkWall',
     label: '闇壁',
     dice: [1],
-    // 置いた目の倍を減らし、返さない。障壁で減る攻撃を防ぎきったら、置いたダイスが戻る
+    step: 1,
+    // 一ステップ目だけ。置いた目の倍を減らし、返さない。障壁で減る攻撃を防ぎきったら、置いたダイスが戻る
     guard: (v) => 2 * v[0],
     refund: true,
     done: '闇壁を張った',
@@ -388,13 +423,16 @@ const ACTIONS = {
     label: '過負荷',
     dice: [1],
     step: 1,
-    // ダイスを2個振り足し、二ステップ目に使える。ターンの終わりに自分も2焼ける
-    extraDice: 2,
+    // X と同じ目のダイスを2個足し、二ステップ目に使える。ターンの終わりに自分も2焼ける
+    copies: 2,
     endBurn: 2,
     done: '過負荷をかけた',
+    // 足すダイスは1個ずつ印に描き、どちらにも置いた目を書く
     face: {
+      mark: 'X',
       effect: [
-        { icon: 'extra', value: '2' },
+        { icon: 'extra', value: 'X' },
+        { icon: 'extra', value: 'X' },
         { icon: 'endBurn', value: '2' },
       ],
     },
@@ -430,10 +468,11 @@ const ACTIONS = {
     card: 'doubleCast',
     label: '二重詠唱',
     dice: [1],
-    // このステップに、さらに2枚までカードを使える。置いた目は効果に関わらない
+    // このステップに、さらに2枚までカードを使える。置いたダイスは次のステップに戻る。置いた目は効果に関わらない
     multi: 2,
+    returnsDice: true,
     done: '二重詠唱した',
-    face: { effect: [{ icon: 'multi', value: '2' }] },
+    face: { effect: [{ icon: 'multi', value: '2' }, { icon: 'back' }] },
   },
   echo: {
     card: 'echo',
@@ -443,6 +482,24 @@ const ACTIONS = {
     echo: true,
     done: '残響を響かせた',
     face: { effect: [{ icon: 'repeat' }] },
+  },
+  counter: {
+    card: 'counter',
+    label: '反撃',
+    dice: [1],
+    // 威力6以下の攻撃を打ち消して、攻撃した相手に4返す。一つも打ち消せなかったら、X を自分が受ける
+    cancels: 6,
+    riposte: 4,
+    missBurn: (v) => v[0],
+    done: '反撃に構えた',
+    face: {
+      mark: 'X',
+      effect: [
+        { icon: 'cancel', value: '6' },
+        { icon: 'riposte', value: '4' },
+        { icon: 'whiff', value: 'X' },
+      ],
+    },
   },
 } satisfies Record<string, ActionDef>
 
@@ -459,11 +516,11 @@ export function kindsOfCard(card: CardId): ActionKind[] {
 }
 
 /**
- * 効果の値。攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目なら印の置き場の目。どれでもない行動は値を持たないので 0。
+ * 効果の値。攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目や足す目なら印の置き場の目。どれでもない行動は値を持たないので 0。
  * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの。ctx は power に渡す、使った側の様子
  */
 export function effectValue(def: ActionDef, vals: number[], ctx: PowerCtx = UNHURT): number {
-  return def.power?.(vals, ctx) ?? def.guard?.(vals) ?? (def.freezes || def.carries ? vals[0] : 0)
+  return def.power?.(vals, ctx) ?? def.guard?.(vals) ?? (def.freezes || def.carries || def.copies ? vals[0] : 0)
 }
 
 /** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */

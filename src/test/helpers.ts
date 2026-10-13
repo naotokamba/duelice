@@ -3,7 +3,7 @@
 import fc from 'fast-check'
 import { ACTION_DEFS, type ActionKind, type CardId, DECK_SIZE, kindsOfCard, POOL, STARTER } from '../game/cards'
 import { type Match, newMatch, submit } from '../game/match'
-import { type Decks, extraDiceOf, legalActions, STARTER_DECKS } from '../game/rules'
+import { type Decks, legalActions, STARTER_DECKS } from '../game/rules'
 import { slotsOf } from '../game/slots'
 import type { Action, ChantState, GameState, Move, PlayerState, Rng } from '../game/types'
 import { DEFAULT_CONFIG, WILD } from '../game/types'
@@ -101,7 +101,7 @@ const lastArb = (deck: readonly CardId[]): fc.Arbitrary<Move[]> => {
 /** 詠唱する行動を持つカード */
 const chants = (card: CardId) => kindsOfCard(card).some((k) => ACTION_DEFS[k].chant)
 
-/** 一人の席。振り足しや持ち越しでダイスが3個より多いこともある */
+/** 一人の席。効果で足したダイスや持ち越しでダイスが3個より多いこともある */
 const seatArb = (step2: boolean, pool: boolean) =>
   (pool ? deckArb : fc.constant([...STARTER])).chain((deck) =>
     fc
@@ -152,26 +152,19 @@ export const stateArb: fc.Arbitrary<GameState> = gameArb(false)
 /** 一ステップ目または二ステップ目の、選べるカードから5枚ずつ持ち込んだ局面 */
 export const poolStateArb: fc.Arbitrary<GameState> = gameArb(true)
 
-/** 局面と、双方の合法手から一つずつと、振り足すダイスの目。resolveStep にそのまま渡せる */
+/** 局面と、双方の合法手から一つずつ。resolveStep にそのまま渡せる */
 export interface Play {
   s: GameState
   acts: [Action, Action]
-  extra: [number[], number[]]
 }
 
-/** base の局面から、双方の合法手を一つずつ選び、振り足す行動にはその数だけダイスの目を添える */
+/** base の局面から、双方の合法手を一つずつ選ぶ */
 export function playArb(base: fc.Arbitrary<GameState>): fc.Arbitrary<Play> {
-  return base.chain((s) => {
-    const extraArb = (who: 0 | 1, a: Action) => {
-      const n = extraDiceOf(s, who, a)
-      return fc.array(dieArb, { minLength: n, maxLength: n })
-    }
-    return fc
+  return base.chain((s) =>
+    fc
       .tuple(fc.constantFrom(...legalActions(s, 0)), fc.constantFrom(...legalActions(s, 1)))
-      .chain(([a0, a1]) =>
-        fc.tuple(extraArb(0, a0), extraArb(1, a1)).map(([e0, e1]): Play => ({ s, acts: [a0, a1], extra: [e0, e1] })),
-      )
-  })
+      .map(([a0, a1]): Play => ({ s, acts: [a0, a1] })),
+  )
 }
 
 /**

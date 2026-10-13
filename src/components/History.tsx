@@ -10,7 +10,7 @@ import type { Action, PlayerIndex, StepReport } from '../game/types'
 import type { EndReason } from '../online/protocol'
 import { Modal } from './Dialog'
 import { Die } from './Die'
-import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
+import { BurnGlyph, CancelGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
 import { endingText, playLabel, reportLines } from './text'
 
 /** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
@@ -114,6 +114,14 @@ function details(report: StepReport, who: PlayerIndex): Fx[] {
     } else if (s.from === who) {
       const glyph = s.outcome === 'pierced' ? <PierceStar value={String(s.power)} /> : <Star value={String(s.power)} />
       out.push({ key: `a${i}`, card, glyph })
+    }
+    // 自分の構えが打ち消した攻撃は、打ち消した側の行に、打ち消した威力で出す
+    if (s.to === who && s.outcome === 'countered') {
+      out.push({
+        key: `c${i}`,
+        card: cardWith(report, who, (d) => d.cancels !== undefined),
+        glyph: <CancelGlyph value={String(s.power)} />,
+      })
     }
     // 自分の守りが減らした分は、守った側の行に出す
     if (s.to === who && s.outcome === 'guarded') {

@@ -1,17 +1,17 @@
 // ダイス。目は九つの升に点を打って描く。押せるダイスはボタン、押せないダイスは絵として読み上げる。
-// 前のターンから持ち越したダイス、振り足したダイス、凍って置けないダイスは、角に小さな印を付けて見分ける。
+// 前のターンから持ち越したダイス、効果で足したダイス、凍って置けないダイスは、角に小さな印を付けて見分ける。
 // 好きな目のダイスは、目が決まっていないので点を打たない。カードに置いて目を選んだら、その目を描き、角の印で好きな目のダイスと分かるようにする。
 
 import { ArrowRight, Plus, Snowflake, Sparkles } from 'lucide-react'
 import { WILD } from '../game/types'
 import type { DragHandlers } from './useDiceDrag'
 
-/** ダイスの出どころや様子の印。持ち越した、振り足した、凍って置けない、好きな目を選んだ */
+/** ダイスの出どころや様子の印。持ち越した、効果で足した、凍って置けない、好きな目を選んだ */
 export type DieMark = 'carried' | 'extra' | 'frozen' | 'wild'
 
 const MARKS: Record<DieMark, { icon: typeof Plus; note: string }> = {
   carried: { icon: ArrowRight, note: '前のターンから持ち越した' },
-  extra: { icon: Plus, note: '振り足した' },
+  extra: { icon: Plus, note: '効果で足した' },
   frozen: { icon: Snowflake, note: '凍って置けない' },
   wild: { icon: Sparkles, note: '好きな目のダイス' },
 }

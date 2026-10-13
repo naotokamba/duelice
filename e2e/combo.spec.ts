@@ -4,15 +4,19 @@
 
 import { expect, type Page, test } from '@playwright/test'
 import type { CardId } from '../src/game/cards'
+import type { Action } from '../src/game/types'
 import { confirm, cpuSeat, hp, mySeat, open, step } from './fixture'
 
 /** CPU の5枚。CPU はパスし続けるので、何を持っていても結果は同じ */
 const CPU_DECK: CardId[] = ['flameStrike', 'barrier', 'bullet', 'spear', 'interrupt']
 
-/** 自分の5枚を覚えさせ、出目を固定して、カードを選ぶ画面から対戦を始める。自分は mine を、CPU は 5,3,1 を振る */
-async function begin(page: Page, deck: CardId[], mine: number[]) {
+/**
+ * 自分の5枚を覚えさせ、出目を固定して、カードを選ぶ画面から対戦を始める。自分は mine を、CPU は 5,3,1 を振る。
+ * CPU は opponent の手を順に出し、尽きたらパスする
+ */
+async function begin(page: Page, deck: CardId[], mine: number[], opponent: Action[] = []) {
   await page.addInitScript((d) => localStorage.setItem('duelice.deck', JSON.stringify(d)), deck)
-  await open(page, { turns: [[mine, [5, 3, 1]]], cpuDeck: CPU_DECK })
+  await open(page, { turns: [[mine, [5, 3, 1]]], cpuDeck: CPU_DECK, opponent })
   // サーバで描いた画面に React がつながる前に押すと何も起きないので、カードを選ぶ画面が出るまで押し直す
   await expect(async () => {
     await page.getByRole('button', { name: /^カードを選んで CPU と対戦/ }).click({ timeout: 1000 })
@@ -63,7 +67,7 @@ async function forgeAndPlace(page: Page, narrow: boolean) {
   await expect(confirm(page)).toBeEnabled()
 }
 
-/** 二重詠唱に 2、氷礫に 5、凍結に 4 を置く */
+/** 二重詠唱に 2、氷礫に 4、凍結に 5 を置く */
 async function castThree(page: Page, narrow: boolean) {
   await begin(page, ['flameStrike', 'barrier', 'interrupt', 'freeze', 'doubleCast'], [2, 5, 4])
   await look(page, narrow, '二重詠唱')
@@ -71,9 +75,9 @@ async function castThree(page: Page, narrow: boolean) {
   // 二重詠唱だけでは決定できない
   await expect(confirm(page)).toHaveAccessibleDescription('ほかのカードにも置く')
   await look(page, narrow, '氷礫')
-  await put(page, '5の目', '氷礫の1つ目の枠')
+  await put(page, '4の目', '氷礫の1つ目の枠')
   await look(page, narrow, '凍結')
-  await put(page, '4の目', '凍結のXの枠')
+  await put(page, '5の目', '凍結のXの枠')
   await expect(confirm(page)).toBeEnabled()
 }
 
@@ -97,16 +101,15 @@ test.describe('錬成・二重詠唱・残響', () => {
   test('二重詠唱に置けば、ほかの2枚にも置いてまとめて決定でき、どれも起きる', async ({ page }) => {
     await castThree(page, false)
     await confirm(page).click()
-    // 氷礫の2点と、凍結の2点
+    // 氷礫の2点と、CPU の手元の 5 が1個なので凍結の2点
     await expect(step(page, 1, 2)).toBeAttached({ timeout: 15_000 })
     await expect(hp(cpuSeat(page), 16)).toBeVisible()
     // 一つ前の結果に、一緒に使ったカードが並ぶ
     await expect(page.getByRole('region', { name: '一つ前の結果' })).toContainText('二重詠唱・氷礫・凍結')
-    // 一ステップ目に置いたダイスは、どのカードにも残る
+    // 一緒に使ったカードに置いたダイスは、カードに残る
     for (const [card, v] of [
-      ['二重詠唱', 2],
-      ['氷礫', 5],
-      ['凍結', 4],
+      ['氷礫', 4],
+      ['凍結', 5],
     ] as const) {
       await expect(
         mySeat(page)
@@ -114,6 +117,27 @@ test.describe('錬成・二重詠唱・残響', () => {
           .getByRole('img', { name: `${v}の目` }),
       ).toBeVisible()
     }
+    // 二重詠唱に置いたダイスは手元に戻り、二ステップ目に使える
+    await expect(die(page, '2の目')).toBeEnabled()
+  })
+
+  test('反撃は、6以下の攻撃を打ち消して4返し、公開ではその攻撃が構えで止まる', async ({ page }) => {
+    // CPU は 3 を X に、1 を焼ける枠に置いた炎撃で 5 を撃つ
+    await begin(
+      page,
+      ['flameStrike', 'barrier', 'bullet', 'interrupt', 'counter'],
+      [2, 5, 4],
+      [{ kind: 'flameStrike', dice: [1, 2] }],
+    )
+    await put(page, '2の目', '反撃のXの枠')
+    await confirm(page).click()
+    // 公開では、炎撃の矢印が反撃の構えで止まり、反撃の構えには打ち消せる上限が出る
+    await expect(page.locator('.stance.card-counter.is-blocking .glyph-cancel')).toBeVisible()
+    await expect(page.locator('.arrow.card-flameStrike.is-spent')).toBeAttached()
+    // 打ち消したので自分は受けず、CPU は返された4と自分の焼けた1を受ける
+    await expect(step(page, 1, 2)).toBeAttached({ timeout: 15_000 })
+    await expect(hp(mySeat(page), 20)).toBeVisible()
+    await expect(hp(cpuSeat(page), 15)).toBeVisible()
   })
 
   test('残響は直前の効果をカードに書き、同じ目でもう一度出す', async ({ page }) => {

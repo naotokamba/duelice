@@ -5,7 +5,7 @@ import type { CardId } from '../src/game/cards'
 import type { Action } from '../src/game/types'
 
 export interface Setup {
-  /** 振る目。一ターンごとに [あなたの3個, 相手の3個]。振り足すダイスも、振る順にここへ並べる。尽きたら種つきの乱数 */
+  /** 振る目。一ターンごとに [あなたの3個, 相手の3個]。尽きたら種つきの乱数 */
   turns: [number[], number[]][]
   /** 相手が順に指す手。尽きたらパス。null なら手を決めず、本物の CPU が Worker で考える */
   opponent?: Action[] | null
