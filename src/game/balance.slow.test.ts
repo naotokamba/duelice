@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { makeState } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS } from './cards'
+import { ACTION_DEFS, kindsOfCard, STARTER } from './cards'
 import { Thinker } from './cpu'
 import { solveMatrixGame } from './matrixGame'
 
@@ -17,7 +17,9 @@ const weight = (r: number[]) => [0, 6, 3, 1][4 - new Set(r).size]
 describe('バランス', () => {
   it('HP満タンの一ステップ目で、つよいCPUが各行動を選ぶ頻度と、読み合いが起きない局面の割合', () => {
     const t = new Thinker()
-    const freq: Record<string, number> = Object.fromEntries([...ACTION_KINDS, 'pass'].map((k) => [k, 0]))
+    // 二人ともスターターの5枚で戦う。拡張のカードの強さは src/eval の評価で測る
+    const kinds = STARTER.flatMap(kindsOfCard)
+    const freq: Record<string, number> = Object.fromEntries([...kinds, 'pass'].map((k) => [k, 0]))
     let total = 0
     let pure = 0
     let firstValue = 0
@@ -44,7 +46,7 @@ describe('バランス', () => {
     // 頻度は確率なので合計は1。一ステップ目に使えない行動は選ばれない
     const sum = Object.values(freq).reduce((a, b) => a + b, 0) / total
     expect(sum).toBeCloseTo(1, 6)
-    for (const k of ACTION_KINDS) if (ACTION_DEFS[k].step === 2) expect(freq[k], k).toBe(0)
+    for (const k of kinds) if (ACTION_DEFS[k].step === 2) expect(freq[k], k).toBe(0)
     expect(JSON.stringify(report, null, 2)).toMatchSnapshot()
   })
 })

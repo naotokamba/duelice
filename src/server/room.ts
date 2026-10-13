@@ -1,9 +1,10 @@
 // 部屋の中身。入室、合言葉、席、つながりの有無、持ち時間、決着、もう一戦を、時刻と乱数を外から受け取る純粋な関数で書く。
 // Durable Object の殻 room-object.ts は、これを呼んで保存し、つながっている画面に様子を送るだけにする。
 
-import { ACTION_DEFS, type ActionKind } from '../game/cards'
+import { ACTION_DEFS, type ActionKind, STARTER } from '../game/cards'
 import { forfeit, type Match, newMatch, type Resolution, resign, submit, viewFor } from '../game/match'
-import type { Action, Config, PlayerIndex, Rng } from '../game/types'
+import { STARTER_DECKS } from '../game/rules'
+import type { Action, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport, Strike } from '../game/types'
 import { DEFAULT_CONFIG } from '../game/types'
 import {
   EMPTY_GRACE_MS,
@@ -84,6 +85,46 @@ export function createRoom({
   }
 }
 
+/** 古い形で保存されていたかもしれない値。後から足した欄は無いことがある */
+type Saved<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
+
+/** 保存されていた席。カードを選べるようになる前の盤には、持ち込んだ5枚やターンをまたぐ効果の欄が無い */
+function restorePlayer(p: Saved<PlayerState, 'deck' | 'frozen' | 'burned' | 'carry'>): PlayerState {
+  return { ...p, deck: p.deck ?? [...STARTER], frozen: p.frozen ?? null, burned: p.burned ?? 0, carry: p.carry ?? null }
+}
+
+/** 保存されていた記録。先に当たる攻撃やターンの終わりの欄が無ければ、何も起きなかった値を入れる */
+function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded' | 'extra'>): StepReport {
+  return {
+    ...r,
+    strikes: r.strikes.map((x: Saved<Strike, 'phase'>) => ({ ...x, phase: x.phase ?? 'main' })),
+    endBurn: r.endBurn ?? [0, 0],
+    cancelled: r.cancelled ?? [false, false],
+    refunded: r.refunded ?? [false, false],
+    extra: r.extra ?? [[], []],
+  }
+}
+
+function restoreGame(g: GameState): GameState {
+  return {
+    ...g,
+    players: [restorePlayer(g.players[0]), restorePlayer(g.players[1])],
+    history: g.history.map(restoreReport),
+  }
+}
+
+/**
+ * 保存されていた部屋を、今の形にそろえる。カードを選べるようになる前に保存された部屋がデプロイをまたいでも、続きを遊べるようにする。
+ * 無い欄には、スターターの5枚と、何も起きていない値を入れる
+ */
+export function restoreRoom(s: RoomState): RoomState {
+  const last = s.last && {
+    n: s.last.n,
+    resolution: { state: restoreGame(s.last.resolution.state), report: restoreReport(s.last.resolution.report) },
+  }
+  return { ...s, match: s.match && { ...s.match, state: restoreGame(s.match.state) }, last }
+}
+
 /** 部屋の様子 */
 export function statusOf(s: RoomState): RoomStatus {
   if (!s.match) return 'waiting'
@@ -94,7 +135,8 @@ export function statusOf(s: RoomState): RoomStatus {
 function begin(s: RoomState, rng: Rng, now: number): RoomState {
   return {
     ...s,
-    match: newMatch(rng, s.config),
+    // オンライン対戦は、二人ともスターターの5枚で戦う
+    match: newMatch(rng, s.config, STARTER_DECKS),
     matchNo: s.matchNo + 1,
     last: null,
     deadline: now + START_GRACE_MS + s.stepMs,

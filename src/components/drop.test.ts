@@ -22,6 +22,8 @@ describe('落とす先', () => {
       'slot:nothing:0',
       'slot:burn:x',
       'tab:nothing',
+      'tab:toString',
+      'tab',
       'tab:spear:1',
       'card',
     ])

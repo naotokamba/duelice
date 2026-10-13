@@ -231,6 +231,107 @@ export function DisruptGlyph() {
   )
 }
 
+interface MarkProps {
+  /** 形の線と面。viewBox は -50 から 50 */
+  children: ReactNode
+  value?: string
+  className: string
+}
+
+/** 新しい印の土台。形の上に、下の面の色で縁取った値を重ねる */
+function Mark({ children, value, className }: MarkProps) {
+  return (
+    <svg className={`glyph-mark ${className}`} viewBox="-50 -50 100 100" aria-hidden="true">
+      {children}
+      {value && (
+        <Value cx={0} cy={0} size={innerText(value)} halo>
+          {value}
+        </Value>
+      )}
+    </svg>
+  )
+}
+
+/** 失った体力で威力が増える。割れたハート */
+export function WoundGlyph() {
+  return (
+    <Mark className="glyph-wound">
+      <path d="M0 40C-30 18-44 2-44-16C-44-32-30-42-18-42C-8-42-3-36 0-30C3-36 8-42 18-42C30-42 44-32 44-16C44 2 30 18 0 40Z" />
+      <path className="mark-cut" d="M2-28-8-8 6 4-4 30" />
+    </Mark>
+  )
+}
+
+/** 相手が次のステップに置けない目。雪の結晶の真ん中に目を書く */
+export function FrostGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-frost" value={value}>
+      {[0, 60, 120].map((deg) => (
+        <path key={deg} transform={`rotate(${deg})`} d="M0-46V46M-10-36 0-26 10-36M-10 36 0 26 10 36" />
+      ))}
+    </Mark>
+  )
+}
+
+/** 防ぎきったらダイスが戻る。円を描いて戻る矢印 */
+export function RefundGlyph() {
+  return (
+    <Mark className="glyph-refund">
+      <path d="M30-24A36 36 0 1 0 36 6" />
+      <path className="mark-fill" d="M18-34 42-34 34-10Z" />
+    </Mark>
+  )
+}
+
+/** 受けた攻撃を返す。壁に当たって折り返す矢印 */
+export function ReflectGlyph() {
+  return (
+    <Mark className="glyph-reflect">
+      <path d="M30-44V44" />
+      <path d="M-44-24 22 0-44 24" />
+      <path className="mark-fill" d="M-44 24-30 8-26 30Z" />
+    </Mark>
+  )
+}
+
+/** 相手より先に当たる。稲妻 */
+export function FastGlyph() {
+  return (
+    <Mark className="glyph-fast">
+      <path className="mark-fill" d="M10-48-26 6H0L-12 48 28-10H2Z" />
+    </Mark>
+  )
+}
+
+/** ターンの終わりに焼けた分を与える。炎から伸びる矢印 */
+export function IgniteGlyph() {
+  return (
+    <Mark className="glyph-ignite">
+      <path className="mark-fill" d={FLAME} transform="translate(-14 4) scale(0.62)" />
+      <path d="M10-30 44-30M32-42 44-30 32-18" />
+    </Mark>
+  )
+}
+
+/** 振り足すダイスの数。ダイスの角に足す印 */
+export function ExtraGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-extra" value={value}>
+      <rect x={-34} y={-34} width={68} height={68} rx={14} />
+      <path d="M26-48V-20M12-34H40" />
+    </Mark>
+  )
+}
+
+/** 次のターンへ持ち越す目。前へ進む矢印の中に目を書く */
+export function CarryGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-carry" value={value}>
+      <path d="M-44-22H10V-40L46 0 10 40V22H-44Z" />
+    </Mark>
+  )
+}
+
 /** 効果の印の一行の説明と形。印の種類を足すと、ここに書くまで型が通らない */
 function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; glyph: ReactNode } {
   switch (icon) {
@@ -248,6 +349,22 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: '詠唱。崩されなければ、次のステップで下の段を使える', glyph: <ChantGlyph /> }
     case 'disrupt':
       return { label: '相手が詠唱していたら崩す', glyph: <DisruptGlyph /> }
+    case 'wound':
+      return { label: '失った体力4ごとに、ダメージが1増える', glyph: <WoundGlyph /> }
+    case 'frost':
+      return { label: `相手は次のステップに${v}の目を置けない`, glyph: <FrostGlyph value={v} /> }
+    case 'refund':
+      return { label: '攻撃を防ぎきったら、置いたダイスが戻る', glyph: <RefundGlyph /> }
+    case 'reflect':
+      return { label: `受けた攻撃を相手に返す。${GUARD_LABEL}で減らない攻撃は返さない`, glyph: <ReflectGlyph /> }
+    case 'fast':
+      return { label: '相手より先に当たる。倒したら相手の行動は起きない', glyph: <FastGlyph /> }
+    case 'ignite':
+      return { label: 'ターンの終わりに、このターン自分が焼けた分のダメージを与える', glyph: <IgniteGlyph /> }
+    case 'extra':
+      return { label: `ダイスを${v}個振り足す。次のステップで使える`, glyph: <ExtraGlyph value={v} /> }
+    case 'carry':
+      return { label: `${v}の目のダイスを次のターンへ持ち越す`, glyph: <CarryGlyph value={v} /> }
   }
 }
 

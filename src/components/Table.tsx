@@ -85,7 +85,13 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
       ? revealed(view.mine)
       : hand.row && { ...hand.row, complete: hand.action !== null }
   const cpuShown = clock.reveal ? revealed(clock.reveal.report.actions[1]) : null
-  const myCurrent = currentCard({ revealing, shown: myShown, focus: hand.focus, usable: seats[0].usable })
+  const myCurrent = currentCard({
+    revealing,
+    shown: myShown,
+    focus: hand.focus,
+    usable: seats[0].usable,
+    deck: seats[0].player.deck,
+  })
 
   /** 自分の行動を出す。公開が終わっても、狭い画面では今見ているカードを出し続ける */
   const commit = (mine: Action) => {

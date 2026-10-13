@@ -2,7 +2,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { expectEquilibrium } from '../test/equilibrium'
 import { makeState, rollArb, seeded } from '../test/helpers'
-import { CARD_ORDER } from './cards'
+import { STARTER } from './cards'
 import { KILL_BONUS, LEVEL_NAMES, type Level, Thinker, weaklyDominated } from './cpu'
 import { solveMatrixGame } from './matrixGame'
 import { isLegal, legalActions, newGame, nextTurn, resolveStep, turnOver } from './rules'
@@ -114,7 +114,7 @@ describe('CPU', () => {
 describe('無意味なパス', () => {
   /** そのステップで、使えるダイスとカードを適当に減らした局面 */
   const used = fc.subarray([0, 1, 2])
-  const cards = fc.subarray([...CARD_ORDER])
+  const cards = fc.subarray([...STARTER])
   const step2Arb = fc
     .record({ r0: rollArb, r1: rollArb, d0: used, d1: used, c0: cards, c1: cards, h0: fc.integer({ min: 1, max: 20 }) })
     .map(({ r0, r1, d0, d1, c0, c1, h0 }) =>

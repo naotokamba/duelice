@@ -18,11 +18,11 @@ export interface Banner {
 
 /**
  * 公開してから landed ミリ秒目まででは、まだ入っていない who へのダメージ。その分だけ体力を多く見せる。
- * 攻撃が当たる分と、自分が焼ける分を数える
+ * 攻撃が当たる分と、自分が焼ける分を数える。ターンの終わりに焼ける分も、自分が焼ける時に数える
  */
 export function unlanded(report: StepReport, who: PlayerIndex, landed: number): number {
   const hits = IMPACT_MS > landed ? report.strikes.filter((s) => s.to === who).reduce((sum, s) => sum + s.dealt, 0) : 0
-  return hits + (BURN_MS > landed ? report.burn[who] : 0)
+  return hits + (BURN_MS > landed ? report.burn[who] + report.endBurn[who] : 0)
 }
 
 /** 対局で n 回目の解決 */

@@ -1,7 +1,7 @@
 // 引きずったダイスを落とす先。落とせる要素は data-drop に行き先を書き、指を離した位置の要素から読む。
 // 行き先は手元、カードの置き場、狭い画面のカードの名前の三つ。
 
-import { CARD_ORDER, type CardId } from '../game/cards'
+import { CARD_DEFS, type CardId } from '../game/cards'
 import type { HandEvent } from '../game/hand'
 
 export type DropTarget = { type: 'tray' } | { type: 'slot'; card: CardId; slot: number } | { type: 'tab'; card: CardId }
@@ -18,7 +18,7 @@ export function dropAttr(t: DropTarget): string {
   }
 }
 
-const isCard = (s: string | undefined): s is CardId => CARD_ORDER.includes(s as CardId)
+const isCard = (s: string | undefined): s is CardId => s !== undefined && Object.hasOwn(CARD_DEFS, s)
 
 /** data-drop の値から行き先を読む。行き先でなければ null */
 export function readDrop(attr: string | null): DropTarget | null {

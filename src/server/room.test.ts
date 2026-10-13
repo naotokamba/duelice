@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import type { Match } from '../game/match'
-import type { Action } from '../game/types'
+import type { Action, GameState } from '../game/types'
 import { EMPTY_GRACE_MS, REVEAL_GRACE_MS, START_GRACE_MS } from '../online/protocol'
 import { actionOf, makeState, seeded } from '../test/helpers'
 import {
@@ -17,6 +17,7 @@ import {
   PRESENCE_CHECK_MS,
   type RoomState,
   resignRoom,
+  restoreRoom,
   seatOf,
   setOnline,
   snapshot,
@@ -97,7 +98,8 @@ describe('様子を送る', () => {
     const toGuest = snapshot(s, 1, T0 + 10)
     expect(toGuest.view?.mine).toBeNull()
     expect(toGuest.view?.opponentReady).toBe(true)
-    expect(JSON.stringify(toGuest)).not.toContain('flameStrike')
+    // 持ち込んだ5枚は見えてよいが、出した行動は見えない
+    expect(JSON.stringify(toGuest)).not.toContain('"kind":"flameStrike"')
     expect(snapshot(s, 0, T0 + 10).view?.mine).toEqual(fire)
   })
   it('席、名前、つながり、合言葉、期限、送った時刻を送る', () => {
@@ -369,5 +371,44 @@ describe('画面から届いた行動の形', () => {
     ]) {
       expect(asAction(raw)).toBeNull()
     }
+  })
+})
+
+describe('保存されていた部屋', () => {
+  /** カードを選べるようになる前の形に戻した部屋。席と記録から、後で足した欄を消す */
+  function legacy(s: RoomState): RoomState {
+    const strip = (o: object, keys: string[]) =>
+      Object.fromEntries(Object.entries(o).filter(([k]) => !keys.includes(k)))
+    const game = (g: GameState) =>
+      ({
+        ...g,
+        players: g.players.map((p) => strip(p, ['deck', 'frozen', 'burned', 'carry'])),
+        history: g.history.map((r) => ({
+          ...strip(r, ['endBurn', 'cancelled', 'refunded', 'extra']),
+          strikes: r.strikes.map((x) => strip(x, ['phase'])),
+        })),
+      }) as unknown as GameState
+    if (!s.match || !s.last) throw new Error('対局と解決が要る')
+    const report = game({ ...s.last.resolution.state, history: [s.last.resolution.report] }).history[0]
+    return {
+      ...s,
+      match: { ...s.match, state: game(s.match.state) },
+      last: { n: s.last.n, resolution: { state: game(s.last.resolution.state), report } },
+    }
+  }
+
+  it('後で足した欄の無い部屋は、スターターの5枚と、何も起きていない値でそろえる', () => {
+    // 焼けた分は古い形に無いので、焼けない行動で比べる
+    const s0 = ok(act(fixed(playing()), 0, { kind: 'interrupt', dice: [0] }, seeded(1), T0 + 10)).state
+    const s = ok(act(s0, 1, { kind: 'barrier', dice: [0] }, seeded(1), T0 + 20)).state
+    expect(s.last).not.toBeNull()
+    const restored = restoreRoom(legacy(s))
+    expect(restored).toEqual(s)
+    // 今の形の部屋はそのまま
+    expect(restoreRoom(s)).toEqual(s)
+  })
+  it('対局の無い部屋もそのまま', () => {
+    const s = created()
+    expect(restoreRoom(s)).toEqual(s)
   })
 })

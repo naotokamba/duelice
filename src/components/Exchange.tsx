@@ -55,12 +55,12 @@ const CALM_MS = 900
 const OUT_MS = 350
 
 /** 公開の長さを決める、ステップの記録の部分 */
-type Landing = Pick<StepReport, 'strikes' | 'burn'>
+type Landing = Pick<StepReport, 'strikes' | 'burn' | 'endBurn'>
 
 /** ダメージが入る時刻を全て。攻撃が当たる時刻と、自分も焼ける時刻 */
 export function landings(report: Landing): number[] {
   const times = report.strikes.map(() => IMPACT_MS)
-  if (report.burn.some((v) => v > 0)) times.push(BURN_MS)
+  if ([...report.burn, ...report.endBurn].some((v) => v > 0)) times.push(BURN_MS)
   return times
 }
 
@@ -152,14 +152,15 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
               />
             )
           })}
-          {list.map((s) => {
+          {list.map((s, i) => {
             const x = laneX(list, s.from)
             const other = otherOf(s.from)
-            const stops = s.outcome === 'guarded'
+            // 構えに返された攻撃も、構えの縁で止まり、放った側に星が出る
+            const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
             const a = report.actions[s.from]
             return [
               <Arrow
-                key={`a${s.from}`}
+                key={`a${i}`}
                 label={actionLabel(a)}
                 mark={strikeMark(s, report)}
                 x={x}
@@ -171,7 +172,7 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
               />,
               s.dealt > 0 && (
                 // 守りに削られて通ったダメージは、守りの印の横に出す
-                <div key={`b${s.from}`} className="burst" style={at(x, hit(s.to), IMPACT_MS, stops ? ASIDE : 0)}>
+                <div key={`b${i}`} className="burst" style={at(x, hit(s.to), IMPACT_MS, stops ? ASIDE : 0)}>
                   <Star value={`−${s.dealt}`} />
                 </div>
               ),

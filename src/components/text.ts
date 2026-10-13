@@ -15,16 +15,20 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
   const a = report.actions[who]
   if (a.kind === 'pass') return `${name}は何もしなかった`
   const def = ACTION_DEFS[a.kind]
+  if (report.cancelled[who]) return `${name}は先に倒れて、${def.label}は起きなかった`
   const other: PlayerIndex = who === 0 ? 1 : 0
   const b = report.actions[other]
   const answer = b.kind === 'pass' ? '' : ACTION_DEFS[b.kind].label
-  const s = report.strikes.find((x) => x.from === who)
+  // ターンの終わりの攻撃は、後で別の行に書く
+  const s = report.strikes.find((x) => x.from === who && x.phase !== 'end')
   const done = `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
   if (!s) return done
   const head = `${name}の${def.label} ${s.power}点`
   switch (s.outcome) {
     case 'pierced':
       return `${head}、${answer}をすり抜けた`
+    case 'reflected':
+      return `${head}、${answer}に返されて自分が ${s.dealt}点受けた`
     case 'guarded':
       return `${head}、${answer} ${report.values[other].join('と')} に削られて ${s.dealt}点`
     case 'returned':
@@ -84,6 +88,16 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   for (const [who, name] of order) {
     const paid = report.burn[who]
     if (paid > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で自分も ${paid}点受けた`)
+    if (report.refunded[who]) lines.push(`${name}は防ぎきって、ダイスが戻った`)
+    if (report.extra[who].length > 0) lines.push(`${name}はダイスを振り足して ${report.extra[who].join('と')}`)
+  }
+  for (const [who, name] of order) {
+    const late = report.endBurn[who]
+    if (late > 0) lines.push(`ターンの終わりに、${name}は自分も ${late}点受けた`)
+  }
+  for (const s of report.strikes.filter((x) => x.phase === 'end')) {
+    const name = s.from === viewer ? 'あなた' : '相手'
+    lines.push(`ターンの終わりに、${name}の${ACTION_DEFS[s.kind].label} ${s.dealt}点`)
   }
   return lines
 }

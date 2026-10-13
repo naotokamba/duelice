@@ -2,7 +2,7 @@
 // 狭い画面で大きく出すカードを扱う。大きく出すカードは選んだターンの間だけ覚え、新しいターンには左端のカードに戻す。
 
 import { useMemo, useState } from 'react'
-import { CARD_ORDER, type CardId } from '../game/cards'
+import type { CardId } from '../game/cards'
 import {
   draftAction,
   draftIssue,
@@ -42,7 +42,7 @@ export function useHand(board: GameState) {
       /** 置いたダイスを、カードの行として読んだもの */
       row: draftRow(board, 0, hand),
       /** カードごとの、持っているダイスを置ける置き場 */
-      targets: new Map(CARD_ORDER.map((c) => [c, targets(board, 0, hand, c)])),
+      targets: new Map(board.players[0].deck.map((c) => [c, targets(board, 0, hand, c)])),
     }),
     [board, hand],
   )

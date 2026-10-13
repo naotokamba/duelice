@@ -17,10 +17,19 @@ export type ChantState = 'none' | 'charged' | 'broken'
 
 export interface PlayerState {
   hp: number
+  /** このターンのダイスの目。振り足したり持ち越したりすると、3個より多くなる */
   roll: number[]
   usedDice: number[]
   usedCards: CardId[]
   chant: ChantState
+  /** 対局に持ち込んだ5枚。画面にこの順で並べる。相手にも見える */
+  deck: CardId[]
+  /** 次のステップに置けない目。相手に凍らされていなければ null */
+  frozen: number | null
+  /** このターンに炎で自分が焼けて受けたダメージの合計 */
+  burned: number
+  /** 次のターンへ持ち越すダイスの目。持ち越さなければ null */
+  carry: number | null
 }
 
 export interface Config {
@@ -34,10 +43,16 @@ export const DEFAULT_CONFIG: Config = {
 }
 
 /**
- * 攻撃が相手の構えに当たってどうなったか。当たった、守りに削られた、守りをすり抜けた。
+ * 攻撃が相手の構えに当たってどうなったか。当たった、守りに削られた、守りをすり抜けた、構えに返されて自分に当たった。
  * returned は、守りが攻撃を受けて、攻撃した側へ返したダメージ
  */
-export type Outcome = 'hit' | 'guarded' | 'pierced' | 'returned'
+export type Outcome = 'hit' | 'guarded' | 'pierced' | 'reflected' | 'returned'
+
+/**
+ * 攻撃が当たった時。fast は相手の行動より先、main はステップの行動と同時、end はターンの終わり。
+ * 記録はこの順に並ぶ
+ */
+export type Phase = 'fast' | 'main' | 'end'
 
 /** 一つの攻撃の行方。画面はこれを矢印に描き、ダメージもこれから数える */
 export interface Strike {
@@ -46,10 +61,11 @@ export interface Strike {
   kind: ActionKind
   power: number
   outcome: Outcome
-  /** ダメージを受けた側 */
+  /** ダメージを受けた側。構えに返された攻撃は、放った側 */
   to: PlayerIndex
   /** to が受けたダメージ。守りに削られたら、削られた後の値 */
   dealt: number
+  phase: Phase
 }
 
 /** 詠唱したステップの結果。詠唱しなかった側は null */
@@ -69,9 +85,17 @@ export interface StepReport {
   strikes: Strike[]
   /** 双方が炎で自分も焼けて受けたダメージ。自分も焼ける行動をしなかった側は0 */
   burn: [number, number]
+  /** 双方がターンの終わりに炎で自分も焼けて受けたダメージ。一ステップ目は0 */
+  endBurn: [number, number]
   /** 双方が受けたダメージ。攻撃で受けた分と、自分が焼けた分の合計 */
   damage: [number, number]
   chants: [ChantResult, ChantResult]
+  /** 相手の先に当たる攻撃で倒れて、行動が起きなかった側 */
+  cancelled: [boolean, boolean]
+  /** 守りで防ぎきって、置いたダイスが戻った側 */
+  refunded: [boolean, boolean]
+  /** 双方が振り足したダイスの目 */
+  extra: [number[], number[]]
 }
 
 export interface GameState {

@@ -16,6 +16,7 @@ import {
   nextAlarm,
   type RoomState,
   resignRoom,
+  restoreRoom,
   seatOf,
   setOnline,
   snapshot,
@@ -44,7 +45,8 @@ export class Room extends DurableObject<Env> {
     // 画面がつながりを保つために送る ping には、起こさずに pong を返す
     ctx.setWebSocketAutoResponse(new WebSocketRequestResponsePair('ping', 'pong'))
     ctx.blockConcurrencyWhile(async () => {
-      this.state = (await ctx.storage.get<RoomState>(KEY)) ?? null
+      const saved = await ctx.storage.get<RoomState>(KEY)
+      this.state = saved ? restoreRoom(saved) : null
     })
   }
 

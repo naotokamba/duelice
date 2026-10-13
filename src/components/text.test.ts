@@ -16,6 +16,47 @@ const interrupt: Action = { kind: 'interrupt', dice: [0] }
 const report = (r0: number[], r1: number[], a0: Action, a1: Action): StepReport =>
   resolveStep(makeState({ roll: r0 }, { roll: r1 }), [a0, a1]).history[0]
 
+describe('拡張のカードの公開の文', () => {
+  const POOL_DECK = ['galeWard', 'thunder', 'wildfire', 'overload', 'darkWall'] as const
+  /** 双方が拡張のカードを持ち込んだ盤 */
+  const pool = (r0: number[], r1: number[], step: 1 | 2 = 1, hp1 = 20) =>
+    makeState({ roll: r0, deck: POOL_DECK }, { roll: r1, hp: hp1 }, step)
+
+  it('攻撃を返す構えに返された攻撃は、返されて自分が受けた点を書く', () => {
+    const r = resolveStep(pool([2, 2, 1], [6, 1, 3]), [{ kind: 'galeWard', dice: [0, 1] }, fire]).history[0]
+    expect(reportLines(r, 1)).toEqual([
+      'あなたの炎撃 8点、風陣に返されて自分が 8点受けた',
+      '相手は 2と2 で風陣を張った',
+      'あなたは炎撃で自分も 1点受けた',
+    ])
+  })
+  it('先に当たる攻撃で倒れた側は、行動が起きなかったと書く', () => {
+    const r = resolveStep(pool([6, 1, 3], [6, 1, 3], 1, 4), [{ kind: 'thunder', dice: [0, 1] }, fire]).history[0]
+    expect(reportLines(r, 0)).toEqual(['あなたの迅雷 6点', '相手は先に倒れて、炎撃は起きなかった'])
+  })
+  it('防ぎきってダイスが戻ったこと、振り足した目、ターンの終わりに焼けた分と延焼の点を書く', () => {
+    let s = pool([3, 1, 2], [3, 1, 2])
+    s = resolveStep(s, [{ kind: 'darkWall', dice: [0] }, fire])
+    expect(reportLines(s.history[0], 0)).toEqual([
+      'あなたは 3 で闇壁を張った',
+      '相手の炎撃 5点、闇壁 3 に削られて 0点',
+      'あなたは防ぎきって、ダイスが戻った',
+      '相手は炎撃で自分も 1点受けた',
+    ])
+    s = { ...s, players: [{ ...s.players[0], usedCards: [] }, s.players[1]] }
+    s = resolveStep({ ...s, step: 1 }, [{ kind: 'overload', dice: [0] }, pass], [[5, 6], []])
+    expect(reportLines(s.history[1], 0)).toContain('あなたはダイスを振り足して 5と6')
+    s = resolveStep(s, [{ kind: 'wildfire', dice: [1] }, pass])
+    expect(reportLines(s.history[2], 0)).toEqual([
+      'あなたは 1 で延焼を放った',
+      '相手は何もしなかった',
+      'ターンの終わりに、あなたは自分も 2点受けた',
+      'ターンの終わりに、あなたの延焼 2点',
+    ])
+    expect(reportLines(s.history[2], 1)).toContain('ターンの終わりに、相手の延焼 2点')
+  })
+})
+
 describe('公開の文', () => {
   const lines = (r0: number[], r1: number[], a0: Action, a1: Action, viewer: PlayerIndex = 0) =>
     reportLines(report(r0, r1, a0, a1), viewer)

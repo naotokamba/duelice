@@ -4,7 +4,7 @@
 
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
-import { ACTION_DEFS, type ActionKind, CARD_DEFS, type CardId, kindsOfCard } from '../game/cards'
+import { ACTION_DEFS, type ActionKind, CARD_DEFS, type CardId, kindsOfCard, type PowerCtx, UNHURT } from '../game/cards'
 import { effectParts } from '../game/face'
 import { filled, MARK_SLOT, type PlacedRow, requiredSlots, slotsOf } from '../game/slots'
 import { Die } from './Die'
@@ -49,9 +49,11 @@ interface Props {
   /** 1ステップ目に使い、ターンが変わるまで置き場に残るダイス。押せず、引きずれない */
   kept?: PlacedRow | null
   play?: CardPlay
+  /** 使う側の様子。失った体力で威力の変わるカードの値に効く */
+  ctx?: PowerCtx
 }
 
-export function Card({ card, roll, active, lit = active, used, shown, casting, kept, play }: Props) {
+export function Card({ card, roll, active, lit = active, used, shown, casting, kept, play, ctx = UNHURT }: Props) {
   const name = CARD_DEFS[card].name
   const issueId = useId()
   // 公開で使っている間は使ったカードとして光らせるので、使用済みの見た目にはしない
@@ -85,6 +87,7 @@ export function Card({ card, roll, active, lit = active, used, shown, casting, k
           shown={shown?.kind === kind ? shown : null}
           kept={kept?.kind === kind ? kept : null}
           play={play}
+          ctx={ctx}
         />
       ))}
       {/* 置き場、効果と読んだ流れの先に、カードの下端に重ねて出す */}
@@ -120,9 +123,10 @@ interface RowProps {
   /** この行に残っている、前のステップのダイス。今置いているダイスや公開中のダイスがあれば、そちらを描く */
   kept: PlacedRow | null
   play?: CardPlay
+  ctx: PowerCtx
 }
 
-function Row({ card, kind, name, roll, on, colored, shown, kept, play }: RowProps) {
+function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = requiredSlots(def)
@@ -132,9 +136,10 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play }: RowProp
   const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
   /**
    * 置き場の中に書く記号。最初の置き場には印、その次には自分も焼ける量の記号、省いてもよい置き場には置くと増える量。
-   * 同じ目を置く置き場には、どれにも印の記号を書く
+   * 同じ目を置く置き場には、どれにも印の記号を書く。置き場ごとの記号があれば、それを書く
    */
   const markOf = (k: number) => {
+    if (face.labels) return face.labels[k]
     if (k >= needed) return face.extra
     if (k === MARK_SLOT || face.join === '=') return face.mark
     return k === MARK_SLOT + 1 ? face.cost : undefined
@@ -216,7 +221,7 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play }: RowProp
         </span>
       </div>
       <p className="effect">
-        {effectParts(kind, vals).map((part, i) => (
+        {effectParts(kind, vals, ctx).map((part, i) => (
           <EffectGlyph key={i} part={part} />
         ))}
       </p>

@@ -7,7 +7,7 @@ import { dirname, join, relative, resolve } from 'node:path'
 import ts from 'typescript'
 import { describe, expect, it } from 'vitest'
 import { NARROW_QUERY } from './components/useNarrow'
-import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER } from './game/cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, POOL } from './game/cards'
 
 const SRC = join(import.meta.dirname)
 
@@ -121,8 +121,8 @@ describe('オンライン対戦', () => {
 
 describe('カードの知識', () => {
   it('cards.ts のほかでは、カードや行動を名前で呼ばない', () => {
-    const ids = new Set<string>([...CARD_ORDER, ...ACTION_KINDS])
-    const names = [...CARD_ORDER.map((c) => CARD_DEFS[c].name), ...ACTION_KINDS.map((k) => ACTION_DEFS[k].label)]
+    const ids = new Set<string>([...POOL, ...ACTION_KINDS])
+    const names = [...POOL.map((c) => CARD_DEFS[c].name), ...ACTION_KINDS.map((k) => ACTION_DEFS[k].label)]
     const found: string[] = []
     for (const file of [...sources('game'), ...sources('components')]) {
       if (file.endsWith(join('game', 'cards.ts'))) continue
@@ -155,7 +155,7 @@ describe('画面', () => {
     const light = css.match(/^:root\s*\{([^}]*)\}/m)?.[1] ?? ''
     const dark = css.match(/@media \(prefers-color-scheme: dark\)\s*\{\s*:root\s*\{([^}]*)\}/)?.[1] ?? ''
     const missing: string[] = []
-    for (const card of CARD_ORDER) {
+    for (const card of POOL) {
       // 帯や矢印の鮮やかな色と、背景に対して読める文字の色
       for (const name of [`--${card}:`, `--${card}-ink:`]) {
         if (!light.includes(name)) missing.push(`明るい画面の ${name}`)

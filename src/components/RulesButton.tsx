@@ -4,7 +4,7 @@
 
 import { CircleHelp } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
-import { CARD_ORDER, kindsOfCard } from '../game/cards'
+import { kindsOfCard, STARTER } from '../game/cards'
 import { Card } from './Card'
 import { Modal } from './Dialog'
 
@@ -46,7 +46,7 @@ export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement 
       </ul>
       <h3 className="rules-cards-title">カード</h3>
       <ul className="cards rules-cards">
-        {CARD_ORDER.map((c) => (
+        {STARTER.map((c) => (
           <Card key={c} card={c} roll={[]} active={kindsOfCard(c)} used={false} shown={null} />
         ))}
       </ul>

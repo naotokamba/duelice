@@ -2,18 +2,14 @@
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { makeState, playRandom, seeded, stateArb } from '../test/helpers'
+import { deckArb, makeState, playArb, playRandom, poolStateArb, seeded, stateArb } from '../test/helpers'
 import { newMatch, submit } from './match'
 import { flipReport, flipState, other, resolutionFor, stateFor } from './perspective'
-import { isLegal, legalActions, resolveStep } from './rules'
-import type { Action, GameState, StepReport } from './types'
+import { isLegal, resolveStep } from './rules'
+import type { GameState, StepReport } from './types'
 
-/** 局面と、双方の合法な行動 */
-const stateWithActsArb = stateArb.chain((s) =>
-  fc
-    .tuple(fc.constantFrom(...legalActions(s, 0)), fc.constantFrom(...legalActions(s, 1)))
-    .map((acts) => ({ s, acts: acts as [Action, Action] })),
-)
+/** 局面と、双方の合法な行動と、振り足すダイスの目。スターターどうしの局面も、5枚ずつ持ち込んだ局面も作る */
+const stateWithActsArb = playArb(fc.oneof(stateArb, poolStateArb))
 
 describe('見る側の入れ替え', () => {
   it('相手の席', () => {
@@ -21,9 +17,9 @@ describe('見る側の入れ替え', () => {
   })
   it('入れ替えた盤で解決すると、解決してから入れ替えたのと同じになる。攻撃の並びまで同じ', () => {
     fc.assert(
-      fc.property(stateWithActsArb, ({ s, acts }) => {
-        const flipped = resolveStep(flipState(s), [acts[1], acts[0]])
-        expect(flipped).toEqual(flipState(resolveStep(s, acts)))
+      fc.property(stateWithActsArb, ({ s, acts, extra }) => {
+        const flipped = resolveStep(flipState(s), [acts[1], acts[0]], [extra[1], extra[0]])
+        expect(flipped).toEqual(flipState(resolveStep(s, acts, extra)))
       }),
     )
   })
@@ -33,6 +29,14 @@ describe('見る側の入れ替え', () => {
         expect(isLegal(flipState(s), 1, acts[0])).toBe(true)
         expect(isLegal(flipState(s), 0, acts[1])).toBe(true)
       }),
+    )
+  })
+  it('持ち込んだ5枚の対局でも、二度入れ替えると元に戻る', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 1, max: 1000 }), deckArb, deckArb, (seed, d0, d1) => {
+        for (const s of playRandom(seed, 60, [d0, d1]).states) expect(flipState(flipState(s))).toEqual(s)
+      }),
+      { numRuns: 20 },
     )
   })
   it('二度入れ替えると元に戻る。履歴のある盤でも', () => {
@@ -56,6 +60,7 @@ describe('見る側の入れ替え', () => {
       power: 3,
       outcome,
       dealt: 3,
+      phase: 'main' as const,
     })
     const r = resolveStep(makeState({ roll: [1, 2, 3] }, { roll: [4, 5, 6] }), [{ kind: 'pass' }, { kind: 'pass' }])
       .history[0]

@@ -1,7 +1,7 @@
-// 席のカード。広い画面では全てのカードを並べ、狭い画面ではカードの名前を並べて一枚だけ大きく出す。
+// 席のカード。広い画面ではその席の5枚を並べ、狭い画面ではカードの名前を並べて一枚だけ大きく出す。
 // 相手の席は、狭い画面では名前だけを並べる。公開した技は中央の名乗りの札で分かり、カードは名前を押せば窓で見られる。
 
-import { CARD_ORDER, type CardId } from '../game/cards'
+import type { CardId } from '../game/cards'
 import { Card, type CardPlay } from './Card'
 import { CardTabs } from './CardTabs'
 import { type SeatView, type Shown, usedUp } from './seatView'
@@ -30,6 +30,7 @@ export function SeatCard({ seat, card, shown, revealing, play }: CardProps) {
       casting={revealing && here}
       kept={seat.kept?.card === card ? seat.kept : null}
       play={play}
+      ctx={seat.ctx}
     />
   )
 }
@@ -53,11 +54,12 @@ export function SeatCards({ seat, shown, revealing, narrow, current, onPick, hin
   const view = (c: CardId) => (
     <SeatCard key={c} seat={seat} card={c} shown={shown} revealing={revealing} play={playFor?.(c)} />
   )
-  if (!narrow) return <ul className="cards">{CARD_ORDER.map(view)}</ul>
+  const deck = seat.player.deck
+  if (!narrow) return <ul className="cards">{deck.map(view)}</ul>
 
   const tabs = (
     <CardTabs
-      tabs={CARD_ORDER.map((c) => ({
+      tabs={deck.map((c) => ({
         card: c,
         // 灰色にするのは、このステップに置ける行が無いときだけ。出目のせいで使えないだけなら色は変えない
         off: (seat.rows.get(c) ?? []).length === 0 && shown?.card !== c,

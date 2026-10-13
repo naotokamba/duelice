@@ -1,9 +1,9 @@
 // 盤から、席ごとに画面へ出すものを求める。合法手を数えるのは重いので、盤が変わったときに一度だけ求める。
 // 対局の中身は変えず、見せ方だけを決める純粋な関数を置く。
 
-import { type ActionKind, CARD_ORDER, type CardId } from '../game/cards'
+import type { ActionKind, CardId, PowerCtx } from '../game/cards'
 import { kindsNow, usableCards } from '../game/hand'
-import { keptRow } from '../game/rules'
+import { ctxOf, keptRow } from '../game/rules'
 import { type PlacedRow, rowOf } from '../game/slots'
 import type { Action, GameState, PlayerIndex, PlayerState } from '../game/types'
 
@@ -24,6 +24,8 @@ export interface SeatView {
   rows: Map<CardId, ActionKind[]>
   /** 1ステップ目に使い、ターンが変わるまでカードの置き場に残るダイス */
   kept: PlacedRow | null
+  /** 席の様子。失った体力で威力の変わるカードの値に効く */
+  ctx: PowerCtx
 }
 
 export function seatView(board: GameState, who: PlayerIndex): SeatView {
@@ -34,9 +36,10 @@ export function seatView(board: GameState, who: PlayerIndex): SeatView {
     who,
     player,
     usable,
-    active: new Map(CARD_ORDER.map((c) => [c, usable.has(c) ? kindsNow(board, who, c) : []])),
-    rows: new Map(CARD_ORDER.map((c) => [c, spent(c) ? [] : kindsNow(board, who, c)])),
+    active: new Map(player.deck.map((c) => [c, usable.has(c) ? kindsNow(board, who, c) : []])),
+    rows: new Map(player.deck.map((c) => [c, spent(c) ? [] : kindsNow(board, who, c)])),
     kept: keptRow(board, who),
+    ctx: ctxOf(board, who),
   }
 }
 
@@ -59,18 +62,14 @@ interface CurrentOptions {
   /** 名前を押して選んだカード */
   focus: CardId | null
   usable: Set<CardId>
+  /** 席の5枚。並べる順 */
+  deck: readonly CardId[]
 }
 
 /**
  * 狭い画面で自分の席に大きく出すカード。公開の間は使ったカードを、選んでいる間は名前を押したカードを出す。
  * 名前を押していなければダイスを置いたカード、それも無ければ使える最初のカード
  */
-export function currentCard({ revealing, shown, focus, usable }: CurrentOptions): CardId {
-  return (
-    (revealing ? shown?.card : undefined) ??
-    focus ??
-    shown?.card ??
-    CARD_ORDER.find((c) => usable.has(c)) ??
-    CARD_ORDER[0]
-  )
+export function currentCard({ revealing, shown, focus, usable, deck }: CurrentOptions): CardId {
+  return (revealing ? shown?.card : undefined) ?? focus ?? shown?.card ?? deck.find((c) => usable.has(c)) ?? deck[0]
 }

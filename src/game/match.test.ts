@@ -2,12 +2,13 @@
 
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
-import { makeState, seeded } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS } from './cards'
+import { deckArb, makeState, seeded } from '../test/helpers'
+import { ACTION_DEFS, ACTION_KINDS, UNHURT } from './cards'
 import { forfeit, type Match, newMatch, resign, type Submitted, submit, viewFor } from './match'
 import { isLegal, keptRow, legalActions, turnOver } from './rules'
 import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
+import { DEFAULT_CONFIG } from './types'
 
 const pass: Action = { kind: 'pass' }
 const fire: Action = { kind: 'flameStrike', dice: [0, 1] }
@@ -140,7 +141,7 @@ const maxOver = (f: (k: (typeof ACTION_KINDS)[number], sixes: number[]) => numbe
  * 全ての目を6にした攻撃をそのまま受け、さらに自分も全ての目を6にして一番多く自分も焼けたときの量
  */
 const MAX_TAKEN =
-  maxOver((k, sixes) => ACTION_DEFS[k].power?.(sixes)) + maxOver((k, sixes) => ACTION_DEFS[k].burn?.(sixes))
+  maxOver((k, sixes) => ACTION_DEFS[k].power?.(sixes, UNHURT)) + maxOver((k, sixes) => ACTION_DEFS[k].burn?.(sixes))
 
 describe('対局全体の性質', () => {
   const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
@@ -234,6 +235,38 @@ describe('対局全体の性質', () => {
         }
       }),
       { numRuns: 60 },
+    )
+  })
+  it('持ち込んだ5枚の対局も、出す順によらず同じに進み、振り足すダイスは解決するときに振る', () => {
+    fc.assert(
+      fc.property(seedArb, deckArb, deckArb, (seed, d0, d1) => {
+        const rng = seeded(seed)
+        let m = newMatch(rng, DEFAULT_CONFIG, [d0, d1])
+        expect(m.state.players.map((p) => p.deck)).toEqual([d0, d1])
+        for (let i = 0; i < 60 && m.state.winner === null; i++) {
+          const before = m.state
+          const pick = (who: PlayerIndex) => {
+            const acts = legalActions(before, who)
+            return acts[Math.floor(rng() * acts.length)]
+          }
+          const pair: [Action, Action] = [pick(0), pick(1)]
+          const rng2 = seeded(seed + i)
+          const rng3 = seeded(seed + i)
+          const ab = accepted(submit(accepted(submit(m, 0, pair[0], rng2)).match, 1, pair[1], rng2))
+          const ba = accepted(submit(accepted(submit(m, 1, pair[1], rng3)).match, 0, pair[0], rng3))
+          expect(ab).toEqual(ba)
+          const res = ab.resolved
+          if (!res) throw new Error('解決しなかった')
+          for (const who of [0, 1] as const) {
+            const a = pair[who]
+            const n = a.kind === 'pass' || res.report.cancelled[who] ? 0 : (ACTION_DEFS[a.kind].extraDice ?? 0)
+            expect(res.report.extra[who]).toHaveLength(a.kind === 'pass' ? 0 : (ACTION_DEFS[a.kind].extraDice ?? 0))
+            expect(res.state.players[who].roll).toHaveLength(before.players[who].roll.length + n)
+          }
+          m = ab.match
+        }
+      }),
+      { numRuns: 40 },
     )
   })
   it('同じ乱数の種と同じ手なら、同じ対局になる', () => {

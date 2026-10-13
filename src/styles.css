@@ -19,12 +19,35 @@
   --bullet: #6a4bc4;
   --spear: var(--bullet);
   --interrupt: #3aa0d0;
+  /* 拡張のカード。属性のあるカードは属性の色、闇は黒紫、雷は黄、属性の無いカードは土の色合い */
+  --meteor: #8a5a2b;
+  --allOut: #b8641a;
+  --lastStand: #9c2f4a;
+  --freeze: var(--interrupt);
+  --darkWall: #4a3768;
+  --galeWard: var(--barrier);
+  --thunder: #b08a00;
+  --wildfire: var(--flameStrike);
+  --overload: #8f6a12;
+  --twinDragon: #2c7f86;
+  --meditate: #5a6478;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --flameStrike-ink: #a22d18;
   --barrier-ink: #1f6b3c;
   --bullet-ink: #603fc0;
   --spear-ink: var(--bullet-ink);
   --interrupt-ink: #1b6788;
+  --meteor-ink: #744a22;
+  --allOut-ink: #8f4c12;
+  --lastStand-ink: #85263e;
+  --freeze-ink: var(--interrupt-ink);
+  --darkWall-ink: #45335f;
+  --galeWard-ink: var(--barrier-ink);
+  --thunder-ink: #6f5700;
+  --wildfire-ink: var(--flameStrike-ink);
+  --overload-ink: #6e520e;
+  --twinDragon-ink: #1f6066;
+  --meditate-ink: #4a5366;
   /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
   --burn: #c2410c;
   /* 風の守りが吹き返すダメージの渦。白い数との差は 5.3:1 */
@@ -68,11 +91,33 @@
     --bullet: #a690f0;
     --spear: var(--bullet);
     --interrupt: #6cc4ea;
+    --meteor: #c98d55;
+    --allOut: #e89a4f;
+    --lastStand: #e0708a;
+    --freeze: var(--interrupt);
+    --darkWall: #9a86c4;
+    --galeWard: var(--barrier);
+    --thunder: #e3c13a;
+    --wildfire: var(--flameStrike);
+    --overload: #d7ae4a;
+    --twinDragon: #5cc0c8;
+    --meditate: #9aa6c0;
     --flameStrike-ink: #f28069;
     --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
     --spear-ink: var(--bullet-ink);
     --interrupt-ink: #7ccdf0;
+    --meteor-ink: #d29c6a;
+    --allOut-ink: #eca463;
+    --lastStand-ink: #e8869c;
+    --freeze-ink: var(--interrupt-ink);
+    --darkWall-ink: #ab9ad0;
+    --galeWard-ink: var(--barrier-ink);
+    --thunder-ink: #e8c94f;
+    --wildfire-ink: var(--flameStrike-ink);
+    --overload-ink: #ddb85e;
+    --twinDragon-ink: #6fcad1;
+    --meditate-ink: #a8b3ca;
     --burn: #e8692a;
     --gust: #2f9e63;
   }
@@ -804,6 +849,61 @@ button.die {
   --spell-ink: var(--interrupt-ink);
   --card-ink: var(--interrupt-ink);
 }
+.card-meteor {
+  --spell: var(--meteor);
+  --spell-ink: var(--meteor-ink);
+  --card-ink: var(--meteor-ink);
+}
+.card-allOut {
+  --spell: var(--allOut);
+  --spell-ink: var(--allOut-ink);
+  --card-ink: var(--allOut-ink);
+}
+.card-lastStand {
+  --spell: var(--lastStand);
+  --spell-ink: var(--lastStand-ink);
+  --card-ink: var(--lastStand-ink);
+}
+.card-freeze {
+  --spell: var(--freeze);
+  --spell-ink: var(--freeze-ink);
+  --card-ink: var(--freeze-ink);
+}
+.card-darkWall {
+  --spell: var(--darkWall);
+  --spell-ink: var(--darkWall-ink);
+  --card-ink: var(--darkWall-ink);
+}
+.card-galeWard {
+  --spell: var(--galeWard);
+  --spell-ink: var(--galeWard-ink);
+  --card-ink: var(--galeWard-ink);
+}
+.card-thunder {
+  --spell: var(--thunder);
+  --spell-ink: var(--thunder-ink);
+  --card-ink: var(--thunder-ink);
+}
+.card-wildfire {
+  --spell: var(--wildfire);
+  --spell-ink: var(--wildfire-ink);
+  --card-ink: var(--wildfire-ink);
+}
+.card-overload {
+  --spell: var(--overload);
+  --spell-ink: var(--overload-ink);
+  --card-ink: var(--overload-ink);
+}
+.card-twinDragon {
+  --spell: var(--twinDragon);
+  --spell-ink: var(--twinDragon-ink);
+  --card-ink: var(--twinDragon-ink);
+}
+.card-meditate {
+  --spell: var(--meditate);
+  --spell-ink: var(--meditate-ink);
+  --card-ink: var(--meditate-ink);
+}
 .card-head {
   display: flex;
   align-items: center;
@@ -1139,6 +1239,24 @@ button.fx[aria-describedby] {
   stroke: var(--hit);
   stroke-width: 9;
   stroke-linecap: round;
+}
+/* 拡張のカードの印。線はカードの色で描き、塗る部分は同じ色で塗る */
+.glyph-mark {
+  fill: none;
+  stroke: var(--card-ink, var(--ink));
+  stroke-width: 7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.glyph-mark .mark-fill {
+  fill: var(--card-ink, var(--ink));
+  stroke: none;
+}
+.glyph-mark .glyph-value {
+  fill: var(--ink);
+}
+.glyph-ignite .mark-fill {
+  fill: var(--burn);
 }
 /* 炎で自分が焼けて受けるダメージ。受けるダメージの星と見分けるため、橙の炎に白い数を書く */
 .glyph-burn path {

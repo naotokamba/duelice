@@ -39,7 +39,7 @@ import type { Opponent } from './Game'
 import { BANNER_MS } from './useRevealClock'
 
 /** 攻撃も自分が焼ける分も無い公開。構えを見せてから短く進む */
-const CALM = { strikes: [], burn: [0, 0] as [number, number] }
+const CALM = { strikes: [], burn: [0, 0] as [number, number], endBurn: [0, 0] as [number, number] }
 
 beforeEach(useFakeClock)
 afterEach(() => {

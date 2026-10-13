@@ -2,7 +2,7 @@
 // オンライン対戦で席1に座った側には、盤と記録の左右を入れ替えて渡す。入れ替えても規則の上で同じ局面になる。
 
 import type { Resolution } from './match'
-import type { GameState, PlayerIndex, StepReport } from './types'
+import type { GameState, Phase, PlayerIndex, StepReport } from './types'
 
 /** 相手の席 */
 export const other = (who: PlayerIndex): PlayerIndex => (who === 0 ? 1 : 0)
@@ -11,26 +11,37 @@ function swap<T>(pair: readonly [T, T]): [T, T] {
   return [pair[1], pair[0]]
 }
 
+/** 攻撃が当たる時の順 */
+const PHASES: readonly Phase[] = ['fast', 'main', 'end']
+
 /**
  * 記録の左右を入れ替える。攻撃は、入れ替えた盤で解決したときと同じ順に並べ直す。
- * 先に放った側の席の順に攻撃、その後に、守りが返したダメージを返した先の席の順に並べる
+ * 当たる時の順に、放った側の席の順に攻撃、その後に、守りが返したダメージを返した先の席の順に並べる
  */
 export function flipReport(r: StepReport): StepReport {
   const strikes = r.strikes.map((s) => ({ ...s, from: other(s.from), to: other(s.to) }))
-  const attacks = strikes.filter((s) => s.outcome !== 'returned')
-  const returned = strikes.filter((s) => s.outcome === 'returned')
   const bySeat = (list: typeof strikes, seatOf: (s: (typeof strikes)[number]) => PlayerIndex) => [
     ...list.filter((s) => seatOf(s) === 0),
     ...list.filter((s) => seatOf(s) === 1),
   ]
+  const ordered = PHASES.flatMap((phase) => {
+    const here = strikes.filter((s) => s.phase === phase)
+    const attacks = here.filter((s) => s.outcome !== 'returned')
+    const returned = here.filter((s) => s.outcome === 'returned')
+    return [...bySeat(attacks, (s) => s.from), ...bySeat(returned, (s) => s.to)]
+  })
   return {
     ...r,
     actions: swap(r.actions),
     values: swap(r.values),
-    strikes: [...bySeat(attacks, (s) => s.from), ...bySeat(returned, (s) => s.to)],
+    strikes: ordered,
     burn: swap(r.burn),
+    endBurn: swap(r.endBurn),
     damage: swap(r.damage),
     chants: swap(r.chants),
+    cancelled: swap(r.cancelled),
+    refunded: swap(r.refunded),
+    extra: swap(r.extra),
   }
 }
 

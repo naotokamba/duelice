@@ -3,20 +3,34 @@
 
 import { describe, expect, it } from 'vitest'
 import { actionOf } from '../test/helpers'
-import type { ActionKind, CardId } from './cards'
-import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, effectValue, GUARD_LABEL, kindsOfCard } from './cards'
+import type { ActionKind, CardId, PowerCtx } from './cards'
+import {
+  ACTION_DEFS,
+  ACTION_KINDS,
+  CARD_DEFS,
+  DECK_SIZE,
+  effectValue,
+  GUARD_LABEL,
+  isDeck,
+  kindsOfCard,
+  POOL,
+  STARTER,
+} from './cards'
 import { stepDamage } from './rules'
 
-type Side = { kind: ActionKind | 'pass'; vals: number[] }
+/** 席の行動と置いた目。hp を書くと、ステップの前の体力がそれになる。最大は20 */
+type Side = { kind: ActionKind | 'pass'; vals: number[]; hp?: number }
 interface Case {
   name: string
   a: Side
   b: Side
-  /** [a が受けるダメージ, b が受けるダメージ] */
+  /** [a が受けるダメージ, b が受けるダメージ]。ターンの終わりに起きることは含まない */
   expect: [number, number]
 }
 
 const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals })
+/** 体力が hp まで減った席 */
+const hurt = (hp: number, side: Side): Side => ({ ...side, hp })
 
 const SPEC: Case[] = [
   // 炎撃
@@ -68,10 +82,99 @@ const SPEC: Case[] = [
   { name: '氷礫は1の風壁でも防がれ、3を返される', a: s('interrupt', 4), b: s('barrier', 1), expect: [3, 0] },
   { name: '氷礫は詠唱中の相手に2点', a: s('interrupt', 3), b: s('spearChant', 5), expect: [0, 2] },
   { name: '氷礫と魔弾は相打ち', a: s('interrupt', 2), b: s('bullet', 4, 4), expect: [4, 2] },
+  // 隕石
+  { name: '隕石は3個の合計', a: s('meteor', 6, 5, 4), b: s('pass'), expect: [0, 15] },
+  { name: '隕石は風壁の目の倍だけ減り、3を返される', a: s('meteor', 6, 5, 4), b: s('barrier', 3), expect: [3, 9] },
+  { name: '隕石も風陣に返される', a: s('meteor', 1, 1, 2), b: s('galeWard', 5, 5), expect: [4, 0] },
+  // 全開
+  { name: '全開は1個なら1', a: s('allOut', 6), b: s('pass'), expect: [0, 1] },
+  { name: '全開は目に関係なく、4個なら16', a: s('allOut', 1, 1, 2, 3), b: s('pass'), expect: [0, 16] },
+  {
+    name: '全開の3個の9は、風壁の目の倍だけ減り、3を返される',
+    a: s('allOut', 1, 2, 3),
+    b: s('barrier', 2),
+    expect: [3, 5],
+  },
+  // 背水
+  { name: '背水は体力が満タンなら X の枠の目のまま', a: s('lastStand', 5, 1), b: s('pass'), expect: [0, 5] },
+  {
+    name: '背水は失った体力4ごとに1増える。12失えば3増える',
+    a: hurt(8, s('lastStand', 5, 1)),
+    b: s('pass'),
+    expect: [0, 8],
+  },
+  {
+    name: '背水は失った体力が4に届かなければ増えない',
+    a: hurt(17, s('lastStand', 2, 6)),
+    b: s('pass'),
+    expect: [0, 2],
+  },
+  {
+    name: '背水は風壁の目の倍だけ減り、3を返される。19失えば4増える',
+    a: hurt(1, s('lastStand', 6, 6)),
+    b: s('barrier', 3),
+    expect: [3, 4],
+  },
+  // 凍結
+  { name: '凍結はダメージを出さない', a: s('freeze', 4), b: s('pass'), expect: [0, 0] },
+  { name: '凍結しても、同じステップの攻撃は受ける', a: s('freeze', 4), b: s('flameStrike', 5, 1), expect: [7, 1] },
+  // 闇壁
+  { name: '闇壁は置いた目の倍を減らし、返さない', a: s('darkWall', 2), b: s('flameStrike', 6, 1), expect: [4, 1] },
+  { name: '闇壁で防ぎきれば何も受けない', a: s('darkWall', 3), b: s('flameStrike', 4, 2), expect: [0, 2] },
+  { name: '魔弾は闇壁をすり抜ける', a: s('darkWall', 6), b: s('bullet', 1, 1), expect: [4, 0] },
+  // 風陣
+  {
+    name: '風陣は受けた攻撃をそのまま返す。炎撃なら自分も焼けたうえで返される',
+    a: s('galeWard', 3, 3),
+    b: s('flameStrike', 6, 1),
+    expect: [0, 9],
+  },
+  { name: '風陣は氷礫も返す', a: s('galeWard', 1, 1), b: s('interrupt', 5), expect: [0, 2] },
+  { name: '風陣は魔弾を返せない', a: s('galeWard', 2, 2), b: s('bullet', 6, 6), expect: [4, 0] },
+  { name: '風陣は魔槍の発動を返せない', a: s('galeWard', 2, 2), b: s('spearCast', 6, 5), expect: [11, 0] },
+  { name: '風陣だけでは何も起きない', a: s('galeWard', 4, 4), b: s('barrier', 6), expect: [0, 0] },
+  // 迅雷
+  { name: '迅雷は X の枠の目の威力', a: s('thunder', 6, 1), b: s('pass'), expect: [0, 6] },
+  { name: '迅雷は風壁の目の倍だけ減り、3を返される', a: s('thunder', 6, 1), b: s('barrier', 2), expect: [3, 2] },
+  { name: '迅雷も風陣に返される', a: s('thunder', 5, 2), b: s('galeWard', 1, 1), expect: [5, 0] },
+  { name: '迅雷で倒れなければ、相手の攻撃も当たる', a: s('thunder', 6, 1), b: s('flameStrike', 6, 2), expect: [8, 8] },
+  {
+    name: '迅雷で倒れた相手の攻撃は起きず、自分も焼けない',
+    a: s('thunder', 6, 1),
+    b: hurt(5, s('flameStrike', 6, 2)),
+    expect: [0, 6],
+  },
+  {
+    name: '迅雷どうしは同時に当たる',
+    a: hurt(5, s('thunder', 6, 1)),
+    b: hurt(5, s('thunder', 5, 1)),
+    expect: [5, 6],
+  },
+  // 延焼、過負荷、瞑想は、ターンの終わりや次のステップに効く。ステップのダメージは無い
+  { name: '延焼はそのステップにはダメージを出さない', a: s('wildfire', 3), b: s('pass'), expect: [0, 0] },
+  { name: '過負荷はそのステップにはダメージを出さない', a: s('overload', 3), b: s('interrupt', 2), expect: [2, 0] },
+  { name: '瞑想はダメージを出さない', a: s('meditate', 6), b: s('pass'), expect: [0, 0] },
+  // 双竜
+  { name: '双竜は二組のゾロ目で20', a: s('twinDragon', 3, 3, 5, 5), b: s('pass'), expect: [0, 20] },
+  {
+    name: '双竜は風壁の目の倍だけ減り、3を返される',
+    a: s('twinDragon', 2, 2, 2, 2),
+    b: s('barrier', 6),
+    expect: [3, 8],
+  },
+  { name: '双竜は闇壁の目の倍だけ減る', a: s('twinDragon', 1, 1, 6, 6), b: s('darkWall', 5), expect: [0, 10] },
+  { name: '双竜も風陣に返される', a: s('twinDragon', 1, 1, 6, 6), b: s('galeWard', 5, 5), expect: [20, 0] },
 ]
 
+/** ステップの前の様子。体力を書かなければ満タン */
+const ctxOf = (side: Side): PowerCtx => ({ hp: side.hp ?? 20, maxHp: 20 })
+
 function run(c: Case): [number, number] {
-  return stepDamage([c.a.vals, c.b.vals], [actionOf(c.a.kind, c.a.vals.length), actionOf(c.b.kind, c.b.vals.length)])
+  return stepDamage(
+    [c.a.vals, c.b.vals],
+    [actionOf(c.a.kind, c.a.vals.length), actionOf(c.b.kind, c.b.vals.length)],
+    [ctxOf(c.a), ctxOf(c.b)],
+  )
 }
 
 describe('カードの仕様表', () => {
@@ -87,16 +190,54 @@ describe('カードの仕様表', () => {
 })
 
 describe('定義表の整合性', () => {
-  it('カードは画面にこの順で並ぶ', () => {
-    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['炎撃', '風壁', '魔弾', '魔槍', '氷礫'])
+  it('スターターはこの5枚で、カードを選ばない対局ではこの順に並ぶ', () => {
+    expect(STARTER.map((c) => CARD_DEFS[c].name)).toEqual(['炎撃', '風壁', '魔弾', '魔槍', '氷礫'])
+    expect(isDeck(STARTER)).toBe(true)
+  })
+  it('選べるカードは、スターターの後に拡張のカードがこの順で並ぶ', () => {
+    expect(POOL.map((c) => CARD_DEFS[c].name)).toEqual([
+      '炎撃',
+      '風壁',
+      '魔弾',
+      '魔槍',
+      '氷礫',
+      '隕石',
+      '全開',
+      '背水',
+      '凍結',
+      '闇壁',
+      '風陣',
+      '迅雷',
+      '延焼',
+      '過負荷',
+      '双竜',
+      '瞑想',
+    ])
+  })
+  it('持ち込めるのは、表にある互いに違うカードを5枚', () => {
+    expect(DECK_SIZE).toBe(5)
+    expect(isDeck(['meteor', 'allOut', 'lastStand', 'freeze', 'darkWall'])).toBe(true)
+    expect(isDeck(['meteor', 'allOut', 'lastStand', 'freeze'])).toBe(false)
+    expect(isDeck(['meteor', 'allOut', 'lastStand', 'freeze', 'darkWall', 'galeWard'])).toBe(false)
+    // 重なりを含めて6枚でも持ち込めない
+    expect(isDeck(['meteor', 'meteor', 'allOut', 'lastStand', 'freeze', 'darkWall'])).toBe(false)
+    expect(isDeck(['meteor', 'meteor', 'lastStand', 'freeze', 'darkWall'])).toBe(false)
+    expect(isDeck(['meteor', 'allOut', 'lastStand', 'freeze', 'nothing'])).toBe(false)
+    expect(isDeck(['meteor', 'allOut', 'lastStand', 'freeze', 'toString'])).toBe(false)
   })
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('風壁')
   })
-  it('効果の値は、攻撃なら威力、守りなら減らす量で、どちらでもない詠唱は 0', () => {
+  it('効果の値は、攻撃なら威力、守りなら減らす量、置けなくする目や持ち越す目ならその目で、どれでもない詠唱は 0', () => {
     expect(effectValue(ACTION_DEFS.flameStrike, [4, 1])).toBe(6)
     expect(effectValue(ACTION_DEFS.barrier, [3])).toBe(6)
     expect(effectValue(ACTION_DEFS.spearChant, [5])).toBe(0)
+    expect(effectValue(ACTION_DEFS.freeze, [5])).toBe(5)
+    expect(effectValue(ACTION_DEFS.meditate, [2])).toBe(2)
+    expect(effectValue(ACTION_DEFS.wildfire, [2])).toBe(0)
+    // 様子を渡さなければ、体力は減っていないとみなす
+    expect(effectValue(ACTION_DEFS.lastStand, [4, 1])).toBe(4)
+    expect(effectValue(ACTION_DEFS.lastStand, [4, 1], { hp: 3, maxHp: 20 })).toBe(8)
   })
   it('攻撃する行動は、何もしない相手と、受けるダメージを減らす相手とぶつかる行が仕様表にある', () => {
     const missing: string[] = []
@@ -113,9 +254,10 @@ describe('定義表の整合性', () => {
     const missing = ACTION_KINDS.filter((k) => !covered.has(k))
     expect(missing, `仕様表に行が無い行動: ${missing.join(', ')}`).toEqual([])
   })
-  it('全てのカードが画面の並び順に一度だけ含まれる', () => {
+  it('全てのカードが選べるカードに一度だけ含まれ、スターターは選べるカードの最初の5枚', () => {
     const ids = Object.keys(CARD_DEFS) as CardId[]
-    expect([...CARD_ORDER].sort()).toEqual([...ids].sort())
+    expect([...POOL].sort()).toEqual([...ids].sort())
+    expect(POOL.slice(0, DECK_SIZE)).toEqual(STARTER)
   })
   it('全てのカードに行動があり、名前とカード面の効果がある', () => {
     for (const id of Object.keys(CARD_DEFS) as CardId[]) {
@@ -152,6 +294,17 @@ describe('定義表の整合性', () => {
           kindsOfCard(d.card).some((x) => ACTION_DEFS[x].chant),
           k,
         ).toBe(true)
+      // ダイスが戻るのは守りで防ぎきったとき
+      if (d.refund) expect(d.guard, k).toBeDefined()
+      // 攻撃を返す構えと、先に当たる性質は、攻撃と組み合わさって意味を持つ
+      if (d.reflects) expect(d.power, k).toBeUndefined()
+      if (d.fast) expect(d.power, k).toBeDefined()
+      // 振り足したダイスは次のステップで使うので、二ステップ目には使えない
+      if (d.extraDice) expect(d.step, k).toBe(1)
+      // 二組のゾロ目は4個
+      if (d.twoPairs) expect(d.dice, k).toEqual([4])
+      // 置けなくする目と持ち越す目は、印の置き場の目
+      if (d.freezes || d.carries) expect(d.face.mark, k).toBeDefined()
     }
   })
 })

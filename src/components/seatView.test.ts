@@ -1,11 +1,20 @@
 // 盤から席ごとに画面へ出すものを求める関数と、狭い画面で大きく出すカードの決め方。
 
 import { describe, expect, it } from 'vitest'
+import { STARTER } from '../game/cards'
 import { submit } from '../game/match'
 import { makeState, seeded } from '../test/helpers'
 import { currentCard, revealed, seatView, usedUp } from './seatView'
 
 describe('席の様子', () => {
+  it('カードは席の5枚を、持ち込んだ順に並べる。様子には席の体力を持つ', () => {
+    const deck = ['meteor', 'freeze', 'barrier', 'thunder', 'meditate'] as const
+    const view = seatView(makeState({ roll: [6, 2, 1], deck, hp: 9 }, { roll: [1, 2, 3] }), 0)
+    expect([...view.active.keys()]).toEqual(deck)
+    expect([...view.rows.keys()]).toEqual(deck)
+    expect(view.ctx).toEqual({ hp: 9, maxHp: 20 })
+    expect([...seatView(makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] }), 1).active.keys()]).toEqual(STARTER)
+  })
   it('使えるカードと、カードごとに今使える行を求める', () => {
     const view = seatView(makeState({ roll: [6, 2, 1], usedCards: ['barrier'] }, { roll: [1, 2, 3] }), 0)
     // 使い終わった風壁は使えない
@@ -56,17 +65,24 @@ describe('席の様子', () => {
 
 describe('狭い画面で大きく出すカード', () => {
   const usable = new Set(['barrier', 'interrupt'] as const)
+  const deck = STARTER
   const shown = { card: 'interrupt' as const, kind: 'interrupt' as const, slots: [0], complete: true }
 
   it('公開の間は使ったカード', () => {
-    expect(currentCard({ revealing: true, shown, focus: 'barrier', usable })).toBe('interrupt')
+    expect(currentCard({ revealing: true, shown, focus: 'barrier', usable, deck })).toBe('interrupt')
   })
   it('選んでいる間は名前を押したカード、次にダイスを置いたカード、次に使える最初のカード', () => {
-    expect(currentCard({ revealing: false, shown, focus: 'barrier', usable })).toBe('barrier')
-    expect(currentCard({ revealing: false, shown, focus: null, usable })).toBe('interrupt')
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable })).toBe('barrier')
+    expect(currentCard({ revealing: false, shown, focus: 'barrier', usable, deck })).toBe('barrier')
+    expect(currentCard({ revealing: false, shown, focus: null, usable, deck })).toBe('interrupt')
+    expect(currentCard({ revealing: false, shown: null, focus: null, usable, deck })).toBe('barrier')
+    // 使えるカードのうち、席の5枚の並びで最初のもの
+    const reversed = [...STARTER].reverse()
+    expect(currentCard({ revealing: false, shown: null, focus: null, usable, deck: reversed })).toBe('interrupt')
   })
   it('使えるカードが無ければ左端のカード', () => {
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set() })).toBe('flameStrike')
+    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set(), deck })).toBe('flameStrike')
+    expect(
+      currentCard({ revealing: false, shown: null, focus: null, usable: new Set(), deck: ['meteor', 'freeze'] }),
+    ).toBe('meteor')
   })
 })

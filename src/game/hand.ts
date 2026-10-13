@@ -5,7 +5,7 @@
 // 画面は操作をそのまま出来事として渡し、ここで次の手元を決める。
 
 import { ACTION_DEFS, type ActionKind, type CardId, kindsOfCard } from './cards'
-import { freeDice, isLegal, legalActions } from './rules'
+import { isLegal, legalActions, placeableDice } from './rules'
 import { filled, fillsRequired, MARK_SLOT, type PlacedRow, type Slots, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
 
@@ -74,10 +74,10 @@ export function usableCards(state: GameState, who: PlayerIndex): Set<CardId> {
 
 /**
  * die を card の置き場に置けるか。今のステップで使えるカードになら、空いたダイスはどの置き場にも置ける。
- * 目の組み合わせが行動になるかは、置いた後に placementIssue で確かめる
+ * 凍らされた目のダイスは置けない。目の組み合わせが行動になるかは、置いた後に placementIssue で確かめる
  */
 export function canPut(state: GameState, who: PlayerIndex, card: CardId, die: number): boolean {
-  return freeDice(state.players[who]).includes(die) && usableCards(state, who).has(card)
+  return placeableDice(state.players[who]).includes(die) && usableCards(state, who).has(card)
 }
 
 /** そのカードに今のステップで並べる置き場の数。置ける行が無ければ 0 */
@@ -117,7 +117,8 @@ export function removeDie(draft: Placement | null, die: number): Placement | nul
 
 /** 操作を受けた後の手元 */
 export function reduceHand(state: GameState, who: PlayerIndex, hand: Hand, e: HandEvent): Hand {
-  const free = (die: number) => freeDice(state.players[who]).includes(die)
+  // 凍らされた目のダイスは置けないので、持ち上げもしない
+  const free = (die: number) => placeableDice(state.players[who]).includes(die)
   const put = (card: CardId, slot: number, die: number): Hand => ({
     draft: placeDie(state, who, hand.draft, card, die, slot) ?? hand.draft,
     held: null,

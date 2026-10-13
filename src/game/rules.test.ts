@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from 'vitest'
 import { makeState, seeded } from '../test/helpers'
-import { ACTION_DEFS } from './cards'
+import { ACTION_DEFS, type CardId, STARTER } from './cards'
 import {
   breaksChant,
   burnOf,
@@ -19,6 +19,7 @@ import {
 } from './rules'
 import { fillsRequired } from './slots'
 import type { Action } from './types'
+import { DEFAULT_CONFIG } from './types'
 
 const pass: Action = { kind: 'pass' }
 const interrupt: Action = { kind: 'interrupt', dice: [0] }
@@ -178,7 +179,7 @@ describe('ターンの進行', () => {
     const next = resolveStep(s, [{ kind: 'flameStrike', dice: [0, 1] }, pass])
     expect(next.history[0].values[0]).toEqual([2, 6])
     expect(next.history[0].strikes).toEqual([
-      { from: 0, kind: 'flameStrike', power: 4, outcome: 'hit', to: 1, dealt: 4 },
+      { from: 0, kind: 'flameStrike', power: 4, outcome: 'hit', to: 1, dealt: 4, phase: 'main' },
     ])
     expect(next.history[0].burn).toEqual([6, 0])
     expect(next.history[0].damage).toEqual([6, 4])
@@ -201,11 +202,7 @@ describe('ターンの進行', () => {
     expect(fire(2, 4).winner).toBe(1)
   })
   it('勝敗は体力だけで決まる', () => {
-    const hp = (a: number, b: number) =>
-      winnerOf([
-        { hp: a, roll: [], usedDice: [], usedCards: [], chant: 'none' },
-        { hp: b, roll: [], usedDice: [], usedCards: [], chant: 'none' },
-      ])
+    const hp = (a: number, b: number) => winnerOf(makeState({ roll: [], hp: a }, { roll: [], hp: b }).players)
     expect(hp(1, 1)).toBeNull()
     expect(hp(1, 0)).toBe(0)
     expect(hp(0, 1)).toBe(1)
@@ -246,8 +243,30 @@ describe('ターンの進行', () => {
     expect(s.history).toEqual([])
     expect(s.winner).toBeNull()
     for (const p of s.players) {
-      expect(p).toEqual({ hp: 7, roll: [6, 6, 6, 6], usedDice: [], usedCards: [], chant: 'none' })
+      expect(p).toEqual({
+        hp: 7,
+        roll: [6, 6, 6, 6],
+        usedDice: [],
+        usedCards: [],
+        chant: 'none',
+        deck: [...STARTER],
+        frozen: null,
+        burned: 0,
+        carry: null,
+      })
     }
+  })
+  it('新しいゲームには、双方が持ち込んだ5枚を、持ち込んだ順に並べる。省けば二人ともスターター', () => {
+    const mine: CardId[] = ['meteor', 'allOut', 'lastStand', 'freeze', 'darkWall']
+    const theirs: CardId[] = ['galeWard', 'thunder', 'wildfire', 'overload', 'twinDragon']
+    const s = newGame(seeded(1), DEFAULT_CONFIG, [mine, theirs])
+    expect(s.players.map((p) => p.deck)).toEqual([mine, theirs])
+    // 持ち込んだ並びを写して持つので、後で並びを書き換えても盤は変わらない
+    mine.reverse()
+    expect(s.players[0].deck[0]).toBe('meteor')
+    expect(newGame(seeded(1)).players.map((p) => p.deck)).toEqual([STARTER, STARTER])
+    // 持ち込んだカードによらず、同じ種なら同じ目を振る
+    expect(s.players.map((p) => p.roll)).toEqual(newGame(seeded(1)).players.map((p) => p.roll))
   })
 })
 

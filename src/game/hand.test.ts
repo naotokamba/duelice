@@ -3,7 +3,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, rollArb, stateArb } from '../test/helpers'
-import { ACTION_DEFS, ACTION_KINDS, CARD_ORDER, type CardId } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, type CardId, POOL, STARTER } from './cards'
 import { effectParts } from './face'
 import {
   canPut,
@@ -47,8 +47,9 @@ describe('行動の組み立て', () => {
     const made = new Set<string>()
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
+      // 全てのカードを持ち込み、4個まで置ける行動のために4個のダイスを持つ
       const s = makeState(
-        { roll: [4, 4, 4], chant: def.needsCharge ? 'charged' : 'none' },
+        { roll: [4, 4, 4, 4], chant: def.needsCharge ? 'charged' : 'none', deck: POOL },
         { roll: [1, 2, 3] },
         def.step ?? 1,
       )
@@ -69,7 +70,7 @@ describe('行動の組み立て', () => {
     fc.assert(
       fc.property(
         rollArb,
-        fc.constantFrom<CardId>(...CARD_ORDER),
+        fc.constantFrom<CardId>(...STARTER),
         fc.subarray([0, 1, 2]),
         fc.boolean(),
         (roll, card, picked, step2) => {
@@ -157,7 +158,7 @@ describe('ダイスを置く', () => {
     fc.assert(
       fc.property(
         rollArb,
-        fc.constantFrom<CardId>(...CARD_ORDER),
+        fc.constantFrom<CardId>(...STARTER),
         fc.subarray([0, 1, 2], { minLength: 1 }),
         fc.boolean(),
         (roll, card, order, step2) => {
@@ -183,6 +184,22 @@ describe('ダイスを置く', () => {
     expect(placeDie(s, 0, { card: 'flameStrike', slots: [0, null] }, 'flameStrike', 0, 1)).toEqual({
       card: 'flameStrike',
       slots: [null, 0],
+    })
+  })
+  it('凍らされた目のダイスは置けない', () => {
+    const s = makeState({ roll: [6, 4, 6], frozen: 6 }, { roll: [1, 2, 3] })
+    expect(canPut(s, 0, 'barrier', 0)).toBe(false)
+    expect(canPut(s, 0, 'barrier', 2)).toBe(false)
+    expect(canPut(s, 0, 'barrier', 1)).toBe(true)
+    expect(placeDie(s, 0, null, 'barrier', 0, 0)).toBeNull()
+  })
+  it('二組のゾロ目は、4個置いても組にならなければ、使えないとだけ伝える', () => {
+    const s = makeState({ roll: [3, 3, 5, 6], deck: POOL }, { roll: [1, 2, 3] })
+    expect(placementIssue(s, 0, { card: 'twinDragon', slots: [0, 1, 2, 3] })).toEqual({ type: 'unusable' })
+    expect(placementIssue(s, 0, { card: 'twinDragon', slots: [0, 1, 2, null] })).toEqual({
+      type: 'more',
+      count: 1,
+      same: false,
     })
   })
   it('置き場の外には置けない', () => {
@@ -377,6 +394,12 @@ describe('手元への操作', () => {
     expect(run(used, { type: 'tapTray', die: 0 }).held).toBeNull()
     expect(run(used, { type: 'grab', die: 0 }).held).toBeNull()
   })
+  it('凍らされた目のダイスは持ち上げられない', () => {
+    const frozen = makeState({ roll: [6, 4, 2], frozen: 4 }, { roll: [1, 2, 3] })
+    expect(run(frozen, { type: 'tapTray', die: 1 }).held).toBeNull()
+    expect(run(frozen, { type: 'grab', die: 1 }).held).toBeNull()
+    expect(run(frozen, { type: 'tapTray', die: 0 }).held).toBe(0)
+  })
   it('持っているダイスを置き場に置く。何も持っていなければ置き場を押しても何も起きない', () => {
     const h = run(s, { type: 'tapTray', die: 1 }, { type: 'put', card: 'flameStrike', slot: 1 })
     expect(h).toEqual({ draft: { card: 'flameStrike', slots: [null, 1] }, held: null })
@@ -483,7 +506,7 @@ describe('手元への操作の性質', () => {
     fc.record(
       {
         type: fc.constant('put' as const),
-        card: fc.constantFrom(...CARD_ORDER),
+        card: fc.constantFrom(...STARTER),
         slot: fc.integer({ min: -1, max: 2 }),
         die: fc.integer({ min: 0, max: 2 }),
       },
@@ -491,12 +514,12 @@ describe('手元への操作の性質', () => {
     ),
     fc.record({
       type: fc.constant('tapPlaced' as const),
-      card: fc.constantFrom(...CARD_ORDER),
+      card: fc.constantFrom(...STARTER),
       slot: fc.integer({ min: 0, max: 1 }),
       die: fc.integer({ min: 0, max: 2 }),
     }),
     fc.record({ type: fc.constant('takeBack' as const), die: fc.integer({ min: 0, max: 2 }) }),
-    fc.record({ type: fc.constant('consider' as const), card: fc.constantFrom(...CARD_ORDER) }),
+    fc.record({ type: fc.constant('consider' as const), card: fc.constantFrom(...STARTER) }),
     fc.constant({ type: 'release' as const }),
     fc.constant({ type: 'clear' as const }),
   )
@@ -555,7 +578,7 @@ describe('手元への操作の性質', () => {
   })
   it('持っているダイスは、置ける置き場のどこに置いても、その置き場に入る', () => {
     fc.assert(
-      fc.property(stateArb, fc.integer({ min: 0, max: 2 }), fc.constantFrom(...CARD_ORDER), (state, die, card) => {
+      fc.property(stateArb, fc.integer({ min: 0, max: 2 }), fc.constantFrom(...STARTER), (state, die, card) => {
         const hand = reduceHand(state, 0, EMPTY_HAND, { type: 'tapTray', die })
         for (const k of targets(state, 0, hand, card)) {
           const next = reduceHand(state, 0, hand, { type: 'put', card, slot: k })

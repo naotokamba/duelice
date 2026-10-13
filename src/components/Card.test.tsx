@@ -156,6 +156,44 @@ describe('カード面', () => {
   })
 })
 
+describe('拡張のカード', () => {
+  it.each([
+    ['meteor', ['Yダメージを与える']],
+    ['allOut', ['1ダメージを与える。点線の枠にも置くと16']],
+    ['lastStand', ['X+ダメージを与える', '失った体力4ごとに、ダメージが1増える']],
+    ['freeze', ['相手は次のステップにXの目を置けない']],
+    ['darkWall', ['受けるダメージを2X減らす', '攻撃を防ぎきったら、置いたダイスが戻る']],
+    ['galeWard', ['受けた攻撃を相手に返す。風壁で減らない攻撃は返さない']],
+    ['thunder', ['Xダメージを与える', '相手より先に当たる。倒したら相手の行動は起きない']],
+    ['wildfire', ['ターンの終わりに、このターン自分が焼けた分のダメージを与える']],
+    ['overload', ['ダイスを2個振り足す。次のステップで使える', '自分も2ダメージを受ける']],
+    ['twinDragon', ['20ダメージを与える']],
+    ['meditate', ['Xの目のダイスを次のターンへ持ち越す']],
+  ] as const)('%s の印は、押すと一行の説明が読める', (card, labels) => {
+    const face = draw({ card })
+    for (const name of labels) expect(face.getByRole('button', { name })).toBeTruthy()
+  })
+  it('二組のゾロ目を置くカードは、置き場ごとの記号を書き、同じ記号が並ぶので何番目かで呼ぶ', () => {
+    const face = draw({ card: 'twinDragon', play: play({ targets: [0, 1, 2, 3] }) })
+    const slots = [1, 2, 3, 4].map((n) => face.getByRole('button', { name: `双竜の${n}つ目の枠に置く` }))
+    expect(slots.map((b) => b.textContent)).toEqual(['A', 'A', 'B', 'B'])
+  })
+  it('失った体力で威力の変わるカードは、置いた目に席の体力から決まる分を足して書く', () => {
+    const shown = { card: 'lastStand' as const, kind: 'lastStand' as const, slots: [0, 1], complete: true }
+    expect(
+      draw({ card: 'lastStand', shown, ctx: { hp: 4, maxHp: 20 } }).getByRole('button', { name: '10ダメージを与える' }),
+    ).toBeTruthy()
+    cleanup()
+    expect(draw({ card: 'lastStand', shown }).getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
+  })
+  it('凍らせる目と持ち越す目は、置いた目を印に書く', () => {
+    const frozen = { card: 'freeze' as const, kind: 'freeze' as const, slots: [1], complete: true }
+    expect(
+      draw({ card: 'freeze', shown: frozen }).getByRole('button', { name: '相手は次のステップに2の目を置けない' }),
+    ).toBeTruthy()
+  })
+})
+
 describe('行の色', () => {
   const rows = () => [...screen.getByRole('listitem').querySelectorAll('.face-row')]
 
