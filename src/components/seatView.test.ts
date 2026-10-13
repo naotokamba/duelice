@@ -3,8 +3,9 @@
 import { describe, expect, it } from 'vitest'
 import { STARTER } from '../game/cards'
 import { submit } from '../game/match'
+import { resolveStep } from '../game/rules'
 import { makeState, seeded } from '../test/helpers'
-import { currentCard, revealed, seatView, usedUp } from './seatView'
+import { currentCard, diceMarks, revealed, seatView, usedUp } from './seatView'
 
 describe('席の様子', () => {
   it('カードは席の5枚を、持ち込んだ順に並べる。様子には席の体力を持つ', () => {
@@ -84,5 +85,40 @@ describe('狭い画面で大きく出すカード', () => {
     expect(
       currentCard({ revealing: false, shown: null, focus: null, usable: new Set(), deck: ['meteor', 'freeze'] }),
     ).toBe('meteor')
+  })
+})
+
+describe('ダイスの印', () => {
+  const deck = ['overload', 'freeze', 'meditate', 'barrier', 'allOut'] as const
+
+  it('ターンの初めに振ったダイスの後ろは、前のターンから持ち越したダイス', () => {
+    const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3] })
+    expect(diceMarks(s, 0)).toEqual([null, null, null, 'carried'])
+    expect(diceMarks(s, 1)).toEqual([null, null, null])
+  })
+
+  it('このターンに振り足したダイスは、持ち越したダイスのさらに後ろに並ぶ', () => {
+    const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3], deck })
+    const next = resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }], [[5, 3], []])
+    expect(next.players[0].roll).toEqual([6, 2, 1, 4, 5, 3])
+    expect(diceMarks(next, 0)).toEqual([null, null, null, 'carried', 'extra', 'extra'])
+    expect(seatView(next, 0).marks).toEqual(diceMarks(next, 0))
+    // 前のターンに振り足したダイスは数えない
+    expect(diceMarks({ ...next, turn: 2 }, 0)).toEqual([null, null, null, 'carried', 'carried', 'carried'])
+  })
+
+  it('相手に凍らされた目のダイスは、まだ使っていなければ凍って置けない', () => {
+    const s = makeState({ roll: [2, 5, 2], deck }, { roll: [2, 3, 1], deck })
+    // 自分は 5 で相手の 5 を、相手は 2 で自分の 2 を凍らせる
+    const next = resolveStep(s, [
+      { kind: 'freeze', dice: [1] },
+      { kind: 'freeze', dice: [0] },
+    ])
+    expect(diceMarks(next, 0)).toEqual(['frozen', null, 'frozen'])
+    // 相手に 5 の目は無い
+    expect(diceMarks(next, 1)).toEqual([null, null, null])
+    // 使ったダイスは凍らない
+    const used = makeState({ roll: [2, 5, 2], usedDice: [0], frozen: 2, deck }, { roll: [2, 3, 1] }, 2)
+    expect(diceMarks(used, 0)).toEqual([null, null, 'frozen'])
   })
 })

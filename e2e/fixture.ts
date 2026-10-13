@@ -1,19 +1,22 @@
 // 本物のブラウザで対局を始めるための道具。出目と相手の手を読み込む前に固定し、席や置き場を読み上げの名前で探す。
 
 import { expect, type Locator, type Page } from '@playwright/test'
+import type { CardId } from '../src/game/cards'
 import type { Action } from '../src/game/types'
 
 export interface Setup {
-  /** 振る目。一ターンごとに [あなたの3個, 相手の3個]。尽きたら種つきの乱数 */
+  /** 振る目。一ターンごとに [あなたの3個, 相手の3個]。振り足すダイスも、振る順にここへ並べる。尽きたら種つきの乱数 */
   turns: [number[], number[]][]
   /** 相手が順に指す手。尽きたらパス */
   opponent?: Action[]
+  /** カードを選ぶ対戦で、CPU の持ち込む5枚。省くと評価で強かったデッキから無作為に選ぶ */
+  cpuDeck?: CardId[]
 }
 
 /** 出目と相手の手を固定して、タイトルを開く */
-export async function open(page: Page, { turns, opponent = [] }: Setup) {
+export async function open(page: Page, { turns, opponent = [], cpuDeck }: Setup) {
   await page.addInitScript(
-    ({ queue, acts }) => {
+    ({ queue, acts, deck }) => {
       // 尽きた後に使う、種つきの乱数 mulberry32
       let seed = 1
       const rest = () => {
@@ -29,9 +32,10 @@ export async function open(page: Page, { turns, opponent = [] }: Setup) {
           return v === undefined ? rest() : (v - 1) / 6 + 0.01
         },
         opponent: () => acts.shift() ?? { kind: 'pass' },
+        cpuDeck: deck,
       }
     },
-    { queue: turns.flatMap(([mine, theirs]) => [...mine, ...theirs]), acts: opponent },
+    { queue: turns.flatMap(([mine, theirs]) => [...mine, ...theirs]), acts: opponent, deck: cpuDeck },
   )
   await page.goto('/', { waitUntil: 'networkidle' })
   // 字の大きさで高さが変わるので、字体を読み終えてから測る
@@ -45,7 +49,7 @@ export async function open(page: Page, { turns, opponent = [] }: Setup) {
 export async function start(page: Page, setup: Setup) {
   await open(page, setup)
   await expect(async () => {
-    await page.getByRole('button', { name: 'CPU と対戦' }).click({ timeout: 1000 })
+    await page.getByRole('button', { name: 'CPU と対戦', exact: true }).click({ timeout: 1000 })
     await expect(step(page, 1, 1)).toBeAttached({ timeout: 1000 })
   }).toPass({ timeout: 60_000 })
 }

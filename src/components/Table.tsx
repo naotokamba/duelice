@@ -18,7 +18,7 @@ import { ClashSide, Exchange } from './Exchange'
 import { Seat } from './Seat'
 import { SeatCard, SeatCards } from './SeatCards'
 import { currentCard, revealed, type Shown, seatView } from './seatView'
-import { Tray } from './Tray'
+import { SOCKETS_UP_TO, Tray, trayCount } from './Tray'
 import { issueText, reportLines } from './text'
 import { useHand } from './useHand'
 import { type Resolved, useRevealClock } from './useRevealClock'
@@ -202,6 +202,7 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
         name="あなた"
         hp={hp(0)}
         maxHp={maxHp}
+        crowded={trayCount(seats[0], myShown) > SOCKETS_UP_TO}
         chant={clock.quiet ? 'none' : seats[0].player.chant}
         tray={
           <Tray

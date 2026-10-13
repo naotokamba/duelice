@@ -39,7 +39,7 @@ describe('カード面', () => {
     ['galeWard', [2, 2], 'reflect'],
     ['thunder', [5, 1], 'damage:5 fast'],
     ['wildfire', [3], 'ignite'],
-    ['overload', [3], 'extra:2 burn:2'],
+    ['overload', [3], 'extra:2 endBurn:2'],
     ['twinDragon', [1, 1, 2, 2], 'damage:20'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
@@ -180,6 +180,13 @@ describe('カード面', () => {
       expect(def.face.join === '=', kind).toBe(!!def.sameValues)
     }
   })
+  it('どの行動のカード面にも、印が一つはある。公開の舞台は最初の印で行動を描く', () => {
+    for (const kind of ACTION_KINDS)
+      expect(
+        ACTION_DEFS[kind].face.effect.some((p) => p.icon),
+        kind,
+      ).toBe(true)
+  })
   it('効果の印は行動の性質と食い違わない', () => {
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
@@ -189,7 +196,9 @@ describe('カード面', () => {
       expect(icons.has('pierce'), kind).toBe(!!def.power && !!def.piercing)
       expect(icons.has('guard'), kind).toBe(!!def.guard)
       expect(icons.has('thorns'), kind).toBe(!!def.thorns)
-      expect(icons.has('burn'), kind).toBe(!!def.burn || !!def.endBurn)
+      // 使った時に焼けるか、ターンの終わりに焼けるかで、炎の印を使い分ける
+      expect(icons.has('burn'), kind).toBe(!!def.burn)
+      expect(icons.has('endBurn'), kind).toBe(!!def.endBurn)
       expect(icons.has('chant'), kind).toBe(!!def.chant)
       expect(icons.has('disrupt'), kind).toBe(!!def.disrupts)
       // 失った体力で威力が変わる行動だけが、そのことを示す印を持つ
@@ -212,7 +221,7 @@ describe('カード面', () => {
       const def = ACTION_DEFS[kind]
       if (def.extraDice) expect(written(kind, 'extra'), kind).toBe(String(def.extraDice))
       // ターンの終わりに焼ける行動の炎は、焼ける量を書く
-      if (def.endBurn) expect(written(kind, 'burn'), kind).toBe(String(def.endBurn))
+      if (def.endBurn) expect(written(kind, 'endBurn'), kind).toBe(String(def.endBurn))
     }
   })
   it('数を持たない印は、記号の無い攻撃のカード面に並べても、置いた個数から値を入れない', () => {

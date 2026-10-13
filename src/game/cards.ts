@@ -12,7 +12,7 @@ export interface CardDef {
  * 効果を描く印。数を添える印は、印の中に数を描く。
  * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
  * thorns は守っているときに攻撃を受けると、攻撃した相手に返すダメージ、
- * burn は使うと自分が受けるダメージ。炎の魔法で自分も焼ける効果に使う。
+ * burn は使うと自分が受けるダメージ。炎の魔法で自分も焼ける効果に使う。endBurn は使ったターンの終わりに自分が受けるダメージ。
  * chant は詠唱、disrupt は相手の詠唱を崩す。この二つは数を持たない。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない。
  * wound は失った体力で威力が増えること、frost は相手が次のステップに置けない目、refund は防ぎきったらダイスが戻ること、
@@ -25,6 +25,7 @@ export type EffectIcon =
   | 'guard'
   | 'thorns'
   | 'burn'
+  | 'endBurn'
   | 'chant'
   | 'disrupt'
   | 'wound'
@@ -354,7 +355,7 @@ const ACTIONS = {
     face: {
       effect: [
         { icon: 'extra', value: '2' },
-        { icon: 'burn', value: '2' },
+        { icon: 'endBurn', value: '2' },
       ],
     },
   },

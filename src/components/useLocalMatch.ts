@@ -1,10 +1,12 @@
 // 手元の対戦。対局 match.ts を持ち、自分の行動を出したら相手の行動を決めて出し、解決の結果を卓に渡す。
+// 二人が持ち込む5枚は、始めるときに受け取る。受け取らなければ二人ともスターター。
 // 相手には viewFor で見せてよい様子だけを渡す。卓にはオンライン対戦と同じ形で、自分を席0とした様子を渡す。
 
 import { useRef, useState } from 'react'
 import { type Level, Thinker } from '../game/cpu'
 import { type Match, newMatch, submit, viewFor } from '../game/match'
-import type { Action, GameState, Rng } from '../game/types'
+import type { Decks } from '../game/rules'
+import { type Action, DEFAULT_CONFIG, type GameState, type Rng } from '../game/types'
 import type { TableMatch } from './Table'
 import type { Resolved } from './useRevealClock'
 
@@ -22,9 +24,10 @@ export function useLocalMatch({ rng, level, opponent }: Options) {
   const [resolved, setResolved] = useState<Resolved | null>(null)
   const thinker = useRef(new Thinker())
 
-  const start = () => {
+  /** 対局を始める。decks は [自分の5枚, 相手の5枚] で、省くと二人ともスターター */
+  const start = (decks?: Decks) => {
     thinker.current = new Thinker()
-    setMatch(newMatch(rng))
+    setMatch(newMatch(rng, DEFAULT_CONFIG, decks))
     setResolved(null)
   }
 

@@ -19,35 +19,37 @@
   --bullet: #6a4bc4;
   --spear: var(--bullet);
   --interrupt: #3aa0d0;
-  /* 拡張のカード。属性のあるカードは属性の色、闇は黒紫、雷は黄、属性の無いカードは土の色合い */
-  --meteor: #8a5a2b;
-  --allOut: #b8641a;
-  --lastStand: #9c2f4a;
+  /* 拡張のカード。属性のあるカードは属性の色で、闇は黒に近い紫、雷は黄。属性の無いカードは、どれも同じ落ち着いた石の色 */
+  --neutral: #7a7266;
+  --neutral-ink: #5b5449;
+  --meteor: var(--neutral);
+  --allOut: var(--neutral);
+  --lastStand: var(--neutral);
   --freeze: var(--interrupt);
-  --darkWall: #4a3768;
+  --darkWall: #3d3550;
   --galeWard: var(--barrier);
   --thunder: #b08a00;
   --wildfire: var(--flameStrike);
-  --overload: #8f6a12;
-  --twinDragon: #2c7f86;
-  --meditate: #5a6478;
+  --overload: var(--flameStrike);
+  --twinDragon: var(--neutral);
+  --meditate: var(--neutral);
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --flameStrike-ink: #a22d18;
   --barrier-ink: #1f6b3c;
   --bullet-ink: #603fc0;
   --spear-ink: var(--bullet-ink);
   --interrupt-ink: #1b6788;
-  --meteor-ink: #744a22;
-  --allOut-ink: #8f4c12;
-  --lastStand-ink: #85263e;
+  --meteor-ink: var(--neutral-ink);
+  --allOut-ink: var(--neutral-ink);
+  --lastStand-ink: var(--neutral-ink);
   --freeze-ink: var(--interrupt-ink);
-  --darkWall-ink: #45335f;
+  --darkWall-ink: #3d3550;
   --galeWard-ink: var(--barrier-ink);
   --thunder-ink: #6f5700;
   --wildfire-ink: var(--flameStrike-ink);
-  --overload-ink: #6e520e;
-  --twinDragon-ink: #1f6066;
-  --meditate-ink: #4a5366;
+  --overload-ink: var(--flameStrike-ink);
+  --twinDragon-ink: var(--neutral-ink);
+  --meditate-ink: var(--neutral-ink);
   /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
   --burn: #c2410c;
   /* 風の守りが吹き返すダメージの渦。白い数との差は 5.3:1 */
@@ -91,33 +93,35 @@
     --bullet: #a690f0;
     --spear: var(--bullet);
     --interrupt: #6cc4ea;
-    --meteor: #c98d55;
-    --allOut: #e89a4f;
-    --lastStand: #e0708a;
+    --neutral: #b4ab9b;
+    --neutral-ink: #c4bcae;
+    --meteor: var(--neutral);
+    --allOut: var(--neutral);
+    --lastStand: var(--neutral);
     --freeze: var(--interrupt);
-    --darkWall: #9a86c4;
+    --darkWall: #9d97ae;
     --galeWard: var(--barrier);
     --thunder: #e3c13a;
     --wildfire: var(--flameStrike);
-    --overload: #d7ae4a;
-    --twinDragon: #5cc0c8;
-    --meditate: #9aa6c0;
+    --overload: var(--flameStrike);
+    --twinDragon: var(--neutral);
+    --meditate: var(--neutral);
     --flameStrike-ink: #f28069;
     --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
     --spear-ink: var(--bullet-ink);
     --interrupt-ink: #7ccdf0;
-    --meteor-ink: #d29c6a;
-    --allOut-ink: #eca463;
-    --lastStand-ink: #e8869c;
+    --meteor-ink: var(--neutral-ink);
+    --allOut-ink: var(--neutral-ink);
+    --lastStand-ink: var(--neutral-ink);
     --freeze-ink: var(--interrupt-ink);
-    --darkWall-ink: #ab9ad0;
+    --darkWall-ink: #aaa4ba;
     --galeWard-ink: var(--barrier-ink);
     --thunder-ink: #e8c94f;
     --wildfire-ink: var(--flameStrike-ink);
-    --overload-ink: #ddb85e;
-    --twinDragon-ink: #6fcad1;
-    --meditate-ink: #a8b3ca;
+    --overload-ink: var(--flameStrike-ink);
+    --twinDragon-ink: var(--neutral-ink);
+    --meditate-ink: var(--neutral-ink);
     --burn: #e8692a;
     --gust: #2f9e63;
   }
@@ -238,6 +242,25 @@ button {
   flex-wrap: wrap;
   gap: var(--tap-gap) 0.75rem;
 }
+/* カードを選ぶ対戦の入口。正面の二つのボタンより控えめに、文字だけのリンクに近い見た目にする。押せる高さは保つ */
+.title-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--tap);
+  margin-top: 1rem;
+  padding: 0 0.25rem;
+  border: 0;
+  background: none;
+  color: var(--me);
+  font-weight: 700;
+  text-decoration: underline;
+  text-underline-offset: 0.25em;
+  cursor: pointer;
+}
+.title-link:hover {
+  text-decoration-thickness: 2px;
+}
+
 /* 試しに出している機能の印。押せるものの中にも置くので、動かさず、枠だけで示す */
 .beta {
   display: inline-block;
@@ -745,6 +768,43 @@ button.die {
     0 0 0 3px var(--me),
     0 8px 14px rgba(29, 34, 51, 0.25);
 }
+/* 持ち越した、振り足した、凍ったダイスの角の印。ダイスの右上に小さな丸を重ねる */
+.die-badge {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--ink-soft);
+  color: var(--table);
+  box-shadow: 0 0 0 2px var(--surface);
+}
+.die-badge svg {
+  width: 13px;
+  height: 13px;
+}
+.die-carried .die-badge {
+  background: var(--meditate);
+}
+.die-extra .die-badge {
+  background: var(--overload);
+}
+/* 凍って置けないダイス。氷の色をかぶせ、押せないので浮かせない */
+.die-frozen {
+  background: color-mix(in srgb, var(--interrupt) 30%, var(--ivory));
+  box-shadow:
+    inset 0 0 0 2px var(--interrupt),
+    inset 0 -3px 0 rgba(29, 34, 51, 0.12);
+}
+.die-frozen .die-face {
+  opacity: 0.55;
+}
+.die-frozen .die-badge {
+  background: var(--interrupt-ink);
+}
 /* 前のステップで使い、カードの置き場に残っているダイス。押せないので浮かせず、面の色を変えて今置けるダイスと見分ける */
 .die-kept {
   background: var(--die-kept);
@@ -922,6 +982,17 @@ button.die {
   font-weight: 700;
   color: var(--ink-soft);
 }
+/* 一段で、使えるステップが限られるカード。名前の横に枠だけの小さな札で書く */
+.card-step {
+  padding: 0 0.4rem;
+  border: 1px solid var(--spell);
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1.5;
+  color: var(--spell-ink);
+  white-space: nowrap;
+}
 /* このターンに使い終わったカード。縁を灰色の実線にし、地に細い斜線を敷く。
    点線は置き場の印なので縁には使わない。置いたダイスや印は薄くせず、そのまま読めるようにする */
 .card.is-used {
@@ -1041,6 +1112,21 @@ button.die {
   top: 50%;
   right: calc(50% + var(--die) + 14px + 6px);
   transform: translateY(-50%);
+}
+/* 置き場が3個で合計を読む行は、横に並べるとカードの幅を超えるので、「Y =」を並びの上に出す */
+.slots.is-stacked {
+  flex-direction: column;
+  gap: 0;
+}
+.slots.is-stacked .slots-sum {
+  position: static;
+  transform: none;
+  line-height: 1.3;
+}
+/* 記号でつながない4個の置き場は、2個ずつ二段に並べる */
+.slot-group.is-grid {
+  display: grid;
+  grid-template-columns: repeat(2, var(--die));
 }
 .slot {
   position: relative;
@@ -1265,6 +1351,27 @@ button.fx[aria-describedby] {
 .glyph-burn .glyph-value {
   fill: #fff;
 }
+/* ターンの終わりに焼ける。炎の右下に、下の面の色の時計を重ねる */
+.glyph-late {
+  overflow: visible;
+}
+.glyph-late .late-clock circle {
+  fill: var(--glyph-bg, var(--table));
+  stroke: var(--burn);
+  stroke-width: 5;
+}
+.glyph-late .late-clock path {
+  fill: none;
+  stroke: var(--burn);
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* 凍結の印の真ん中の丸。結晶の線が目に重ならないよう、下の面の色で抜く */
+.glyph-frost .frost-core {
+  fill: var(--glyph-bg, var(--table));
+  stroke-width: 6;
+}
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
   margin-left: auto;
@@ -1322,6 +1429,11 @@ button.fx[aria-describedby] {
 button.tab {
   cursor: pointer;
 }
+/* 4文字以上の名前は、狭い画面の5等分の幅に収まるように字を小さくする */
+.tab.is-long {
+  font-size: 0.8rem;
+  letter-spacing: -0.02em;
+}
 .tab.is-off {
   --spell: var(--ink-soft);
   --spell-ink: var(--ink-soft);
@@ -1336,15 +1448,15 @@ button.tab {
 .tab.is-hint {
   animation: tab-hint 2.4s ease-in-out infinite;
 }
-/* 使い終わったカードの名前。下の線を灰色にし、右上に「済」を付ける */
+/* 使い終わったカードの名前。下の線を灰色にし、右上の角に「済」を重ねる */
 .tab.is-used {
   --spell: var(--ink-soft);
   --spell-ink: var(--ink-soft);
 }
 .tab-used {
   position: absolute;
-  top: 3px;
-  right: 3px;
+  top: -7px;
+  right: -5px;
   display: grid;
   place-items: center;
   width: 17px;
@@ -1352,6 +1464,7 @@ button.tab {
   border-radius: 50%;
   background: var(--ink-soft);
   color: var(--table);
+  box-shadow: 0 0 0 2px var(--surface);
   font-family: var(--font-ui);
   font-size: 0.62rem;
   font-weight: 800;
@@ -2019,6 +2132,138 @@ button.tab {
 }
 
 /* useNarrow.ts の境目と合わせる */
+/* カードを選ぶ画面。カードの一覧だけをスクロールし、選んだ5枚と対戦のボタンは画面の下に留める */
+.pick {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 1rem 1rem 0;
+}
+.pick-head {
+  display: flex;
+  align-items: center;
+  gap: var(--tap-gap);
+  min-height: var(--tap);
+}
+.pick-help {
+  margin-left: auto;
+}
+.pick .level-pick {
+  margin: 1rem 0 0;
+}
+.pick-lead {
+  margin: 0.75rem 0 1rem;
+  color: var(--ink-soft);
+}
+.pick-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 1.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.25rem 1rem;
+}
+.pick-item {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+/* 選んだカードは、自分の色の輪で囲む */
+.pick-item.is-on .card {
+  box-shadow: 0 0 0 3px var(--me);
+}
+.pick-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: var(--tap);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  font-weight: 700;
+  cursor: pointer;
+}
+.pick-toggle:hover:not(:disabled) {
+  border-color: var(--ink-soft);
+}
+.pick-toggle:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.pick-toggle[aria-pressed="true"] {
+  border-color: var(--me);
+  background: var(--me);
+  color: var(--on-accent);
+}
+/* 選んだかどうかの箱。選ぶと印が入る */
+.pick-box {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 2px solid currentColor;
+  border-radius: 5px;
+}
+.pick-box svg {
+  width: 16px;
+  height: 16px;
+}
+.pick-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 10;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin: 0 -1rem;
+  padding: 0.6rem 1rem;
+  border-top: 1px solid var(--line);
+  background: var(--table);
+}
+.pick-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+.pick-count {
+  flex: none;
+  margin: 0;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.pick-chips {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  min-width: 0;
+}
+/* 選んだカードの名前。カードの色の帯を左に付ける */
+.pick-chip {
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--spell);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--spell-ink);
+  font-family: var(--font-spell);
+  font-weight: 800;
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.pick-actions {
+  display: flex;
+  gap: var(--tap-gap);
+  margin-left: auto;
+}
+
 @media (max-width: 560px) {
   /* 上はブラウザのアドレスバーの下にすでに余白があるので、ほとんど空けない */
   .table {
@@ -2080,6 +2325,13 @@ button.tab {
     white-space: nowrap;
   }
   .seat-me .seat-status {
+    order: -1;
+  }
+  /* 手元にダイスが5個以上並ぶと、パスまでは一段に収まらない。パスを名前と体力の段の右端へ上げる */
+  .seat-row.is-crowded .seat-status {
+    flex-basis: calc(100% - var(--tap) - 1.25rem);
+  }
+  .seat-row.is-crowded .pass {
     order: -1;
   }
   .rules-cards {

@@ -17,6 +17,7 @@ export default {
     'src/game/match.ts',
     'src/game/face.ts',
     'src/game/perspective.ts',
+    'src/game/decks.ts',
     'src/server/room.ts',
     'src/server/lobby.ts',
     'src/server/api.ts',

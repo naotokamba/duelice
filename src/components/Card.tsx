@@ -6,7 +6,7 @@ import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
 import { ACTION_DEFS, type ActionKind, CARD_DEFS, type CardId, kindsOfCard, type PowerCtx, UNHURT } from '../game/cards'
 import { effectParts } from '../game/face'
-import { filled, MARK_SLOT, type PlacedRow, requiredSlots, slotsOf } from '../game/slots'
+import { filled, MARK_SLOT, type PlacedRow, readsMark, requiredSlots, slotsOf } from '../game/slots'
 import { Die } from './Die'
 import { dropAttr } from './drop'
 import { EffectGlyph } from './glyphs'
@@ -55,6 +55,9 @@ interface Props {
 
 export function Card({ card, roll, active, lit = active, used, shown, casting, kept, play, ctx = UNHURT }: Props) {
   const name = CARD_DEFS[card].name
+  const kinds = kindsOfCard(card)
+  /** 使えるステップが一つに限られる一段のカード。二段のカードは、段の並びでステップが分かる */
+  const only = kinds.length === 1 ? ACTION_DEFS[kinds[0]].step : undefined
   const issueId = useId()
   // 公開で使っている間は使ったカードとして光らせるので、使用済みの見た目にはしない
   const spent = used && !shown
@@ -73,9 +76,11 @@ export function Card({ card, roll, active, lit = active, used, shown, casting, k
     <li className={cls} aria-label={name} aria-description={spent ? '使用済み' : undefined}>
       <div className="card-head">
         <span className="card-name">{name}</span>
+        {/* 使い終わったら、使用済みの札だけを出す */}
+        {only && !spent && <span className="card-step">ステップ{only}だけ</span>}
         {spent && <span className="card-used">使用済み</span>}
       </div>
-      {kindsOfCard(card).map((kind) => (
+      {kinds.map((kind) => (
         <Row
           key={kind}
           card={card}
@@ -140,14 +145,24 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: Ro
    */
   const markOf = (k: number) => {
     if (face.labels) return face.labels[k]
-    if (k >= needed) return face.extra
+    if (k >= needed) return face.extra ?? gain(k)
     if (k === MARK_SLOT || face.join === '=') return face.mark
     return k === MARK_SLOT + 1 ? face.cost : undefined
   }
+  /**
+   * 省いてもよい置き場に書く、そこまで置くと増える威力。記号の無い省いてもよい置き場だけで、
+   * 目でなく個数で威力の決まる行動なら、一つ前の置き場まで埋めたときとの差を書く
+   */
+  const gain = (k: number) => {
+    const { power } = def
+    if (!power || readsMark(def) || face.sum) return undefined
+    const at = (n: number) => power(Array<number>(n).fill(1), ctx)
+    return `+${at(k + 1) - at(k)}`
+  }
   const marks = Array.from({ length: slotsOf(def) }, (_, k) => markOf(k))
-  /** 置き場の呼び名。記号がその行で一つだけならその記号で、ほかは何番目かで呼ぶ */
+  /** 置き場の呼び名。記号がその行で一つだけならその記号で、ほかは何番目かで呼ぶ。増える威力を書いた置き場も何番目かで呼ぶ */
   const slotName = (k: number) => {
-    const mark = marks[k]
+    const mark = k >= needed && face.extra === undefined ? undefined : marks[k]
     const unique = mark !== undefined && marks.filter((m) => m === mark).length === 1
     return unique ? `${name}の${mark}の枠` : `${name}の${k + 1}つ目の枠`
   }
@@ -206,13 +221,17 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: Ro
     )
   }
 
+  const count = slotsOf(def)
+  // 置き場が3個で合計を読む行は、「Y =」を置き場の並びの上に出す。記号でつながない4個の置き場は、2個ずつ二段に並べる
+  const stacked = !!face.sum && count > 2
+  const grid = !face.join && count >= 4
   return (
     <div className={colored ? 'face-row is-on' : 'face-row'}>
-      <div className="slots">
+      <div className={stacked ? 'slots is-stacked' : 'slots'}>
         {/* 「Y =」は置き場の並びの外に出し、置き場の並びをカードの真ん中に置く */}
         {face.sum && <span className="sym slots-sum">{face.sum} =</span>}
-        <span className="slot-group">
-          {Array.from({ length: slotsOf(def) }, (_, k) => (
+        <span className={grid ? 'slot-group is-grid' : 'slot-group'}>
+          {Array.from({ length: count }, (_, k) => (
             <Fragment key={k}>
               {k > 0 && face.join && <span className="sym">{face.join}</span>}
               {slot(k)}

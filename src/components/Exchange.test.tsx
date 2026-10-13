@@ -148,3 +148,52 @@ describe('公開の舞台', () => {
     expect(calm).toBeLessThan(IMPACT_MS + HOLD_MS)
   })
 })
+
+describe('拡張のカードの公開', () => {
+  const deck = ['freeze', 'overload', 'galeWard', 'wildfire', 'lastStand'] as const
+  it('凍らせる、振り足すといった攻撃しない行動は、名乗りの札と構えにカード面の最初の印を出た値で出す', () => {
+    const s = makeState({ roll: [5, 1, 1], deck }, { roll: [2, 3, 1], deck })
+    const report = resolveStep(
+      s,
+      [
+        { kind: 'freeze', dice: [0] },
+        { kind: 'overload', dice: [0] },
+      ],
+      [[], [4, 4]],
+    ).history[0]
+    const d = draw(report)
+    expect(d.plates).toEqual(['過負荷2', '凍結5'])
+    expect(d.one('.stance.card-freeze .glyph-frost')?.textContent).toBe('5')
+    expect(d.one('.stance.card-overload .glyph-extra')?.textContent).toBe('2')
+    expect(d.stances.map((e) => e.textContent)).toEqual(['5凍結', '2過負荷'])
+  })
+
+  it('受けた攻撃を返す構えは、守りと同じく矢印の通り道に印を出し、返された矢印は構えで止まる', () => {
+    const s = makeState({ roll: [6, 4, 1], deck: ['flameStrike', ...deck.slice(1)] }, { roll: [3, 3, 1], deck })
+    const d = draw(resolveStep(s, [fire, { kind: 'galeWard', dice: [0, 1] }]).history[0])
+    expect(d.one('.stance.card-galeWard.is-blocking .glyph-reflect')).not.toBeNull()
+    expect(d.arrows.map((e) => e.className)).toEqual(['arrow is-up card-flameStrike is-spent'])
+  })
+
+  it('ターンの終わりの攻撃は、放った行動の名前と威力で描き、ターンの終わりに焼けた分も炎に足す', () => {
+    // 1ステップ目に過負荷と延焼を使い、2ステップ目は何もしない。ターンの終わりに過負荷の2が焼け、延焼で2を与える
+    const s = makeState(
+      { roll: [6, 4, 1, 3, 3], usedDice: [0, 1], usedCards: ['overload', 'wildfire'], deck },
+      { roll: [1, 2, 3], deck },
+      2,
+    )
+    const d = draw(resolveStep(s, [{ kind: 'pass' }, { kind: 'pass' }]).history[0])
+    expect(d.one('.arrow.card-wildfire .arrow-name')?.textContent).toBe('延焼')
+    expect(d.one('.arrow.card-wildfire .glyph-star')?.textContent).toBe('2')
+    expect(d.bursts).toEqual(['−2', '−2'])
+    expect(d.one('.burst-burn')?.textContent).toBe('−2')
+  })
+
+  it('失った体力で増える攻撃は、放った時の威力を名乗りの札と矢印に書く', () => {
+    const s = makeState({ roll: [5, 1, 1], deck, hp: 8 }, { roll: [1, 2, 3], deck })
+    const d = draw(resolveStep(s, [{ kind: 'lastStand', dice: [0, 1] }, pass]).history[0])
+    // 失った体力12で3増え、5に足して8
+    expect(d.plates).toEqual(['パス', '背水8'])
+    expect(d.one('.arrow.card-lastStand .glyph-star')?.textContent).toBe('8')
+  })
+})

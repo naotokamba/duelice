@@ -160,13 +160,13 @@ describe('拡張のカード', () => {
   it.each([
     ['meteor', ['Yダメージを与える']],
     ['allOut', ['1ダメージを与える。点線の枠にも置くと16']],
-    ['lastStand', ['X+ダメージを与える', '失った体力4ごとに、ダメージが1増える']],
+    ['lastStand', ['Xに、横の印の分を足したダメージを与える', '失った体力4ごとに、ダメージが1増える']],
     ['freeze', ['相手は次のステップにXの目を置けない']],
     ['darkWall', ['受けるダメージを2X減らす', '攻撃を防ぎきったら、置いたダイスが戻る']],
     ['galeWard', ['受けた攻撃を相手に返す。風壁で減らない攻撃は返さない']],
     ['thunder', ['Xダメージを与える', '相手より先に当たる。倒したら相手の行動は起きない']],
     ['wildfire', ['ターンの終わりに、このターン自分が焼けた分のダメージを与える']],
-    ['overload', ['ダイスを2個振り足す。次のステップで使える', '自分も2ダメージを受ける']],
+    ['overload', ['ダイスを2個振り足す。次のステップで使える', 'ターンの終わりに、自分も2ダメージを受ける']],
     ['twinDragon', ['20ダメージを与える']],
     ['meditate', ['Xの目のダイスを次のターンへ持ち越す']],
   ] as const)('%s の印は、押すと一行の説明が読める', (card, labels) => {
@@ -185,6 +185,39 @@ describe('拡張のカード', () => {
     ).toBeTruthy()
     cleanup()
     expect(draw({ card: 'lastStand', shown }).getByRole('button', { name: '6ダメージを与える' })).toBeTruthy()
+  })
+  it('目で威力の変わらない、置く数を選べるカードは、省いてもよい置き場に、そこまで置くと増える威力を書く', () => {
+    const face = draw({ card: 'allOut', play: play({ targets: [0, 1, 2, 3] }) })
+    const slots = [1, 2, 3, 4].map((n) => face.getByRole('button', { name: `全開の${n}つ目の枠に置く` }))
+    expect(slots.map((b) => b.textContent)).toEqual(['', '+3', '+5', '+7'])
+  })
+  it('記号でつながない4個の置き場は二段に並べ、3個を足し合わせる行は「Y =」を並びの上に出す', () => {
+    for (const card of ['allOut', 'twinDragon'] as const) {
+      cleanup()
+      draw({ card })
+      expect(document.querySelector('.slot-group')?.classList.contains('is-grid')).toBe(true)
+      expect(document.querySelector('.slots')?.classList.contains('is-stacked')).toBe(false)
+    }
+    cleanup()
+    draw({ card: 'meteor' })
+    expect(document.querySelector('.slots')?.classList.contains('is-stacked')).toBe(true)
+    expect(document.querySelector('.slot-group')?.classList.contains('is-grid')).toBe(false)
+    for (const card of ['flameStrike', 'spear'] as const) {
+      cleanup()
+      draw({ card })
+      for (const row of document.querySelectorAll('.slots')) expect(row.classList.contains('is-stacked')).toBe(false)
+      for (const g of document.querySelectorAll('.slot-group')) expect(g.classList.contains('is-grid')).toBe(false)
+    }
+  })
+  it('一段で使えるステップの限られるカードは、名前の横にそのステップを書く。使い終わったら書かない', () => {
+    expect(draw({ card: 'meteor' }).getByText('ステップ1だけ')).toBeTruthy()
+    cleanup()
+    expect(draw({ card: 'meteor', used: true }).queryByText('ステップ1だけ')).toBeNull()
+    cleanup()
+    // 段でステップを分けるカードと、どのステップでも使えるカードには書かない
+    expect(draw({ card: 'spear' }).queryByText(/ステップ\d/)).toBeNull()
+    cleanup()
+    expect(draw({ card: 'flameStrike' }).queryByText(/ステップ\d/)).toBeNull()
   })
   it('凍らせる目と持ち越す目は、置いた目を印に書く', () => {
     const frozen = { card: 'freeze' as const, kind: 'freeze' as const, slots: [1], complete: true }
@@ -268,6 +301,11 @@ describe('カードの名前', () => {
     const over = screen.getByRole('button', { name: '氷礫' })
     expect(over.getAttribute('aria-description')).toBeNull()
     expect(over.textContent).toBe('氷礫')
+  })
+
+  it('3文字までの名前は、そのままの大きさで書く', () => {
+    render(<CardTabs tabs={[tab({ card: 'overload' }), tab({ card: 'flameStrike' })]} />)
+    expect(document.querySelectorAll('.tab.is-long')).toHaveLength(0)
   })
 
   it('押せない名前でも、使い終わったことを伝える', () => {

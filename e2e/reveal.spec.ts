@@ -17,7 +17,7 @@ async function burnInto(page: Page, theirs: number[], answer: Action) {
   await page.clock.install()
   await open(page, { turns: [[[6, 5, 2], theirs]], opponent: [answer] })
   await expect(async () => {
-    await page.getByRole('button', { name: 'CPU と対戦' }).click({ timeout: 1000 })
+    await page.getByRole('button', { name: 'CPU と対戦', exact: true }).click({ timeout: 1000 })
     await expect(step(page, 1, 1)).toBeAttached({ timeout: 1000 })
   }).toPass({ timeout: 60_000 })
   // 時計を入れただけでは時が流れ続け、公開の幕は数秒で閉じる。遅い機械では測り終える前に閉じる。

@@ -135,15 +135,21 @@ export function ThornsGlyph({ value }: { value?: string }) {
 const FLAME =
   'M0 -50C10 -32 34 -22 34 10C34 32 18 46 0 46C-18 46 -34 32 -34 10C-34 -8 -22 -20 -16 -34C-12 -22 -8 -18 -3 -15C-1 -27 -3 -39 0 -50Z'
 
-/** 炎で自分も焼けて受けるダメージ。炎の、丸い部分に数を描く */
-export function BurnGlyph({ value }: { value?: string }) {
+/** 炎で自分も焼けて受けるダメージ。炎の、丸い部分に数を描く。late はターンの終わりに焼けることで、右下に時計を添える */
+export function BurnGlyph({ value, late }: { value?: string; late?: boolean }) {
   return (
-    <svg className="glyph-burn" viewBox="-50 -50 100 100" aria-hidden="true">
+    <svg className={late ? 'glyph-burn glyph-late' : 'glyph-burn'} viewBox="-50 -50 100 100" aria-hidden="true">
       <path d={FLAME} />
       {value && (
         <Value cx={0} cy={12} size={innerText(value)}>
           {value}
         </Value>
+      )}
+      {late && (
+        <g className="late-clock" transform="translate(34 32)">
+          <circle r={15} />
+          <path d="M0-8V0H7" />
+        </g>
       )}
     </svg>
   )
@@ -262,13 +268,19 @@ export function WoundGlyph() {
   )
 }
 
-/** 相手が次のステップに置けない目。雪の結晶の真ん中に目を書く */
+/** 相手が次のステップに置けない目。雪の結晶の真ん中を丸く抜き、そこに目を書く。結晶の線が目に重ならないようにする */
 export function FrostGlyph({ value }: { value?: string }) {
   return (
-    <Mark className="glyph-frost" value={value}>
-      {[0, 60, 120].map((deg) => (
-        <path key={deg} transform={`rotate(${deg})`} d="M0-46V46M-10-36 0-26 10-36M-10 36 0 26 10 36" />
+    <Mark className="glyph-frost">
+      {[0, 60, 120, 180, 240, 300].map((deg) => (
+        <path key={deg} transform={`rotate(${deg})`} d="M0-30V-49M-8-47 0-39 8-47" />
       ))}
+      <circle className="frost-core" r={27} />
+      {value && (
+        <Value cx={0} cy={0} size={36}>
+          {value}
+        </Value>
+      )}
     </Mark>
   )
 }
@@ -336,7 +348,11 @@ export function CarryGlyph({ value }: { value?: string }) {
 function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; glyph: ReactNode } {
   switch (icon) {
     case 'damage':
-      return { label: `${v}ダメージを与える`, glyph: <Star value={v} /> }
+      // X+ のように + で終わる値は、横の印の分だけ増えることを示す
+      return {
+        label: v?.endsWith('+') ? `${v.slice(0, -1)}に、横の印の分を足したダメージを与える` : `${v}ダメージを与える`,
+        glyph: <Star value={v} />,
+      }
     case 'pierce':
       return { label: `${GUARD_LABEL}で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
     case 'guard':
@@ -345,6 +361,8 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを返す`, glyph: <ThornsGlyph value={v} /> }
     case 'burn':
       return { label: `自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} /> }
+    case 'endBurn':
+      return { label: `ターンの終わりに、自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} late /> }
     case 'chant':
       return { label: '詠唱。崩されなければ、次のステップで下の段を使える', glyph: <ChantGlyph /> }
     case 'disrupt':
@@ -366,6 +384,11 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
     case 'carry':
       return { label: `${v}の目のダイスを次のターンへ持ち越す`, glyph: <CarryGlyph value={v} /> }
   }
+}
+
+/** 効果の印の形だけを描く。押して説明を読むことの無い、公開の舞台で使う */
+export function PartGlyph({ icon, value }: { icon: EffectIcon; value?: string }) {
+  return effectIcon(icon, value).glyph
 }
 
 /** カード面の効果の部品を一つ描く。印は押すと一行の説明が出る */

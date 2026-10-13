@@ -8,8 +8,9 @@
 import { SkipForward } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
+import { effectParts } from '../game/face'
 import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
-import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
+import { BurnGlyph, ChantGlyph, PartGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
 import { HpBar } from './HpBar'
 import { actionLabel } from './text'
 
@@ -98,20 +99,30 @@ const PILL_ASIDE = 96
 const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
   ({ left: `calc(${x}% + ${dx}px)`, top: y, '--delay': `${delay}ms` }) as CSSProperties
 
-/** 行動の印を、実際に出た値で描く。攻撃は威力、守りは減らす量。詠唱は値を持たない */
-function actionMark(a: Action, vals: number[]): ReactNode {
-  if (a.kind === 'pass') return <SkipForward />
-  const def = ACTION_DEFS[a.kind]
-  const v = effectValue(def, vals)
-  if (def.power) return def.piercing ? <PierceStar value={String(v)} /> : <Star value={String(v)} />
-  if (def.guard) return <ShieldGlyph value={v} />
-  return <ChantGlyph />
+/** 攻撃の印。貫通する攻撃は矢印の突き抜けた星、ほかは星で、威力を書く */
+function attackMark(piercing: boolean | undefined, power: number): ReactNode {
+  return piercing ? <PierceStar value={String(power)} /> : <Star value={String(power)} />
 }
 
-/** 矢印に付ける印。守りが吹き返したダメージは風の渦で、ほかは放った行動の印で描く */
-function strikeMark(s: Strike, report: StepReport): ReactNode {
+/**
+ * 行動の印を、実際に出た値で描く。攻撃は放った威力、守りは減らす量。
+ * ほかの行動は、カード面の最初の印を出た値で描く。詠唱、凍らせた目、振り足す数、持ち越す目など
+ */
+function actionMark(a: Action, vals: number[], strike?: Strike): ReactNode {
+  if (a.kind === 'pass') return <SkipForward />
+  const def = ACTION_DEFS[a.kind]
+  // 威力は放った時の体力で変わることがあるので、放った攻撃の記録があればその威力を書く
+  if (def.power) return attackMark(def.piercing, strike?.power ?? effectValue(def, vals))
+  if (def.guard) return <ShieldGlyph value={def.guard(vals)} />
+  // どの行動のカード面にも印があることは、face.test.ts が確かめている
+  const [first] = effectParts(a.kind, vals).flatMap((p) => (p.icon ? [{ icon: p.icon, value: p.value }] : []))
+  return <PartGlyph {...first} />
+}
+
+/** 矢印に付ける印。守りが吹き返したダメージは風の渦で、ほかは放った攻撃の印で描く */
+function strikeMark(s: Strike): ReactNode {
   if (s.outcome === 'returned') return <ThornsGlyph value={String(s.power)} />
-  return actionMark(report.actions[s.from], report.values[s.from])
+  return attackMark(ACTION_DEFS[s.kind].piercing, s.power)
 }
 
 interface ExchangeProps {
@@ -157,12 +168,11 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
             const other = otherOf(s.from)
             // 構えに返された攻撃も、構えの縁で止まり、放った側に星が出る
             const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
-            const a = report.actions[s.from]
             return [
               <Arrow
                 key={`a${i}`}
-                label={actionLabel(a)}
-                mark={strikeMark(s, report)}
+                label={ACTION_DEFS[s.kind].label}
+                mark={strikeMark(s)}
                 x={x}
                 y0={edge(s.from)}
                 y1={stops ? stanceRim(other) : hit(other)}
@@ -179,7 +189,9 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
             ]
           })}
           {([0, 1] as const).map((who) => {
-            if (report.burn[who] === 0) return null
+            // 放った時に焼けた分と、ターンの終わりに焼けた分を合わせて、同じ時に出す
+            const burned = report.burn[who] + report.endBurn[who]
+            if (burned === 0) return null
             // 自分が焼けたダメージ。飛んでくる攻撃があればその星の横に、無ければ自分の放った矢印の札の横に出す
             const incoming = list.find((s) => s.to === who)
             const style = incoming
@@ -187,7 +199,7 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
               : at(laneX(list, who), hit(who), BURN_MS, -PILL_ASIDE)
             return (
               <div key={`m${who}`} className="burst burst-burn" style={style}>
-                <BurnGlyph value={`−${report.burn[who]}`} />
+                <BurnGlyph value={`−${burned}`} />
               </div>
             )
           })}
@@ -208,6 +220,11 @@ export function ClashSide({ side, name, hp, maxHp }: { side: 'me' | 'cpu'; name:
   )
 }
 
+/** who がこのステップの行動で放った攻撃。守りが吹き返したダメージとターンの終わりの攻撃は含まない */
+function firstStrike(report: StepReport, who: PlayerIndex): Strike | undefined {
+  return report.strikes.find((s) => s.from === who && s.outcome !== 'returned' && s.phase !== 'end')
+}
+
 /** 名乗りの札。上が相手、下が自分。技の名前と、実際に出た値の印を大きく出し、構えの拍で消える */
 function Plate({ who, report }: { who: PlayerIndex; report: StepReport }) {
   const a = report.actions[who]
@@ -216,7 +233,7 @@ function Plate({ who, report }: { who: PlayerIndex; report: StepReport }) {
   return (
     <div className={cls} style={at(50, who === 1 ? H * 0.3 : H * 0.7)}>
       <span className="plate-name">{a.kind === 'pass' ? 'パス' : actionLabel(a)}</span>
-      <span className="plate-mark">{actionMark(a, report.values[who])}</span>
+      <span className="plate-mark">{actionMark(a, report.values[who], firstStrike(report, who))}</span>
     </div>
   )
 }
@@ -253,7 +270,7 @@ function Arrow({ label, mark, x, y0, y1, delay, card, spent }: ArrowProps) {
   )
 }
 
-/** 受ける側の構え。守り、詠唱、パスを印で出す。攻撃した側は何も出さない */
+/** 受ける側の構え。守り、返す構え、詠唱、攻撃しない行動、パスを印で出す。攻撃した側は何も出さない */
 interface StanceProps {
   who: PlayerIndex
   report: StepReport
@@ -291,13 +308,13 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const cls = `stance card-${def.card}`
   // 印の横に技の名前を添える
   const name = <span className="stance-name">{def.label}</span>
-  if (def.guard) {
-    // 止めた守りは当たった時に揺れる。貫通された守りは、矢印が通る時に薄くなる
+  if (def.guard || def.reflects) {
+    // 止めた守りや返した構えは当たった時に揺れる。貫通された構えは、矢印が通る時に薄くなる
     const pierced = incoming?.outcome === 'pierced'
     const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
     return (
       <div className={cls + state} style={stanceAt(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
-        <ShieldGlyph value={def.guard(vals)} />
+        {actionMark(a, vals)}
         {name}
       </div>
     )
@@ -316,5 +333,12 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
       </div>
     )
   }
-  return null
+  if (def.power) return null
+  // 凍らせる、振り足す、持ち越すなど、攻撃を止めない行動は、詠唱と同じく矢印の横に印を出す
+  return (
+    <div className={cls} style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}>
+      {actionMark(a, vals)}
+      {name}
+    </div>
+  )
 }

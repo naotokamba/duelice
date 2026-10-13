@@ -19,13 +19,15 @@ interface SeatProps {
   tray: ReactNode
   /** ダイスと体力の段の右端に置くもの。自分の席のパス */
   extra?: ReactNode
+  /** 手元のダイスが多く、狭い画面ではパスまで一段に並ばない。パスを名前と体力の段へ上げる */
+  crowded?: boolean
   cards: ReactNode
 }
 
-export function Seat({ side, name, hp, maxHp, chant, marks, tray, extra, cards }: SeatProps) {
+export function Seat({ side, name, hp, maxHp, chant, marks, tray, extra, crowded, cards }: SeatProps) {
   // 高さを抑えるため、ダイスと体力を一つの段に並べる。段は卓の中央側に置く
   const row = (
-    <div className="seat-row">
+    <div className={crowded ? 'seat-row is-crowded' : 'seat-row'}>
       {tray}
       <div className="seat-status">
         <h2 className="seat-name" title={name}>

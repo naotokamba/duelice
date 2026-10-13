@@ -1,6 +1,7 @@
 // 構成の決まりを、文で頼むかわりにテストで守る。
 // 対局の中身 src/game はオンライン対戦でサーバがそのまま動かすので、画面にも時刻にも乱数の既定値にも頼らない。
 // カードの知識は cards.ts の表に集め、ほかのファイルはカードを名前で呼ばずに表の性質で分岐する。
+// 評価で選んだデッキの表 decks.ts は、カードを名前で並べるだけの表なので、名前で呼んでよい。
 
 import { readdirSync, readFileSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
@@ -129,12 +130,12 @@ describe('オンライン対戦', () => {
 })
 
 describe('カードの知識', () => {
-  it('cards.ts のほかでは、カードや行動を名前で呼ばない', () => {
+  it('cards.ts と、デッキの表 decks.ts のほかでは、カードや行動を名前で呼ばない', () => {
     const ids = new Set<string>([...POOL, ...ACTION_KINDS])
     const names = [...POOL.map((c) => CARD_DEFS[c].name), ...ACTION_KINDS.map((k) => ACTION_DEFS[k].label)]
     const found: string[] = []
     for (const file of [...sources('game'), ...sources('components'), ...sources('eval')]) {
-      if (file.endsWith(join('game', 'cards.ts'))) continue
+      if (file.endsWith(join('game', 'cards.ts')) || file.endsWith(join('game', 'decks.ts'))) continue
       const sf = parse(file)
       for (const n of nodes(sf)) {
         const text =

@@ -3,9 +3,10 @@
 
 import type { ActionKind, CardId, PowerCtx } from '../game/cards'
 import { kindsNow, usableCards } from '../game/hand'
-import { ctxOf, keptRow } from '../game/rules'
+import { ctxOf, freeDice, keptRow } from '../game/rules'
 import { type PlacedRow, rowOf } from '../game/slots'
 import type { Action, GameState, PlayerIndex, PlayerState } from '../game/types'
+import type { DieMark } from './Die'
 
 /** カードに置いて見せるダイス。complete は行動として組み上がっていること。効果の記号を値に置き換える */
 export type Shown = PlacedRow & { complete: boolean }
@@ -26,6 +27,8 @@ export interface SeatView {
   kept: PlacedRow | null
   /** 席の様子。失った体力で威力の変わるカードの値に効く */
   ctx: PowerCtx
+  /** ダイスごとの印。前のターンから持ち越した、このターンに振り足した、凍って次のステップに置けない。印の無いダイスは null */
+  marks: (DieMark | null)[]
 }
 
 export function seatView(board: GameState, who: PlayerIndex): SeatView {
@@ -40,7 +43,24 @@ export function seatView(board: GameState, who: PlayerIndex): SeatView {
     rows: new Map(player.deck.map((c) => [c, spent(c) ? [] : kindsNow(board, who, c)])),
     kept: keptRow(board, who),
     ctx: ctxOf(board, who),
+    marks: diceMarks(board, who),
   }
+}
+
+/**
+ * ダイスごとの印。ターンの初めに振ったダイスの後ろに、持ち越したダイス、このターンに振り足したダイスの順に並ぶ。
+ * まだ使っていないダイスのうち、凍らされた目のものは凍って置けない
+ */
+export function diceMarks(board: GameState, who: PlayerIndex): (DieMark | null)[] {
+  const p = board.players[who]
+  const rolled = board.config.diceCount
+  const extra = board.history.filter((r) => r.turn === board.turn).reduce((n, r) => n + r.extra[who].length, 0)
+  const free = freeDice(p)
+  return p.roll.map((v, i) => {
+    if (free.includes(i) && v === p.frozen) return 'frozen'
+    if (i >= p.roll.length - extra) return 'extra'
+    return i >= rolled ? 'carried' : null
+  })
 }
 
 /** このターンに使い終わったカード。使用済みと書く */
