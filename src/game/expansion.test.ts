@@ -10,7 +10,6 @@ import {
   diceValues,
   extraDiceOf,
   isLegal,
-  isTwoPairs,
   keptRow,
   legalActions,
   nextTurn,
@@ -77,21 +76,13 @@ describe('ダイスの数', () => {
     expect(isLegal(four, 0, act('allOut', 0, 1, 2, 3))).toBe(true)
     expect(isLegal(four, 0, act('allOut', null, 1, 2, 3))).toBe(false)
   })
-  it('双竜は4個の二組のゾロ目で使え、4個とも同じ目でもよい', () => {
-    expect(isTwoPairs([3, 5, 3, 5])).toBe(true)
-    expect(isTwoPairs([2, 2, 2, 2])).toBe(true)
-    expect(isTwoPairs([2, 2, 2, 5])).toBe(false)
-    expect(isTwoPairs([1, 2, 3, 4])).toBe(false)
-    expect(isTwoPairs([4, 4, 4])).toBe(false)
-    expect(isTwoPairs([1, 1, 2, 2, 3])).toBe(false)
-    const s = makeState(seat(SECOND, { roll: [3, 5, 5, 3] }), { roll: [1, 2, 3] })
+  it('双竜は好きな目の4個で使え、3個しか無ければ使えない', () => {
+    const s = makeState(seat(SECOND, { roll: [1, 2, 3, 4] }), { roll: [1, 2, 3] })
     expect(isLegal(s, 0, act('twinDragon', 0, 1, 2, 3))).toBe(true)
-    const odd = makeState(seat(SECOND, { roll: [3, 5, 5, 4] }), { roll: [1, 2, 3] })
-    expect(isLegal(odd, 0, act('twinDragon', 0, 1, 2, 3))).toBe(false)
-    // 3個しか無ければ使えない
+    expect(isLegal(s, 0, act('twinDragon', 0, 1, 2, null))).toBe(false)
     expect(kinds(makeState(seat(SECOND, { roll: [2, 2, 2] }), { roll: [1, 2, 3] }), 0).has('twinDragon')).toBe(false)
   })
-  it('二組のゾロ目は、組の入れ替えを一つの手にまとめる', () => {
+  it('双竜は目に関係なく効果が同じなので、4個の置き方を一つの手にまとめる', () => {
     const s = makeState(seat(SECOND, { roll: [3, 5, 5, 3] }), { roll: [1, 2, 3] })
     expect(legalActions(s, 0).filter((a) => a.kind === 'twinDragon')).toHaveLength(1)
   })
@@ -103,7 +94,7 @@ describe('過負荷', () => {
     const s = resolveStep(start(), [act('overload', 0), pass], [[3, 3], []])
     expect(s.players[0].roll).toEqual([6, 2, 2, 3, 3])
     expect(s.history[0].extra).toEqual([[3, 3], []])
-    // 振り足した2個と残りの2個で、二組のゾロ目になる
+    // 振り足した2個と残りの2個で、4個置ける
     expect(isLegal(s, 0, act('twinDragon', 1, 2, 3, 4))).toBe(true)
     expect(isLegal(s, 0, act('overload', 1))).toBe(false)
     const later = makeState(seat(SECOND, { roll: [6, 2, 2] }), { roll: [1, 2, 3] }, 2)
@@ -137,7 +128,7 @@ describe('過負荷', () => {
 })
 
 describe('延焼', () => {
-  it('ターンの終わりに、このターン自分が焼けた分を相手に与える。前のステップに焼けた分も数える', () => {
+  it('ターンの終わりに、このターン自分が焼けた分の倍を相手に与える。前のステップに焼けた分も数える', () => {
     const deck: CardId[] = ['wildfire', 'flameStrike', 'barrier', 'bullet', 'interrupt']
     let s = makeState(seat(deck, { roll: [3, 5, 1] }), { roll: [1, 2, 3] })
     // 炎撃の X に3、焼ける枠に5。自分も5焼ける
@@ -147,9 +138,9 @@ describe('延焼', () => {
     const last = s.history[1]
     // 相手が守っていても減らない
     expect(last.strikes).toEqual([
-      { from: 0, kind: 'wildfire', power: 5, outcome: 'hit', to: 1, dealt: 5, phase: 'end' },
+      { from: 0, kind: 'wildfire', power: 10, outcome: 'hit', to: 1, dealt: 10, phase: 'end' },
     ])
-    expect(s.players[1].hp).toBe(20 - 5 - 5)
+    expect(s.players[1].hp).toBe(20 - 5 - 10)
   })
   it('一ステップ目に使っても、二ステップ目に焼けた分まで数える', () => {
     const deck: CardId[] = ['wildfire', 'flameStrike', 'barrier', 'bullet', 'interrupt']
@@ -157,9 +148,9 @@ describe('延焼', () => {
     s = resolveStep(s, [act('wildfire', 0), pass])
     expect(s.history[0].strikes).toEqual([])
     s = resolveStep(s, [act('flameStrike', 2, 1), pass])
-    // 炎撃で6焼けたので、延焼は6
-    expect(s.history[1].strikes.at(-1)).toMatchObject({ kind: 'wildfire', dealt: 6, phase: 'end' })
-    expect(s.players[1].hp).toBe(20 - 4 - 6)
+    // 炎撃で6焼けたので、延焼は12
+    expect(s.history[1].strikes.at(-1)).toMatchObject({ kind: 'wildfire', dealt: 12, phase: 'end' })
+    expect(s.players[1].hp).toBe(20 - 4 - 12)
   })
   it('過負荷で焼ける分も数える', () => {
     const deck: CardId[] = ['wildfire', 'overload', 'barrier', 'bullet', 'interrupt']
@@ -168,7 +159,7 @@ describe('延焼', () => {
     s = resolveStep(s, [act('wildfire', 1), pass])
     expect(s.history[1].endBurn).toEqual([2, 0])
     expect(s.history[1].strikes).toEqual([
-      { from: 0, kind: 'wildfire', power: 2, outcome: 'hit', to: 1, dealt: 2, phase: 'end' },
+      { from: 0, kind: 'wildfire', power: 4, outcome: 'hit', to: 1, dealt: 4, phase: 'end' },
     ])
   })
   it('焼けていなければ0を与え、次のターンには焼けた分を数え直す', () => {
@@ -190,6 +181,14 @@ describe('延焼', () => {
 })
 
 describe('凍結', () => {
+  it('凍らせる攻撃が守りに防がれても、凍らせる目は残る', () => {
+    const s = resolveStep(makeState(seat(FIRST, { roll: [4, 1, 1] }), { roll: [6, 4, 2] }), [
+      act('freeze', 0),
+      act('barrier', 0),
+    ])
+    expect(s.history[0].strikes[0]).toMatchObject({ kind: 'freeze', power: 2, outcome: 'guarded', dealt: 0 })
+    expect(s.players[1].frozen).toBe(4)
+  })
   it('一ステップ目に凍らせた目は、相手が二ステップ目に置けない', () => {
     let s = makeState(seat(FIRST, { roll: [4, 1, 1] }), { roll: [4, 4, 2] })
     s = resolveStep(s, [act('freeze', 0), pass])
@@ -280,6 +279,47 @@ describe('風陣', () => {
     expect(s.history[0].strikes).toEqual([
       { from: 1, kind: 'bullet', power: 4, outcome: 'pierced', to: 0, dealt: 4, phase: 'main' },
     ])
+    // 返す攻撃が来なかったので、置いた2と2の合計も自分が受け、焼けた分に数える
+    expect(s.history[0].burn).toEqual([4, 0])
+    expect(s.players[0]).toMatchObject({ hp: 12, burned: 4 })
+  })
+  it('返す攻撃が一つでも来れば、置いた目の分は受けない', () => {
+    const deck: CardId[] = ['galeWard', 'flameStrike', 'barrier', 'bullet', 'interrupt']
+    const s = resolveStep(makeState(seat(deck, { roll: [6, 5, 1] }), { roll: [2, 3, 3] }), [
+      act('galeWard', 0, 1),
+      act('interrupt', 0),
+    ])
+    expect(s.history[0].burn).toEqual([0, 0])
+    expect(s.players.map((p) => p.hp)).toEqual([20, 18])
+  })
+  it('先に当たる攻撃も返すので、置いた目の分は受けない', () => {
+    const deck: CardId[] = ['galeWard', 'flameStrike', 'barrier', 'bullet', 'interrupt']
+    const s = resolveStep(
+      makeState(seat(deck, { roll: [6, 5, 1], hp: 3 }), seat(['thunder', ...deck.slice(1)], { roll: [6, 4, 1] })),
+      [act('galeWard', 0, 1), act('thunder', 0, 1)],
+    )
+    expect(s.history[0].strikes[0]).toMatchObject({ kind: 'thunder', outcome: 'reflected' })
+    expect(s.history[0].burn).toEqual([0, 0])
+  })
+  it('自分の攻撃が相手の風陣に返されても、自分の風陣に返す攻撃が来なければ、置いた目の分を受ける', () => {
+    const mine: CardId[] = ['doubleCast', 'galeWard', 'interrupt', 'barrier', 'flameStrike']
+    const theirs: CardId[] = ['galeWard', 'flameStrike', 'barrier', 'bullet', 'interrupt']
+    const s = resolveStep(makeState(seat(mine, { roll: [1, 2, 3, 4] }), seat(theirs, { roll: [1, 1, 5] })), [
+      along(play('doubleCast', 0), play('galeWard', 1, 2), play('interrupt', 3)),
+      act('galeWard', 0, 1),
+    ])
+    // 氷礫の2は相手の風陣に返され、自分の風陣には何も来ないので2と3の合計を受ける。相手は氷礫を返したので受けない
+    expect(s.history[0].burn).toEqual([5, 0])
+    expect(s.history[0].damage).toEqual([7, 0])
+  })
+  it('延焼は、風陣を外して受けた分も焼けた分として数える', () => {
+    const deck: CardId[] = ['galeWard', 'wildfire', 'barrier', 'bullet', 'interrupt']
+    let s = makeState(seat(deck, { roll: [3, 4, 1] }), { roll: [1, 2, 3] })
+    s = resolveStep(s, [act('galeWard', 0, 1), pass])
+    s = resolveStep(s, [act('wildfire', 2), pass])
+    expect(s.history[1].strikes).toEqual([
+      { from: 0, kind: 'wildfire', power: 14, outcome: 'hit', to: 1, dealt: 14, phase: 'end' },
+    ])
   })
 })
 
@@ -368,9 +408,9 @@ describe('背水', () => {
       act('lastStand', 0, 1),
       act('bullet', 0, 1),
     ])
-    // 16 失って 4 増える
-    expect(s.history[0].strikes[0]).toMatchObject({ kind: 'lastStand', power: 7 })
-    expect(s.players.map((p) => p.hp)).toEqual([0, 13])
+    // 16 失って、2 に 8 を足す
+    expect(s.history[0].strikes[0]).toMatchObject({ kind: 'lastStand', power: 10 })
+    expect(s.players.map((p) => p.hp)).toEqual([0, 10])
   })
 })
 
@@ -424,6 +464,10 @@ describe('錬成', () => {
     expect(count('allOut')).toBe(3)
     expect(count('flameStrike')).toBe(36)
     expect(count('meditate')).toBe(6)
+    // 風陣は、返す攻撃が来なかったときに受ける目の合計ごと。2から12まで
+    const ward: CardId[] = ['transmute', 'galeWard', 'meditate', 'bullet', 'allOut']
+    const w = resolveStep(makeState(seat(ward, { roll: [6, 2, 2] }), { roll: [1, 2, 3] }), [act('transmute', 1), pass])
+    expect(legalActions(w, 0).filter((a) => a.kind === 'galeWard')).toHaveLength(11)
   })
   it('瞑想で持ち越すなら、選んだ目を持ち越す', () => {
     const s = resolveStep(start(), [act('transmute', 1), pass])
@@ -659,7 +703,7 @@ describe('残響', () => {
       }),
       { roll: [1, 2, 3] },
     )
-    // 12 失って3増える
+    // 12 失って、2 に 6 を足す
     expect(resolveStep(hurt, [act('echo', 0), pass]).history[0].strikes[0]).toMatchObject({ power: 8 })
     const end = makeState(
       seat(['echo', 'lastStand', 'wildfire', 'overload', 'transmute'], {
@@ -679,10 +723,10 @@ describe('残響', () => {
     expect(extraDiceOf(end, 0, act('echo', 1))).toBe(0)
     const s = resolveStep(end, [act('echo', 1), pass])
     const r = s.history[0]
-    // 過負荷は使った分ともう一度出した分で2回焼け、延焼はこのターンに焼けた分を与える
+    // 過負荷は使った分ともう一度出した分で2回焼け、延焼はこのターンに焼けた分の倍を与える
     expect(r.endBurn).toEqual([4, 0])
     expect(r.strikes.filter((x) => x.phase === 'end')).toEqual([
-      { from: 0, kind: 'wildfire', power: 5, outcome: 'hit', to: 1, dealt: 5, phase: 'end' },
+      { from: 0, kind: 'wildfire', power: 10, outcome: 'hit', to: 1, dealt: 10, phase: 'end' },
     ])
     const twice = makeState(
       seat(['echo', 'lastStand', 'wildfire', 'overload', 'transmute'], {
@@ -696,8 +740,8 @@ describe('残響', () => {
       2,
     )
     const t = resolveStep(twice, [act('echo', 1), pass])
-    expect(t.history[0].strikes.filter((x) => x.phase === 'end').map((x) => x.dealt)).toEqual([3, 3])
-    expect(t.players[1].hp).toBe(14)
+    expect(t.history[0].strikes.filter((x) => x.phase === 'end').map((x) => x.dealt)).toEqual([6, 6])
+    expect(t.players[1].hp).toBe(8)
   })
   it('二ステップ目に錬成をもう一度出しても、次のステップが無いので何も起きない', () => {
     const s = makeState(

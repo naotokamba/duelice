@@ -93,12 +93,6 @@ export function placeableDice(p: PlayerState): number[] {
   return freeDice(p).filter((i) => p.roll[i] !== p.frozen)
 }
 
-/** 4個の目が二組のゾロ目か。4個とも同じ目でもよい */
-export function isTwoPairs(vals: number[]): boolean {
-  const [a, b, c, d] = [...vals].sort((x, y) => x - y)
-  return vals.length === 4 && a === b && c === d
-}
-
 /** 効果の定義 */
 const defOf = (m: Move): ActionDef => ACTION_DEFS[m.kind]
 
@@ -135,9 +129,7 @@ function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
   if (def.echo && p.last.length === 0) return false
   if (def.needsCharge) return p.chant === 'charged'
   if (p.usedCards.includes(def.card)) return false
-  const vals = playValues(p, x)
-  if (def.twoPairs && !isTwoPairs(vals)) return false
-  return !def.sameValues || new Set(vals).size === 1
+  return !def.sameValues || new Set(playValues(p, x)).size === 1
 }
 
 /**
@@ -200,10 +192,10 @@ function choices(p: PlayerState, dice: (number | null)[]): ((number | null)[] | 
  */
 function signature(def: ActionDef, vals: number[], maxHp: number): string {
   const power = def.power
-  // Stryker disable next-line ArithmeticOperator,ArrayDeclaration: 体力の範囲が少しずれても、威力を持たない行動に何を並べても、今の表の行動は同じに見分けられる
+  // Stryker disable next-line ArithmeticOperator,ArrayDeclaration,ObjectLiteral: 体力の範囲が少しずれても、威力を持たない行動に何を並べても、様子を渡さなくても、今の表の行動は同じに見分けられる。体力で威力の変わる行動は、今は目で威力が変わらない
   const powers = power ? Array.from({ length: maxHp }, (_, i) => power(vals, { hp: i + 1, maxHp })) : []
   const mark = def.freezes || def.carries ? vals[0] : null
-  return JSON.stringify([vals.length, powers, def.guard?.(vals), def.burn?.(vals), mark])
+  return JSON.stringify([vals.length, powers, def.guard?.(vals), def.burn?.(vals), def.missBurn?.(vals), mark])
 }
 
 /** 行動の後に残るダイスの目の組。どのダイスを使ったかではなく、残った目の組だけが次のステップに効く */
@@ -389,7 +381,7 @@ function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, Powe
 export interface Clash {
   /** 先に当たる攻撃、ほかの攻撃の順に並べた、攻撃とその行方 */
   strikes: Strike[]
-  /** 双方が炎で自分も焼けて受けるダメージ */
+  /** 双方が炎で自分も焼けて受けるダメージ。返す構えで返す攻撃が来ず、自分が受けた分も含む */
   burn: [number, number]
   /** 先に当たる攻撃で倒れて、先に当たる攻撃のほかの効果が起きなかった側。何もしなかった側も倒れれば入る */
   cancelled: [boolean, boolean]
@@ -419,6 +411,11 @@ export function clash(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx,
   ) as [Move[], Move[]]
   const list = [...first, ...attacks(live, ctx, 'main', f)]
   const burn = burnOf(live)
+  // 受けた攻撃を返す構えで、相手の攻撃を一つも返さなければ、外した分を自分が受ける
+  for (const i of [0, 1] as const) {
+    if (list.some((s) => s.outcome === 'reflected' && s.from !== i)) continue
+    burn[i] += live[i].reduce((sum, m) => sum + (defOf(m).missBurn?.(m.vals) ?? 0), 0)
+  }
   const damage: [number, number] = [...burn]
   for (const s of list) damage[s.to] += s.dealt
   const blocked = ([0, 1] as const).map((i) => {
@@ -468,16 +465,20 @@ const largest = (vals: number[]): number | null => (vals.length === 0 ? null : M
 
 /**
  * ターンの終わりに起きること。このターンに起きた効果の、ターンの終わりに自分も焼ける分を払い、
- * それを足したこのターンに焼けた分を、延焼の性質を持つ効果を起こした回数だけ、相手に与える。障壁では減らない
+ * それを足したこのターンに焼けた分に延焼の倍率を掛けて、延焼の性質を持つ効果を起こした回数だけ、相手に与える。障壁では減らない
  */
 function turnEnd(players: readonly [PlayerState, PlayerState]): { endBurn: [number, number]; strikes: Strike[] } {
   const pay = (p: PlayerState) => p.acted.reduce((sum, k) => sum + (ACTION_DEFS[k].endBurn ?? 0), 0)
   const endBurn: [number, number] = [pay(players[0]), pay(players[1])]
   const list: Strike[] = []
   for (const from of [0, 1] as const) {
-    const power = players[from].burned + endBurn[from]
-    for (const kind of players[from].acted.filter((k) => ACTION_DEFS[k].ignite))
+    const burned = players[from].burned + endBurn[from]
+    for (const kind of players[from].acted) {
+      const rate = ACTION_DEFS[kind].ignite
+      if (!rate) continue
+      const power = burned * rate
       list.push({ from, kind, power, outcome: 'hit', to: otherOf(from), dealt: power, phase: 'end' })
+    }
   }
   return { endBurn, strikes: list }
 }

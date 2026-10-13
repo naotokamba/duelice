@@ -135,10 +135,19 @@ export function ThornsGlyph({ value }: { value?: string }) {
 const FLAME =
   'M0 -50C10 -32 34 -22 34 10C34 32 18 46 0 46C-18 46 -34 32 -34 10C-34 -8 -22 -20 -16 -34C-12 -22 -8 -18 -3 -15C-1 -27 -3 -39 0 -50Z'
 
-/** 炎で自分も焼けて受けるダメージ。炎の、丸い部分に数を描く。late はターンの終わりに焼けることで、右下に時計を添える */
-export function BurnGlyph({ value, late }: { value?: string; late?: boolean }) {
+interface BurnProps {
+  value?: string
+  /** ターンの終わりに焼ける。右下に時計を添える */
+  late?: boolean
+  /** 返す攻撃が来なかったら受ける。右下に、返す矢印を斜線で消した印を添える */
+  miss?: boolean
+}
+
+/** 自分も受けるダメージ。炎の、丸い部分に数を描く */
+export function BurnGlyph({ value, late, miss }: BurnProps) {
+  const cls = ['glyph-burn', late && 'glyph-late', miss && 'glyph-miss'].filter(Boolean).join(' ')
   return (
-    <svg className={late ? 'glyph-burn glyph-late' : 'glyph-burn'} viewBox="-50 -50 100 100" aria-hidden="true">
+    <svg className={cls} viewBox="-50 -50 100 100" aria-hidden="true">
       <path d={FLAME} />
       {value && (
         <Value cx={0} cy={12} size={innerText(value)}>
@@ -149,6 +158,12 @@ export function BurnGlyph({ value, late }: { value?: string; late?: boolean }) {
         <g className="late-clock" transform="translate(34 32)">
           <circle r={15} />
           <path d="M0-8V0H7" />
+        </g>
+      )}
+      {miss && (
+        <g className="late-clock" transform="translate(34 32)">
+          <circle r={15} />
+          <path d="M-7-6 3 0-7 6M7-8V8M-9 9 9-9" />
         </g>
       )}
     </svg>
@@ -315,12 +330,17 @@ export function FastGlyph() {
   )
 }
 
-/** ターンの終わりに焼けた分を与える。炎から伸びる矢印 */
-export function IgniteGlyph() {
+/** ターンの終わりに焼けた分の何倍かを与える。炎から伸びる矢印の下に、倍率を ×2 の形で書く */
+export function IgniteGlyph({ value }: { value?: string }) {
   return (
     <Mark className="glyph-ignite">
       <path className="mark-fill" d={FLAME} transform="translate(-14 4) scale(0.62)" />
       <path d="M10-30 44-30M32-42 44-30 32-18" />
+      {value && (
+        <Value cx={26} cy={14} size={30} halo>
+          ×{value}
+        </Value>
+      )}
     </Mark>
   )
 }
@@ -399,17 +419,22 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
     case 'disrupt':
       return { label: '相手が詠唱していたら崩す', glyph: <DisruptGlyph /> }
     case 'wound':
-      return { label: '失った体力4ごとに、ダメージが1増える', glyph: <WoundGlyph /> }
+      return { label: '失った体力の半分だけ、ダメージが増える', glyph: <WoundGlyph /> }
     case 'frost':
       return { label: `相手は次のステップに${v}の目を置けない`, glyph: <FrostGlyph value={v} /> }
     case 'refund':
       return { label: '攻撃を防ぎきったら、置いたダイスが戻る', glyph: <RefundGlyph /> }
     case 'reflect':
       return { label: `受けた攻撃を相手に返す。${GUARD_LABEL}で減らない攻撃は返さない`, glyph: <ReflectGlyph /> }
+    case 'miss':
+      return { label: `返す攻撃が来なかったら、自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} miss /> }
     case 'fast':
       return { label: '相手より先に当たる。倒したら相手の行動は起きない', glyph: <FastGlyph /> }
     case 'ignite':
-      return { label: 'ターンの終わりに、このターン自分が焼けた分のダメージを与える', glyph: <IgniteGlyph /> }
+      return {
+        label: `ターンの終わりに、このターン自分が焼けた分の${v}倍のダメージを与える`,
+        glyph: <IgniteGlyph value={v} />,
+      }
     case 'extra':
       return { label: `ダイスを${v}個振り足す。次のステップで使える`, glyph: <ExtraGlyph value={v} /> }
     case 'carry':

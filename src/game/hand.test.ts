@@ -200,9 +200,9 @@ describe('ダイスを置く', () => {
     expect(canPut(s, 0, 'barrier', 1)).toBe(true)
     expect(placeDie(s, 0, null, 'barrier', 0, 0)).toBeNull()
   })
-  it('二組のゾロ目は、4個置いても組にならなければ、使えないとだけ伝える', () => {
+  it('双竜は好きな目の4個で使え、足りなければあと何個置くかを伝える', () => {
     const s = makeState({ roll: [3, 3, 5, 6], deck: POOL }, { roll: [1, 2, 3] })
-    expect(placementIssue(s, 0, { card: 'twinDragon', slots: [0, 1, 2, 3] })).toEqual({ type: 'unusable' })
+    expect(placementIssue(s, 0, { card: 'twinDragon', slots: [0, 1, 2, 3] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'twinDragon', slots: [0, 1, 2, null] })).toEqual({
       type: 'more',
       count: 1,

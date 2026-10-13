@@ -30,15 +30,17 @@ describe('カード面', () => {
     // 全開は置いた個数の二乗
     ['allOut', [6, 6], 'damage:4'],
     ['allOut', [1, 2, 3, 4], 'damage:16'],
-    // 背水は満タンなら X のまま。失った体力で増えることは数を持たない印で示す
-    ['lastStand', [5, 1], 'damage:5 wound'],
-    // 凍結と瞑想は、印の置き場の目をそのまま書く
-    ['freeze', [4], 'frost:4'],
+    // 背水は目に関係なく、満タンなら2。失った体力で増えることは数を持たない印で示す
+    ['lastStand', [5, 1], 'damage:2 wound'],
+    // 凍結は目に関係なく2を当て、印の置き場の目を凍らせる。瞑想は印の置き場の目をそのまま書く
+    ['freeze', [4], 'damage:2 frost:4'],
     ['meditate', [2], 'carry:2'],
     ['darkWall', [3], 'guard:6 refund'],
-    ['galeWard', [2, 2], 'reflect'],
+    // 風陣は、返す攻撃が来なかったら置いた目の合計を自分が受ける
+    ['galeWard', [2, 5], 'reflect miss:7'],
     ['thunder', [5, 1], 'damage:5 fast'],
-    ['wildfire', [3], 'ignite'],
+    // 延焼は倍率を書く
+    ['wildfire', [3], 'ignite:2'],
     ['overload', [3], 'extra:2 endBurn:2'],
     ['twinDragon', [1, 1, 2, 2], 'damage:20'],
     // 錬成と二重詠唱は決まった数を書き、残響は数を持たない
@@ -48,9 +50,41 @@ describe('カード面', () => {
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
-  it('背水は、使う側の体力が減っていれば、置いた目に失った体力4ごとに1を足して書く', () => {
+  it('背水は、置く前は増える基の2+を書き、置いたら使う側の失った体力の半分を2に足して書く', () => {
+    expect(flat(effectParts('lastStand'))).toBe('damage:2+ wound')
+    expect(flat(effectParts('lastStand', undefined, { hp: 7, maxHp: 20 }))).toBe('damage:2+ wound')
     expect(flat(effectParts('lastStand', [5, 1], { hp: 7, maxHp: 20 }))).toBe('damage:8 wound')
-    expect(flat(effectParts('lastStand', [5, 1], UNHURT))).toBe('damage:5 wound')
+    expect(flat(effectParts('lastStand', [5, 1], UNHURT))).toBe('damage:2 wound')
+  })
+  it('同じ記号を書いた印でも、印ごとに値を決める。外したときの印は外したときに受ける量、持ち越す印は印の置き場の目、ほかは効果の値', () => {
+    // 合計の記号を威力にも外したときに受ける量にも書き、持ち越しもする仮のカード
+    const def = {
+      ...ACTION_DEFS.galeWard,
+      power: (v: number[]) => v[0] + v[1],
+      missBurn: () => 1,
+      carries: true,
+      face: {
+        ...ACTION_DEFS.galeWard.face,
+        effect: [
+          { icon: 'damage' as const, value: 'Y' },
+          { icon: 'miss' as const, value: 'Y' },
+          { icon: 'carry' as const, value: 'Y' },
+        ],
+      },
+    }
+    expect(faceParts(def, [5, 2])).toEqual([
+      { icon: 'damage', value: '7', text: undefined },
+      { icon: 'miss', value: '1', text: undefined },
+      { icon: 'carry', value: '5', text: undefined },
+    ])
+    // 外したときに受ける量を持たない行動の外したときの印には、効果の値を入れる
+    const { missBurn: _, ...bare } = def
+    expect(faceParts(bare, [5, 2])[1]).toEqual({ icon: 'miss', value: '7', text: undefined })
+  })
+  it('目が決まるまでは記号のまま書き、置いたら印ごとの値にする', () => {
+    expect(flat(effectParts('freeze'))).toBe('damage:2 frost:X')
+    expect(flat(effectParts('galeWard'))).toBe('reflect miss:Y')
+    expect(flat(effectParts('meditate', [5]))).toBe('carry:5')
   })
   it('全開は置く前は1個の値を書き、4個まで置いた値を添える', () => {
     expect(effectParts('allOut')).toEqual([{ icon: 'damage', value: '1', full: '16' }])
@@ -212,6 +246,7 @@ describe('カード面', () => {
       expect(icons.has('frost'), kind).toBe(!!def.freezes)
       expect(icons.has('refund'), kind).toBe(!!def.refund)
       expect(icons.has('reflect'), kind).toBe(!!def.reflects)
+      expect(icons.has('miss'), kind).toBe(!!def.missBurn)
       expect(icons.has('fast'), kind).toBe(!!def.fast)
       expect(icons.has('ignite'), kind).toBe(!!def.ignite)
       expect(icons.has('extra'), kind).toBe(!!def.extraDice)
@@ -226,10 +261,12 @@ describe('カード面', () => {
       if (def.extraDice) expect(written(kind, 'extra'), kind).toBe(String(def.extraDice))
       // ターンの終わりに焼ける行動の炎は、焼ける量を書く
       if (def.endBurn) expect(written(kind, 'endBurn'), kind).toBe(String(def.endBurn))
+      // 焼けた分を与える行動は、倍率を書く
+      if (def.ignite) expect(written(kind, 'ignite'), kind).toBe(String(def.ignite))
     }
   })
   it('数を持たない印は、記号の無い攻撃のカード面に並べても、置いた個数から値を入れない', () => {
-    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'ignite', 'repeat'])
+    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'repeat'])
     // 記号を持たず、置いた個数で威力が決まる仮のカード
     const def = { ...ACTION_DEFS.allOut, face: { effect: BARE_ICONS.map((icon) => ({ icon })) } }
     expect(faceParts(def, [1, 1])).toEqual(BARE_ICONS.map((icon) => ({ icon })))
@@ -239,17 +276,6 @@ describe('カード面', () => {
       for (const p of ACTION_DEFS[kind].face.effect) {
         if (p.icon && BARE_ICONS.includes(p.icon)) expect(p.value, kind).toBeUndefined()
       }
-    }
-  })
-  it('置き場ごとの記号は二組のゾロ目を置く行動だけが書き、二つの記号を二つずつ並べる', () => {
-    for (const kind of ACTION_KINDS) {
-      const def = ACTION_DEFS[kind]
-      expect(def.face.labels !== undefined, kind).toBe(!!def.twoPairs)
-      const { labels } = def.face
-      if (!labels) continue
-      expect(labels).toHaveLength(slotsOf(def))
-      const counts = [...new Set(labels)].map((l) => labels.filter((x) => x === l).length)
-      expect(counts).toEqual([2, 2])
     }
   })
   it('置き場の記号は、どの行動でも効果に現れる', () => {

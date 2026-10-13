@@ -96,43 +96,60 @@ const SPEC: Case[] = [
     expect: [3, 5],
   },
   // 背水
-  { name: '背水は体力が満タンなら X の枠の目のまま', a: s('lastStand', 5, 1), b: s('pass'), expect: [0, 5] },
+  { name: '背水は体力が満タンなら、目に関係なく2', a: s('lastStand', 6, 6), b: s('pass'), expect: [0, 2] },
   {
-    name: '背水は失った体力4ごとに1増える。12失えば3増える',
-    a: hurt(8, s('lastStand', 5, 1)),
+    name: '背水は失った体力の半分を2に足す。12失えば8',
+    a: hurt(8, s('lastStand', 1, 1)),
     b: s('pass'),
     expect: [0, 8],
   },
   {
-    name: '背水は失った体力が4に届かなければ増えない',
+    name: '背水の失った体力の半分は切り捨てる。3失えば3',
     a: hurt(17, s('lastStand', 2, 6)),
     b: s('pass'),
-    expect: [0, 2],
+    expect: [0, 3],
   },
   {
-    name: '背水は風壁の目の倍だけ減り、3を返される。19失えば4増える',
+    name: '背水は風壁の目の倍だけ減り、3を返される。19失えば11',
     a: hurt(1, s('lastStand', 6, 6)),
     b: s('barrier', 3),
-    expect: [3, 4],
+    expect: [3, 5],
   },
   // 凍結
-  { name: '凍結はダメージを出さない', a: s('freeze', 4), b: s('pass'), expect: [0, 0] },
-  { name: '凍結しても、同じステップの攻撃は受ける', a: s('freeze', 4), b: s('flameStrike', 5, 1), expect: [7, 1] },
+  { name: '凍結は目に関係なく2', a: s('freeze', 4), b: s('pass'), expect: [0, 2] },
+  { name: '凍結は風壁の目の倍だけ減り、3を返される', a: s('freeze', 6), b: s('barrier', 1), expect: [3, 0] },
+  { name: '凍結しても、同じステップの攻撃は受ける', a: s('freeze', 4), b: s('flameStrike', 5, 1), expect: [7, 3] },
   // 闇壁
   { name: '闇壁は置いた目の倍を減らし、返さない', a: s('darkWall', 2), b: s('flameStrike', 6, 1), expect: [4, 1] },
   { name: '闇壁で防ぎきれば何も受けない', a: s('darkWall', 3), b: s('flameStrike', 4, 2), expect: [0, 2] },
   { name: '魔弾は闇壁をすり抜ける', a: s('darkWall', 6), b: s('bullet', 1, 1), expect: [4, 0] },
   // 風陣
   {
-    name: '風陣は受けた攻撃をそのまま返す。炎撃なら自分も焼けたうえで返される',
-    a: s('galeWard', 3, 3),
+    name: '風陣は同じ目でなくてよく、受けた攻撃をそのまま返す。炎撃なら自分も焼けたうえで返される',
+    a: s('galeWard', 3, 5),
     b: s('flameStrike', 6, 1),
     expect: [0, 9],
   },
   { name: '風陣は氷礫も返す', a: s('galeWard', 1, 1), b: s('interrupt', 5), expect: [0, 2] },
-  { name: '風陣は魔弾を返せない', a: s('galeWard', 2, 2), b: s('bullet', 6, 6), expect: [4, 0] },
-  { name: '風陣は魔槍の発動を返せない', a: s('galeWard', 2, 2), b: s('spearCast', 6, 5), expect: [11, 0] },
-  { name: '風陣だけでは何も起きない', a: s('galeWard', 4, 4), b: s('barrier', 6), expect: [0, 0] },
+  {
+    name: '風陣は魔弾を返せず、返す攻撃が来なかったので置いた目の合計も受ける',
+    a: s('galeWard', 2, 3),
+    b: s('bullet', 6, 6),
+    expect: [9, 0],
+  },
+  {
+    name: '風陣は魔槍の発動を返せず、置いた目の合計も受ける',
+    a: s('galeWard', 2, 2),
+    b: s('spearCast', 6, 5),
+    expect: [15, 0],
+  },
+  {
+    name: '風陣に攻撃が来なければ、置いた目の合計を自分が受ける',
+    a: s('galeWard', 4, 6),
+    b: s('barrier', 6),
+    expect: [10, 0],
+  },
+  { name: '低い目の風陣は、外しても受ける分が少ない', a: s('galeWard', 1, 1), b: s('pass'), expect: [2, 0] },
   // 迅雷
   { name: '迅雷は X の枠の目の威力', a: s('thunder', 6, 1), b: s('pass'), expect: [0, 6] },
   { name: '迅雷は風壁の目の倍だけ減り、3を返される', a: s('thunder', 6, 1), b: s('barrier', 2), expect: [3, 2] },
@@ -155,7 +172,7 @@ const SPEC: Case[] = [
   { name: '過負荷はそのステップにはダメージを出さない', a: s('overload', 3), b: s('interrupt', 2), expect: [2, 0] },
   { name: '瞑想はダメージを出さない', a: s('meditate', 6), b: s('pass'), expect: [0, 0] },
   // 双竜
-  { name: '双竜は二組のゾロ目で20', a: s('twinDragon', 3, 3, 5, 5), b: s('pass'), expect: [0, 20] },
+  { name: '双竜は好きな目の4個で20', a: s('twinDragon', 1, 2, 3, 6), b: s('pass'), expect: [0, 20] },
   {
     name: '双竜は風壁の目の倍だけ減り、3を返される',
     a: s('twinDragon', 2, 2, 2, 2),
@@ -235,16 +252,17 @@ describe('定義表の整合性', () => {
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('風壁')
   })
-  it('効果の値は、攻撃なら威力、守りなら減らす量、置けなくする目や持ち越す目ならその目で、どれでもない詠唱は 0', () => {
+  it('効果の値は、攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目ならその目で、どれでもない詠唱は 0', () => {
     expect(effectValue(ACTION_DEFS.flameStrike, [4, 1])).toBe(6)
     expect(effectValue(ACTION_DEFS.barrier, [3])).toBe(6)
     expect(effectValue(ACTION_DEFS.spearChant, [5])).toBe(0)
-    expect(effectValue(ACTION_DEFS.freeze, [5])).toBe(5)
+    // 凍結は攻撃もするので、効果の値は威力
+    expect(effectValue(ACTION_DEFS.freeze, [5])).toBe(2)
     expect(effectValue(ACTION_DEFS.meditate, [2])).toBe(2)
     expect(effectValue(ACTION_DEFS.wildfire, [2])).toBe(0)
     // 様子を渡さなければ、体力は減っていないとみなす
-    expect(effectValue(ACTION_DEFS.lastStand, [4, 1])).toBe(4)
-    expect(effectValue(ACTION_DEFS.lastStand, [4, 1], { hp: 3, maxHp: 20 })).toBe(8)
+    expect(effectValue(ACTION_DEFS.lastStand, [4, 1])).toBe(2)
+    expect(effectValue(ACTION_DEFS.lastStand, [4, 1], { hp: 3, maxHp: 20 })).toBe(10)
   })
   it('攻撃する行動は、何もしない相手と、受けるダメージを減らす相手とぶつかる行が仕様表にある', () => {
     const missing: string[] = []
@@ -308,8 +326,8 @@ describe('定義表の整合性', () => {
       if (d.fast) expect(d.power, k).toBeDefined()
       // 振り足したダイスは次のステップで使うので、二ステップ目には使えない
       if (d.extraDice) expect(d.step, k).toBe(1)
-      // 二組のゾロ目は4個
-      if (d.twoPairs) expect(d.dice, k).toEqual([4])
+      // 返す攻撃が来なかったときに受ける分は、返す構えだけが持つ
+      if (d.missBurn) expect(d.reflects, k).toBe(true)
       // 置けなくする目と持ち越す目は、印の置き場の目
       if (d.freezes || d.carries) expect(d.face.mark, k).toBeDefined()
     }

@@ -326,13 +326,14 @@ describe('拡張のカードの見積もり', () => {
   })
   it('相手に残した凍結は見積もりの分だけ得点に入り、相手から見れば失点になる', () => {
     const deck: CardId[] = ['meditate', 'freeze', 'barrier', 'bullet', 'interrupt']
-    expect(evOf(new Thinker(), lastDie(deck), 'freeze')).toBeCloseTo(ESTIMATES.freeze, 9)
-    const t = new Thinker({ carry: 0, freeze: 2 })
-    expect(evOf(t, lastDie(deck), 'freeze')).toBeCloseTo(2, 9)
+    // 凍結は2を当てるので、その分も得点に入る
+    expect(evOf(new Thinker(), lastDie(deck), 'freeze')).toBeCloseTo(2 + ESTIMATES.freeze, 9)
+    const t = new Thinker({ carry: 0, freeze: 3 })
+    expect(evOf(t, lastDie(deck), 'freeze')).toBeCloseTo(5, 9)
     // 席を入れ替えても、凍らせた側の得になる
     const flipped = makeState({ roll: [] }, { roll: [5], deck }, 2)
     const seen = t.analyze(flipped, 1, 'hard').find((o) => o.action.kind === 'freeze')
-    expect(seen?.ev).toBeCloseTo(2, 9)
+    expect(seen?.ev).toBeCloseTo(5, 9)
   })
   it('ダイスを振り足す行動の得点は、振り足すダイスの出方ごとの二ステップ目の価値の、確率で重みを付けた平均', () => {
     const deck: CardId[] = ['overload', 'twinDragon', 'barrier', 'bullet', 'interrupt']

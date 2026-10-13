@@ -141,10 +141,9 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: Ro
   const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
   /**
    * 置き場の中に書く記号。最初の置き場には印、その次には自分も焼ける量の記号、省いてもよい置き場には置くと増える量。
-   * 同じ目を置く置き場には、どれにも印の記号を書く。置き場ごとの記号があれば、それを書く
+   * 同じ目を置く置き場には、どれにも印の記号を書く
    */
   const markOf = (k: number) => {
-    if (face.labels) return face.labels[k]
     if (k >= needed) return face.extra ?? gain(k)
     if (k === MARK_SLOT || face.join === '=') return face.mark
     return k === MARK_SLOT + 1 ? face.cost : undefined

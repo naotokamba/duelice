@@ -119,6 +119,11 @@ function actionMark(a: Action, vals: number[], strike?: Strike): ReactNode {
   return <PartGlyph {...first} />
 }
 
+/** 凍らせた目の印。凍らせる攻撃の構えに使う。凍らせるのは印の置き場の目 */
+function frostMark(vals: number[]): ReactNode {
+  return <PartGlyph icon="frost" value={String(vals[0])} />
+}
+
 /** 矢印に付ける印。守りが吹き返したダメージは風の渦で、ほかは放った攻撃の印で描く */
 function strikeMark(s: Strike): ReactNode {
   if (s.outcome === 'returned') return <ThornsGlyph value={String(s.power)} />
@@ -333,11 +338,12 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
       </div>
     )
   }
-  if (def.power) return null
+  // 攻撃は矢印で描くので、構えは出さない。凍らせる攻撃だけは、凍らせた目を構えの位置に残す
+  if (def.power && !def.freezes) return null
   // 凍らせる、振り足す、持ち越すなど、攻撃を止めない行動は、詠唱と同じく矢印の横に印を出す
   return (
     <div className={cls} style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}>
-      {actionMark(a, vals)}
+      {def.power ? frostMark(vals) : actionMark(a, vals)}
       {name}
     </div>
   )

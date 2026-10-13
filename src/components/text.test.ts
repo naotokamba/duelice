@@ -51,9 +51,31 @@ describe('拡張のカードの公開の文', () => {
       'あなたは 1 で延焼を放った',
       '相手は何もしなかった',
       'ターンの終わりに、あなたは自分も 2点受けた',
-      'ターンの終わりに、あなたの延焼 2点',
+      'ターンの終わりに、あなたの延焼 4点',
     ])
-    expect(reportLines(s.history[2], 1)).toContain('ターンの終わりに、相手の延焼 2点')
+    expect(reportLines(s.history[2], 1)).toContain('ターンの終わりに、相手の延焼 4点')
+  })
+  it('返す構えに返す攻撃が来なかったら、返す攻撃が来ずに自分が受けた点を書く', () => {
+    const r = resolveStep(pool([1, 2, 6], [3, 3, 1]), [{ kind: 'galeWard', dice: [0, 1] }, pass]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは 1と2 で風陣を張った',
+      '相手は何もしなかった',
+      'あなたの風陣に返す攻撃が来ず、自分が 3点受けた',
+    ])
+  })
+  it('凍らせる攻撃は、当たった点と、凍らされた側が次のステップに置けない目を書く', () => {
+    const deck = ['freeze', 'flameStrike', 'barrier', 'bullet', 'interrupt'] as const
+    const s = makeState({ roll: [4, 1, 1], deck }, { roll: [6, 4, 2], deck })
+    const r = resolveStep(s, [
+      { kind: 'freeze', dice: [0] },
+      { kind: 'barrier', dice: [1] },
+    ]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたの凍結 2点、風壁 4 に削られて 0点',
+      '相手は 4 で風壁を張った。3点を返した',
+      '相手は次のステップに 4 の目を置けない',
+    ])
+    expect(reportLines(r, 1)).toContain('あなたは次のステップに 4 の目を置けない')
   })
 })
 

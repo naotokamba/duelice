@@ -16,7 +16,8 @@ export interface CardDef {
  * chant は詠唱、disrupt は相手の詠唱を崩す。この二つは数を持たない。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない。
  * wound は失った体力で威力が増えること、frost は相手が次のステップに置けない目、refund は防ぎきったらダイスが戻ること、
- * reflect は受けた攻撃を返すこと、fast は相手より先に当たること、ignite はターンの終わりに焼けた分を与えること、
+ * reflect は受けた攻撃を返すこと、miss は返す攻撃が来なかったら自分が受けるダメージ、fast は相手より先に当たること、
+ * ignite はターンの終わりに焼けた分の何倍かを与えることで、倍率を数に書く。
  * extra は振り足すダイスの数、carry は次のターンへ持ち越す目、forge は得る好きな目のダイスの数、
  * multi はさらに使えるカードの枚数、repeat は直前のステップの効果をもう一度出すこと
  */
@@ -33,6 +34,7 @@ export type EffectIcon =
   | 'frost'
   | 'refund'
   | 'reflect'
+  | 'miss'
   | 'fast'
   | 'ignite'
   | 'extra'
@@ -42,20 +44,12 @@ export type EffectIcon =
   | 'repeat'
 
 /** 数を持たない印。置いた目や個数から値を入れない */
-export const BARE_ICONS: readonly EffectIcon[] = [
-  'chant',
-  'disrupt',
-  'wound',
-  'refund',
-  'reflect',
-  'fast',
-  'ignite',
-  'repeat',
-]
+export const BARE_ICONS: readonly EffectIcon[] = ['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'repeat']
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
- * mark も sum も無い行動では、値を書かない印に、置いた個数から決まる値を face.ts の effectParts が入れる
+ * mark も sum も無い行動では、値を書かない印に、置いた個数から決まる値を face.ts の effectParts が入れる。
+ * 2+ のように + で終わる値は、横の印の分だけ増える基の値で、ダイスを置くと効果の値に置き換わる
  */
 export interface EffectPart {
   icon?: EffectIcon
@@ -88,8 +82,6 @@ export interface Face {
   join?: '+' | '='
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
   sum?: string
-  /** 置き場ごとに書く記号。同じ記号の置き場には同じ目を置く。二組のゾロ目を置く行動に使う */
-  labels?: readonly string[]
   /** 効果。文はなるべく使わず、印で描く */
   effect: readonly EffectPart[]
 }
@@ -113,8 +105,6 @@ export interface ActionDef {
   step?: 1 | 2
   /** 置くダイスが全て同じ目である必要がある。ゾロ目 */
   sameValues?: boolean
-  /** 置く4個のダイスが、二組のゾロ目になる必要がある。4個とも同じ目でもよい */
-  twoPairs?: boolean
   /** 詠唱。同じステップに相手が詠唱を崩す行動をすると崩れる。攻撃のダメージでは崩れない */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
@@ -141,6 +131,11 @@ export interface ActionDef {
   refund?: boolean
   /** 同じステップに受けた攻撃を、攻撃した相手に返す。障壁で減らない攻撃は返さない */
   reflects?: boolean
+  /**
+   * 受けた攻撃を返す構えで、返した攻撃が一つも無かったら、自分が受けるダメージ。vals は power と同じ。
+   * 炎で焼けた分と同じく障壁では減らず、記録では焼けた分に数える
+   */
+  missBurn?: (vals: number[]) => number
   /** 同じステップに相手が詠唱していたら、その詠唱を崩す */
   disrupts?: boolean
   /**
@@ -150,8 +145,8 @@ export interface ActionDef {
   freezes?: boolean
   /** 使うと炎で自分も焼けて受けるダメージ。障壁では減らない。vals は power と同じ */
   burn?: (vals: number[]) => number
-  /** ターンの終わりに、このターンに自分が焼けて受けたダメージの合計を、相手に与える。障壁では減らない */
-  ignite?: boolean
+  /** ターンの終わりに、このターンに自分が焼けて受けたダメージの合計の、この倍のダメージを相手に与える。障壁では減らない */
+  ignite?: number
   /** 使うとダイスをこの数だけ振り足す。振り足したダイスは同じターンの次のステップで使える */
   extraDice?: number
   /** 使ったターンの終わりに、炎で自分も焼けて受けるダメージ */
@@ -324,21 +319,24 @@ const ACTIONS = {
     card: 'lastStand',
     label: '背水',
     dice: [2],
-    // X の枠の目に、失った体力4ごとに1を足した威力。もう1個は払うだけ
-    power: (v, c) => v[0] + Math.floor((c.maxHp - c.hp) / 4),
-    face: {
-      mark: 'X',
-      effect: [{ icon: 'damage', value: 'X+' }, { icon: 'wound' }],
-    },
+    // 目に関係なく、2に、失った体力の半分を足した威力
+    power: (_, c) => 2 + Math.floor((c.maxHp - c.hp) / 2),
+    face: { effect: [{ icon: 'damage', value: '2+' }, { icon: 'wound' }] },
   },
   freeze: {
     card: 'freeze',
     label: '凍結',
     dice: [1],
-    // 相手の次のステップに、X と同じ目のダイスを置けなくする。ダメージは無い
+    // 目に関係なく2の威力。相手の次のステップに、X と同じ目のダイスを置けなくする
+    power: () => 2,
     freezes: true,
-    done: '凍らせた',
-    face: { mark: 'X', effect: [{ icon: 'frost', value: 'X' }] },
+    face: {
+      mark: 'X',
+      effect: [
+        { icon: 'damage', value: '2' },
+        { icon: 'frost', value: 'X' },
+      ],
+    },
   },
   darkWall: {
     card: 'darkWall',
@@ -357,11 +355,15 @@ const ACTIONS = {
     card: 'galeWard',
     label: '風陣',
     dice: [2],
-    sameValues: true,
-    // 同じ目を2個置く。受けた攻撃をそのまま返す。障壁で減らない攻撃は返さない
+    // 受けた攻撃をそのまま返す。障壁で減らない攻撃は返さない。返す攻撃が来なかったら、置いた2個の目の合計を自分が受ける
     reflects: true,
+    missBurn: (v) => v[0] + v[1],
     done: '風陣を張った',
-    face: { join: '=', effect: [{ icon: 'reflect' }] },
+    face: {
+      join: '+',
+      sum: 'Y',
+      effect: [{ icon: 'reflect' }, { icon: 'miss', value: 'Y' }],
+    },
   },
   thunder: {
     card: 'thunder',
@@ -376,10 +378,10 @@ const ACTIONS = {
     card: 'wildfire',
     label: '延焼',
     dice: [1],
-    // ターンの終わりに、このターン自分が焼けた分を相手に与える。前のステップに焼けた分も数える
-    ignite: true,
+    // ターンの終わりに、このターン自分が焼けた分の倍を相手に与える。前のステップに焼けた分も数える
+    ignite: 2,
     done: '延焼を放った',
-    face: { effect: [{ icon: 'ignite' }] },
+    face: { effect: [{ icon: 'ignite', value: '2' }] },
   },
   overload: {
     card: 'overload',
@@ -401,10 +403,9 @@ const ACTIONS = {
     card: 'twinDragon',
     label: '双竜',
     dice: [4],
-    twoPairs: true,
-    // 二組のゾロ目を4個置く。目に関係なく20の威力。障壁で減る
+    // 好きな目のダイスを4個置く。目に関係なく20の威力。障壁で減る
     power: () => 20,
-    face: { labels: ['A', 'A', 'B', 'B'], effect: [{ icon: 'damage', value: '20' }] },
+    face: { effect: [{ icon: 'damage', value: '20' }] },
   },
   meditate: {
     card: 'meditate',
@@ -458,7 +459,7 @@ export function kindsOfCard(card: CardId): ActionKind[] {
 }
 
 /**
- * 効果の値。攻撃なら威力、守りなら減らす量、置けなくする目や持ち越す目なら印の置き場の目。どれでもない行動は値を持たないので 0。
+ * 効果の値。攻撃なら威力、守りなら減らす量、攻撃しない行動の置けなくする目や持ち越す目なら印の置き場の目。どれでもない行動は値を持たないので 0。
  * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの。ctx は power に渡す、使った側の様子
  */
 export function effectValue(def: ActionDef, vals: number[], ctx: PowerCtx = UNHURT): number {

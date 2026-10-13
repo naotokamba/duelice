@@ -2,7 +2,7 @@
 
 import { ACTION_DEFS } from '../game/cards'
 import type { Issue } from '../game/hand'
-import type { Action, PlayerIndex, StepReport } from '../game/types'
+import type { Action, Move, PlayerIndex, StepReport } from '../game/types'
 import type { EndReason } from '../online/protocol'
 
 /** 公開や履歴に出す行動の名前 */
@@ -68,6 +68,11 @@ export function endingText(
 /** 体力の数。マイナスは記号の − で書く */
 const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
 
+/** who の起きた効果。先に当たる攻撃で倒れた側は、先に当たる攻撃のほかは起きない */
+function liveMoves(report: StepReport, who: PlayerIndex): Move[] {
+  return report.moves[who].filter((m) => !report.cancelled[who] || ACTION_DEFS[m.kind].fast)
+}
+
 /**
  * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
  * 守りがダメージを返したならそれを、詠唱したならその結果を、自分も受けたダメージがあればその量を、後に添える
@@ -86,8 +91,22 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
     if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
   }
   for (const [who, name] of order) {
-    const paid = report.burn[who]
-    if (paid > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で自分も ${paid}点受けた`)
+    // 凍らせる攻撃を受けた側は、次のステップに凍らされた目を置けない。凍らせるのは印の置き場の目
+    // 凍らせる効果が重なれば、大きい目を凍らせる
+    const frost = liveMoves(report, who === 0 ? 1 : 0)
+      .filter((m) => ACTION_DEFS[m.kind].freezes)
+      .map((m) => m.vals[0])
+    if (frost.length > 0) lines.push(`${name}は次のステップに ${Math.max(...frost)} の目を置けない`)
+  }
+  for (const [who, name] of order) {
+    // 自分が受けた分のうち、炎で焼けた分と、返す構えに返す攻撃が来ずに受けた分を分けて書く
+    const live = liveMoves(report, who)
+    const burnt = live.reduce((sum, m) => sum + (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0), 0)
+    const ward = live.find((m) => ACTION_DEFS[m.kind].missBurn)
+    const missed = report.burn[who] - burnt
+    if (burnt > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で自分も ${burnt}点受けた`)
+    if (ward && missed > 0)
+      lines.push(`${name}の${ACTION_DEFS[ward.kind].label}に返す攻撃が来ず、自分が ${missed}点受けた`)
     if (report.refunded[who]) lines.push(`${name}は防ぎきって、ダイスが戻った`)
     if (report.extra[who].length > 0) lines.push(`${name}はダイスを振り足して ${report.extra[who].join('と')}`)
   }

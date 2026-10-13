@@ -31,9 +31,15 @@ export function effectParts(kind: ActionKind, vals?: number[], ctx: PowerCtx = U
   return faceParts(ACTION_DEFS[kind], vals, ctx)
 }
 
-/** 印の値。焼ける印なら自分が焼ける量、ほかの印なら効果の値 */
+/**
+ * 印の値。焼ける印なら自分が焼ける量、返す攻撃が来なかったときの印なら自分が受ける量、
+ * 凍らせる目や持ち越す目の印なら印の置き場の目、ほかの印なら効果の値
+ */
 function partValue(def: ActionDef, part: EffectPart, vals: number[], ctx: PowerCtx): string {
-  return String(part.icon === 'burn' && def.burn ? def.burn(vals) : effectValue(def, vals, ctx))
+  if (part.icon === 'burn' && def.burn) return String(def.burn(vals))
+  if (part.icon === 'miss' && def.missBurn) return String(def.missBurn(vals))
+  if (part.icon === 'frost' || part.icon === 'carry') return String(vals[0])
+  return String(effectValue(def, vals, ctx))
 }
 
 /**
@@ -46,9 +52,11 @@ export function faceParts(def: ActionDef, vals?: number[], ctx: PowerCtx = UNHUR
     if (!vals) return [...def.face.effect]
     const value = String(effectValue(def, vals, ctx))
     const { cost } = def.face
+    // 記号を含む値は、印ごとに決まる値に置き換える。炎撃の X+2 は威力に、Y は焼ける量になる
+    const written = (v: string) => v.includes(sym) || (!!cost && v.includes(cost))
     return def.face.effect.map((p) => ({
       ...p,
-      value: cost && p.value?.includes(cost) ? partValue(def, p, vals, ctx) : p.value?.includes(sym) ? value : p.value,
+      value: p.value && written(p.value) ? partValue(def, p, vals, ctx) : p.value,
       text: p.text?.replaceAll(sym, value),
     }))
   }
@@ -56,6 +64,8 @@ export function faceParts(def: ActionDef, vals?: number[], ctx: PowerCtx = UNHUR
   const now = vals ?? anyVals(requiredSlots(def))
   const all = anyVals(slotsOf(def))
   return def.face.effect.map((p) => {
+    // 2+ のように + で終わる値は増える基の値で、置いた後は効果の値にする
+    if (vals && p.value?.endsWith('+')) return { ...p, value: partValue(def, p, vals, ctx) }
     if (!p.icon || p.value !== undefined || BARE_ICONS.includes(p.icon)) return p
     const value = partValue(def, p, now, ctx)
     const full = partValue(def, p, all, ctx)

@@ -79,11 +79,10 @@ export const deckArb: fc.Arbitrary<CardId[]> = fc.shuffledSubarray([...POOL], {
   maxLength: DECK_SIZE,
 })
 
-/** 置ける個数の目。同じ目やゾロ目の二組が要る行動には、それを満たす目を作る */
+/** 置ける個数の目。同じ目が要る行動には、それを満たす目を作る */
 const valsArb = (kind: ActionKind): fc.Arbitrary<number[]> => {
   const def = ACTION_DEFS[kind]
   return fc.constantFrom(...def.dice).chain((n) => {
-    if (def.twoPairs) return fc.tuple(dieArb, dieArb).map(([a, b]) => [a, a, b, b])
     if (def.sameValues) return dieArb.map((v) => Array<number>(n).fill(v))
     return fc.array(dieArb, { minLength: n, maxLength: n })
   })

@@ -388,21 +388,22 @@ describe('ダメージ', () => {
       }),
     )
   })
-  it('自分も焼けるのは自分も焼ける効果だけで、払う量は置いた目から決まる。焼けた分は受けたダメージに入る', () => {
+  it('自分も焼けるのは、自分も焼ける効果と、相手の攻撃を一つも返さなかった返す構えだけで、受ける量は置いた目から決まる。焼けた分は受けたダメージに入る', () => {
     fc.assert(
       fc.property(anyPlayArb, ({ s, acts }) => {
         const moves = movesOfBoth(s, acts)
         const c = clash(moves, ctxs(s))
+        const all = burnOf(moves)
         for (const i of [0, 1] as const) {
           const live = liveOf(moves[i], c.cancelled[i])
           expect(c.live[i]).toEqual(live)
-          expect(c.burn[i]).toBe(sum(live.map((m) => defOf(m).burn?.(m.vals) ?? 0)))
+          const returned = c.strikes.some((x) => x.outcome === 'reflected' && x.from === other(i))
+          const miss = returned ? 0 : sum(live.map((m) => defOf(m).missBurn?.(m.vals) ?? 0))
+          expect(c.burn[i]).toBe(sum(live.map((m) => defOf(m).burn?.(m.vals) ?? 0)) + miss)
           expect(c.damage[i]).toBeGreaterThanOrEqual(c.burn[i])
+          // 倒れる前の効果から決まる焼ける分は、起きた効果から決まる焼ける分と同じか多い
+          expect(all[i]).toBeGreaterThanOrEqual(c.burn[i] - miss)
         }
-        // 倒れる前の効果から決まる焼ける分は、起きた効果から決まる焼ける分と同じか多い
-        const all = burnOf(moves)
-        expect(all[0]).toBeGreaterThanOrEqual(c.burn[0])
-        expect(all[1]).toBeGreaterThanOrEqual(c.burn[1])
       }),
     )
   })
@@ -619,10 +620,11 @@ describe('状態の更新', () => {
         for (const i of [0, 1] as const) {
           const defs = next.players[i].acted.map((k) => ACTION_DEFS[k])
           expect(report.endBurn[i]).toBe(sum(defs.map((d) => d.endBurn ?? 0)))
-          // 延焼の性質は、このターンに焼けた分の全てを、減らされずに、起こした回数だけ与える
+          // 延焼の性質は、このターンに焼けた分の全てに倍率を掛けて、減らされずに、起こした回数だけ与える
           const mine = late.filter((x) => x.from === i)
-          expect(mine).toHaveLength(defs.filter((d) => d.ignite).length)
-          for (const x of mine) expect(x).toMatchObject({ outcome: 'hit', to: other(i), dealt: next.players[i].burned })
+          const rates = defs.flatMap((d) => (d.ignite ? [d.ignite] : []))
+          expect(mine.map((x) => x.dealt)).toEqual(rates.map((r) => next.players[i].burned * r))
+          for (const x of mine) expect(x).toMatchObject({ outcome: 'hit', to: other(i) })
         }
       }),
     )
