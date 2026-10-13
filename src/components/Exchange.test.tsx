@@ -197,3 +197,52 @@ describe('拡張のカードの公開', () => {
     expect(d.one('.arrow.card-lastStand .glyph-star')?.textContent).toBe('8')
   })
 })
+
+describe('一緒に使ったカードと、もう一度出した効果の公開', () => {
+  const deck = ['doubleCast', 'barrier', 'interrupt', 'freeze', 'echo'] as const
+  const board = (step: 1 | 2 = 1) =>
+    makeState({ roll: [6, 2, 1], deck, last: [{ kind: 'flameStrike', vals: [6, 1] }] }, { roll: [1, 2, 3] }, step)
+
+  it('名乗りの札には一緒に使ったカードの名前を並べ、効果ごとの印を出す。同じ側から飛ぶ矢印は横に並べる', () => {
+    const a: Action = {
+      kind: 'doubleCast',
+      dice: [0],
+      with: [
+        { kind: 'interrupt', dice: [1] },
+        { kind: 'freeze', dice: [2] },
+      ],
+    }
+    const s = draw(resolveStep(board(), [a, pass]).history[0])
+    expect(s.plates).toEqual(['パス', '二重詠唱・氷礫・凍結22'])
+    expect(s.one('.plate.side-me')?.className).toContain('is-long')
+    expect(s.arrows).toHaveLength(2)
+    const lefts = s.arrows.map((e) => (e as HTMLElement).style.left)
+    expect(new Set(lefts).size).toBe(2)
+    // 凍らせた目の印は、構えの位置に残す
+    expect(s.stances.map((e) => e.textContent)).toContain('1凍結')
+  })
+  it('守りと詠唱を一緒に使えば、守りは矢印の上に、詠唱は横に出す', () => {
+    const s0 = makeState(
+      { roll: [6, 2, 1], deck: ['doubleCast', 'barrier', 'spear', 'interrupt', 'flameStrike'] },
+      { roll: [1, 2, 3] },
+    )
+    const a: Action = {
+      kind: 'doubleCast',
+      dice: [0],
+      with: [
+        { kind: 'barrier', dice: [1] },
+        { kind: 'spearChant', dice: [2] },
+      ],
+    }
+    const s = draw(resolveStep(s0, [a, interrupt]).history[0])
+    const mine = s.stances.filter((e) => !e.classList.contains('stance-pass'))
+    expect(mine.map((e) => e.className)).toEqual(
+      expect.arrayContaining([expect.stringContaining('card-barrier'), expect.stringContaining('stance-chant')]),
+    )
+  })
+  it('もう一度出した効果は、名乗りに出した効果の名前を添え、その攻撃の矢印を飛ばす', () => {
+    const s = draw(resolveStep(board(2), [{ kind: 'echo', dice: [0] }, pass]).history[0])
+    expect(s.plates).toEqual(['パス', '残響→炎撃8'])
+    expect(s.arrows.map((e) => e.className)).toEqual(['arrow is-up card-flameStrike'])
+  })
+})

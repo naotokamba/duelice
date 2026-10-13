@@ -1,12 +1,15 @@
 // カード面。置き場の数や記号は定義表の face から描くので、カードを足しても追従する。
 // 行動1つが1行で、横に並ぶ置き場が1ステップぶん。
 // ダイスは置き場を一つずつ選んで置く。カードの置き場の外を押しても、引きずって落としても置かない。
+// 好きな目のダイスは、置いたダイスを押すと目を選べる。選んだ目で描き、角の印で好きな目のダイスと分かるようにする。
+// 直前の効果をもう一度出すカードは、今使えば何を出すかを効果の下に書く。
 
 import { Check } from 'lucide-react'
 import { Fragment, useId } from 'react'
 import { ACTION_DEFS, type ActionKind, CARD_DEFS, type CardId, kindsOfCard, type PowerCtx, UNHURT } from '../game/cards'
 import { effectParts } from '../game/face'
-import { filled, MARK_SLOT, type PlacedRow, readsMark, requiredSlots, slotsOf } from '../game/slots'
+import { MARK_SLOT, type PlacedRow, readsMark, requiredSlots, rowValues, slotsOf } from '../game/slots'
+import { type Move, WILD } from '../game/types'
 import { Die } from './Die'
 import { dropAttr } from './drop'
 import { EffectGlyph } from './glyphs'
@@ -23,6 +26,8 @@ export interface CardPlay {
   onSlot: (slot: number) => void
   /** 置き場のダイスを押した。持っているダイスを置けなければ、そのダイスを手元に戻す */
   onPlaced: (slot: number, die: number) => void
+  /** 置き場の好きな目のダイスを、何も持たずに押した。目を選ぶ */
+  onWild?: (die: number) => void
   drag: (die: number) => DragHandlers
   /** 引きずっている途中のダイス */
   lifted: number | null
@@ -51,9 +56,23 @@ interface Props {
   play?: CardPlay
   /** 使う側の様子。失った体力で威力の変わるカードの値に効く */
   ctx?: PowerCtx
+  /** 使う側の、直前のステップの効果。直前の効果をもう一度出すカードに、今使えば何を出すかを書く。省くと書かない */
+  last?: readonly Move[]
 }
 
-export function Card({ card, roll, active, lit = active, used, shown, casting, kept, play, ctx = UNHURT }: Props) {
+export function Card({
+  card,
+  roll,
+  active,
+  lit = active,
+  used,
+  shown,
+  casting,
+  kept,
+  play,
+  ctx = UNHURT,
+  last,
+}: Props) {
   const name = CARD_DEFS[card].name
   const kinds = kindsOfCard(card)
   /** 使えるステップが一つに限られる一段のカード。二段のカードは、段の並びでステップが分かる */
@@ -93,6 +112,7 @@ export function Card({ card, roll, active, lit = active, used, shown, casting, k
           kept={kept?.kind === kind ? kept : null}
           play={play}
           ctx={ctx}
+          last={last}
         />
       ))}
       {/* 置き場、効果と読んだ流れの先に、カードの下端に重ねて出す */}
@@ -129,16 +149,26 @@ interface RowProps {
   kept: PlacedRow | null
   play?: CardPlay
   ctx: PowerCtx
+  last?: readonly Move[]
 }
 
-function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: RowProps) {
+/** 直前の効果をもう一度出すカードに書く、今使えば出す効果。効果の名前と目を並べる */
+export function echoText(last: readonly Move[]): string {
+  if (last.length === 0) return '繰り返すものが無い'
+  return last.map((m) => `${ACTION_DEFS[m.kind].label} ${m.vals.join('・')}`).join('、')
+}
+
+function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx, last }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = requiredSlots(def)
   const fixed = !shown && kept !== null
-  const slots = shown?.slots ?? kept?.slots ?? []
-  // 効果の値は置き場の順に並べた目から決める。X の枠の目が威力になる
-  const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
+  const row = shown ?? kept
+  const slots = row?.slots ?? []
+  // 効果の値は置き場の順に並べた目から決める。X の枠の目が威力になる。好きな目のダイスは選んだ目
+  const vals = row && (shown?.complete || fixed) ? rowValues(roll, row) : undefined
+  /** 置き場 k のダイスの目。好きな目のダイスは選んだ目で、まだ選んでいなければ WILD */
+  const valueAt = (k: number, d: number) => (roll[d] === WILD ? (row?.set?.[k] ?? WILD) : roll[d])
   /**
    * 置き場の中に書く記号。最初の置き場には印、その次には自分も焼ける量の記号、省いてもよい置き場には置くと増える量。
    * 同じ目を置く置き場には、どれにも印の記号を書く
@@ -181,19 +211,29 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: Ro
       )
     }
     if (d !== null) {
+      const v = valueAt(k, d)
+      const wild = roll[d] === WILD
+      // 好きな目のダイスは、何も持たずに押すと目を選ぶ。持っていれば、ほかのダイスと同じく入れ替える
+      const picking = wild && !target && play?.onWild
+      const label = picking
+        ? `好きな目のダイス${v === WILD ? '' : ` ${v}`}。目を選ぶ`
+        : target
+          ? `${v === WILD ? '好きな目のダイス' : `${v}の目`}と入れ替える`
+          : `${v === WILD ? '好きな目のダイス' : `${v}の目`}を戻す`
       return (
         <span className={`slot is-filled${target}`} data-drop={drop}>
           {play ? (
             <Die
-              value={roll[d]}
+              value={v}
               size="slot"
-              label={target ? `${roll[d]}の目と入れ替える` : `${roll[d]}の目を戻す`}
-              onClick={() => play.onPlaced(k, d)}
+              mark={wild ? 'wild' : undefined}
+              label={label}
+              onClick={() => (picking ? play.onWild?.(d) : play.onPlaced(k, d))}
               drag={play.drag(d)}
               lifted={play.lifted === d}
             />
           ) : (
-            <Die value={roll[d]} size="slot" />
+            <Die value={v} size="slot" mark={wild ? 'wild' : undefined} />
           )}
         </span>
       )
@@ -243,6 +283,7 @@ function Row({ card, kind, name, roll, on, colored, shown, kept, play, ctx }: Ro
           <EffectGlyph key={i} part={part} />
         ))}
       </p>
+      {def.echo && last && <p className={last.length > 0 ? 'echo-of' : 'echo-of is-none'}>{echoText(last)}</p>}
     </div>
   )
 }

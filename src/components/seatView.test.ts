@@ -5,7 +5,7 @@ import { STARTER } from '../game/cards'
 import { submit } from '../game/match'
 import { resolveStep } from '../game/rules'
 import { makeState, seeded } from '../test/helpers'
-import { currentCard, diceMarks, revealed, seatView, usedUp } from './seatView'
+import { currentCard, diceMarks, revealed, seatView, shownOn, usedUp } from './seatView'
 
 describe('席の様子', () => {
   it('カードは席の5枚を、持ち込んだ順に並べる。様子には席の体力を持つ', () => {
@@ -23,7 +23,7 @@ describe('席の様子', () => {
     expect(view.active.get('barrier')).toEqual([])
     // 1ステップ目の魔槍は詠唱の行だけ
     expect(view.active.get('spear')).toEqual(['spearChant'])
-    expect(view.kept).toBeNull()
+    expect(view.kept).toEqual([])
   })
 
   it('色で描く行には、出目のせいで使えないカードの行も入れる。ステップの都合で使えない行と、使い終わったカードは入れない', () => {
@@ -48,26 +48,23 @@ describe('席の様子', () => {
     const done = submit(first.match, 1, { kind: 'pass' }, seeded(1))
     if (!done.ok) throw new Error('受け付けなかった')
     const view = seatView(done.match.state, 0)
-    expect(view.kept).toEqual({ card: 'flameStrike', kind: 'flameStrike', slots: [1, 0] })
+    expect(view.kept).toEqual([{ card: 'flameStrike', kind: 'flameStrike', slots: [1, 0] }])
     expect(usedUp(view, 'flameStrike')).toBe(true)
     expect(usedUp(view, 'interrupt')).toBe(false)
   })
 
   it('公開した行動は、組み上がったダイスとしてカードに置く。パスは置かない', () => {
-    expect(revealed({ kind: 'flameStrike', dice: [1, 0] })).toEqual({
-      card: 'flameStrike',
-      kind: 'flameStrike',
-      slots: [1, 0],
-      complete: true,
-    })
-    expect(revealed({ kind: 'pass' })).toBeNull()
+    expect(revealed({ kind: 'flameStrike', dice: [1, 0] })).toEqual([
+      { card: 'flameStrike', kind: 'flameStrike', slots: [1, 0], complete: true },
+    ])
+    expect(revealed({ kind: 'pass' })).toEqual([])
   })
 })
 
 describe('狭い画面で大きく出すカード', () => {
   const usable = new Set(['barrier', 'interrupt'] as const)
   const deck = STARTER
-  const shown = { card: 'interrupt' as const, kind: 'interrupt' as const, slots: [0], complete: true }
+  const shown = [{ card: 'interrupt' as const, kind: 'interrupt' as const, slots: [0], complete: true }]
 
   it('公開の間は使ったカード', () => {
     expect(currentCard({ revealing: true, shown, focus: 'barrier', usable, deck })).toBe('interrupt')
@@ -75,15 +72,15 @@ describe('狭い画面で大きく出すカード', () => {
   it('選んでいる間は名前を押したカード、次にダイスを置いたカード、次に使える最初のカード', () => {
     expect(currentCard({ revealing: false, shown, focus: 'barrier', usable, deck })).toBe('barrier')
     expect(currentCard({ revealing: false, shown, focus: null, usable, deck })).toBe('interrupt')
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable, deck })).toBe('barrier')
+    expect(currentCard({ revealing: false, shown: [], focus: null, usable, deck })).toBe('barrier')
     // 使えるカードのうち、席の5枚の並びで最初のもの
     const reversed = [...STARTER].reverse()
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable, deck: reversed })).toBe('interrupt')
+    expect(currentCard({ revealing: false, shown: [], focus: null, usable, deck: reversed })).toBe('interrupt')
   })
   it('使えるカードが無ければ左端のカード', () => {
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set(), deck })).toBe('flameStrike')
+    expect(currentCard({ revealing: false, shown: [], focus: null, usable: new Set(), deck })).toBe('flameStrike')
     expect(
-      currentCard({ revealing: false, shown: null, focus: null, usable: new Set(), deck: ['meteor', 'freeze'] }),
+      currentCard({ revealing: false, shown: [], focus: null, usable: new Set(), deck: ['meteor', 'freeze'] }),
     ).toBe('meteor')
   })
 })
@@ -127,5 +124,42 @@ describe('ダイスの印', () => {
     // 使ったダイスは凍らない
     const used = makeState({ roll: [2, 5, 2], usedDice: [0], frozen: 2, deck }, { roll: [2, 3, 1] }, 2)
     expect(diceMarks(used, 0)).toEqual([null, null, 'frozen'])
+  })
+})
+
+describe('一緒に使ったカード', () => {
+  const deck = ['doubleCast', 'barrier', 'interrupt', 'darkWall', 'flameStrike'] as const
+  const both = {
+    kind: 'doubleCast' as const,
+    dice: [0],
+    with: [
+      { kind: 'interrupt' as const, dice: [1] },
+      { kind: 'darkWall' as const, dice: [2] },
+    ],
+  }
+
+  it('公開した行動は、一緒に使ったカードもそれぞれのカードに置く', () => {
+    expect(revealed(both).map((s) => [s.card, s.slots])).toEqual([
+      ['doubleCast', [0]],
+      ['interrupt', [1]],
+      ['darkWall', [2]],
+    ])
+  })
+  it('二ステップ目には、一緒に使ったカードにもダイスが残る。防ぎきって戻ったダイスは残さない', () => {
+    const state = makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] })
+    // 相手の氷礫を闇壁が防ぎきって、闇壁のダイスだけが戻る
+    const done = resolveStep(state, [both, { kind: 'interrupt', dice: [0] }])
+    expect(seatView(done, 0).kept.map((r) => r.card)).toEqual(['doubleCast', 'interrupt'])
+    // 何も防がなければ、どれも残る
+    const calm = resolveStep(state, [both, { kind: 'pass' }])
+    expect(seatView(calm, 0).kept.map((r) => r.card)).toEqual(['doubleCast', 'interrupt', 'darkWall'])
+  })
+  it('狭い画面では、公開の間は最後に置いたカードを、選んでいる間は最初に置いたカードを出す', () => {
+    const shown = revealed(both)
+    const usable = new Set(deck)
+    expect(currentCard({ revealing: true, shown, focus: null, usable, deck })).toBe('darkWall')
+    expect(currentCard({ revealing: false, shown, focus: null, usable, deck })).toBe('doubleCast')
+    expect(shownOn(shown, 'interrupt')?.slots).toEqual([1])
+    expect(shownOn(shown, 'barrier')).toBeNull()
   })
 })

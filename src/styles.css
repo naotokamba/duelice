@@ -817,6 +817,34 @@ button.die {
 .die-frozen .die-badge {
   background: var(--interrupt-ink);
 }
+.die-wild .die-badge {
+  background: var(--transmute-ink);
+}
+/* 好きな目のダイスの目を選ぶ窓。1から6を二段に並べる */
+.modal-wild {
+  max-width: min(90vw, 320px);
+}
+.wild-faces {
+  list-style: none;
+  margin: 0.25rem 0 1rem;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(3, var(--die));
+  justify-content: center;
+  gap: 1rem 1.25rem;
+}
+/* 直前の効果をもう一度出すカードに書く、今使えば出す効果 */
+.echo-of {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--spell-ink);
+  text-align: center;
+}
+.echo-of.is-none {
+  font-weight: 400;
+  color: var(--ink-soft);
+}
 /* 前のステップで使い、カードの置き場に残っているダイス。押せないので浮かせず、面の色を変えて今置けるダイスと見分ける */
 .die-kept {
   background: var(--die-kept);
@@ -1688,11 +1716,12 @@ button.tab {
   color: var(--spell-ink, var(--ink));
 }
 /* 技の札は矢印の始点に置き、そこから矢印が伸びる。誰が何を放ったかを、放った側の端で読めるようにする */
+/* 同じ側から複数の矢印を放ったら、札を少しずつ矢印の先へずらして、隣の札と重ならないようにする */
 .arrow.is-up .arrow-value {
-  top: calc(100% - 18px);
+  top: calc(100% - 18px - var(--nth, 0) * 34px);
 }
 .arrow.is-down .arrow-value {
-  top: 18px;
+  top: calc(18px + var(--nth, 0) * 34px);
 }
 /* 障壁に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
@@ -1794,6 +1823,14 @@ button.tab {
   font-size: 0.95rem;
   color: var(--spell-ink, var(--ink));
 }
+/* 横へずらした構えは、名前を印の下に添えて、舞台の端からはみ出さないようにする */
+.stance.is-aside .stance-name {
+  right: auto;
+  left: 50%;
+  top: calc(100% + 2px);
+  transform: translateX(-50%);
+  font-size: 0.85rem;
+}
 /* 名乗りの札。上が相手、下が自分。技の名前と値を大きく出し、構えの拍で消える。
    時間は Exchange.tsx が --plate で渡す。最後の二割で消える */
 .plate {
@@ -1818,11 +1855,21 @@ button.tab {
   color: var(--spell-ink, var(--ink));
 }
 .plate-mark {
-  display: grid;
+  display: flex;
+  gap: 4px;
 }
 .plate-mark svg {
-  width: 44px;
-  height: 44px;
+  width: var(--plate-icon, 44px);
+  height: var(--plate-icon, 44px);
+}
+/* 一緒に使ったカードや、もう一度出した効果まで並べた長い名前は、字と印を小さくして幅に収める */
+.plate.is-long {
+  --plate-icon: 34px;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+}
+.plate.is-long .plate-name {
+  font-size: 1rem;
 }
 @keyframes plate {
   0% {
@@ -2041,6 +2088,19 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
+/* 一緒に使ったカードまで並べた長い名前は、一つ前の結果の枠では、ダイスとダメージを残して名前の後ろを省く。全ては履歴で読める */
+.history-recent .history-side {
+  min-width: 0;
+}
+.history-recent .history-act {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.history-recent .history-dice,
+.history-recent .history-hit {
+  flex: none;
+}
 /* 決着の行。相打ちのときは体力の比べまで書く */
 .history-end-text {
   font-weight: 800;
@@ -2190,15 +2250,22 @@ button.tab {
   justify-content: center;
   gap: 1.25rem 1rem;
 }
+/* 選ぶボタンとカードを一つの枠に入れ、どのボタンがどのカードのものか分かるようにする */
 .pick-item {
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.4rem;
+  padding: 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--surface);
 }
-/* 選んだカードは、自分の色の輪で囲む */
-.pick-item.is-on .card {
-  box-shadow: 0 0 0 3px var(--me);
+/* 選んだカードは、枠ごと自分の色の輪で囲む */
+.pick-item.is-on {
+  border-color: var(--me);
+  box-shadow: 0 0 0 2px var(--me);
+  background: color-mix(in srgb, var(--me) 8%, var(--surface));
 }
 .pick-toggle {
   display: inline-flex;
@@ -2289,6 +2356,31 @@ button.tab {
   display: flex;
   gap: var(--tap-gap);
   margin-left: auto;
+}
+/* 携帯の幅では二列に並べ、カード面を縮めて一覧しやすくする。印を押すと効果が読めるのは同じ */
+@media (max-width: 560px) {
+  .pick-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.6rem;
+  }
+  .pick-item {
+    min-width: 0;
+    padding: 0.3rem;
+  }
+  /* 狭い画面のカードは横に長い形になるので、ここだけ広い画面と同じ縦長の形に戻してから縮める */
+  .pick-item .card {
+    width: calc(var(--die) * 2 + 7.5rem);
+    height: calc(var(--die) * 2 + 12.1rem);
+    zoom: 0.68;
+  }
+  .pick-item .face-row {
+    flex-direction: column;
+    gap: var(--tap-gap);
+  }
+  .pick-item .effect {
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 560px) {

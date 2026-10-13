@@ -113,7 +113,7 @@ function setOk(p: PlayerState, x: Play): boolean {
 }
 
 /** カードの行動一つが、このステップで合法か。同じダイスを重ねていないかと、ほかの行動とカードが重ならないかは isLegal が見る */
-function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
+export function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
   if (!Object.hasOwn(ACTION_DEFS, x.kind) || !Array.isArray(x.dice)) return false
   const def = ACTION_DEFS[x.kind]
   const p = state.players[who]

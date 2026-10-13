@@ -4,7 +4,8 @@
 // face.mark を書く行動は、行の最初の置き場に置いた目が効果の値になる。
 
 import { ACTION_DEFS, type ActionDef, type ActionKind, type CardId } from './cards'
-import type { Action } from './types'
+import type { Action, Play } from './types'
+import { WILD } from './types'
 
 /** 置き場ごとのダイスの番号。空いた置き場は null */
 export type Slots = (number | null)[]
@@ -40,15 +41,36 @@ export function fillsRequired(def: ActionDef, slots: readonly (number | null)[])
   return slots.slice(0, requiredSlots(def)).every((d) => d !== null)
 }
 
-/** カードの1行に置いたダイス。kind はその行の行動 */
+/** カードの1行に置いたダイス。kind はその行の行動。set は好きな目のダイスに選んだ目で、置き場ごとに並ぶ */
 export interface PlacedRow {
   card: CardId
   kind: ActionKind
   slots: Slots
+  set?: (number | null)[]
 }
 
-/** 行動を、カードの行に置いたダイスとして読む。パスは null */
+/** カードの行動一つを、カードの行に置いたダイスとして読む */
+export function playRow(x: Play): PlacedRow {
+  const row: PlacedRow = { card: ACTION_DEFS[x.kind].card, kind: x.kind, slots: [...x.dice] }
+  return x.set ? { ...row, set: [...x.set] } : row
+}
+
+/** 行動を、カードの行に置いたダイスとして読む。パスは null。一緒に使う行動は rowsOf で読む */
 export function rowOf(a: Action): PlacedRow | null {
-  if (a.kind === 'pass') return null
-  return { card: ACTION_DEFS[a.kind].card, kind: a.kind, slots: [...a.dice] }
+  return a.kind === 'pass' ? null : playRow(a)
+}
+
+/** 行動を、使ったカードごとの行に置いたダイスとして読む。一緒に使う行動も、置いた順に並べる。パスは空 */
+export function rowsOf(a: Action): PlacedRow[] {
+  return a.kind === 'pass' ? [] : [a, ...(a.with ?? [])].map(playRow)
+}
+
+/** 置き場ごとの目。空けた置き場は飛ばし、好きな目のダイスは選んだ目にする。まだ選んでいなければ WILD のまま */
+export function rowValues(roll: readonly number[], row: Pick<PlacedRow, 'slots' | 'set'>): number[] {
+  const out: number[] = []
+  row.slots.forEach((d, k) => {
+    if (d === null) return
+    out.push(roll[d] === WILD ? (row.set?.[k] ?? WILD) : roll[d])
+  })
+  return out
 }

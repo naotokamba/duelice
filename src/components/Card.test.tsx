@@ -4,8 +4,9 @@
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ACTION_DEFS, kindsOfCard } from '../game/cards'
+import { WILD } from '../game/types'
 import { diceOn } from '../test/screen'
-import { Card, type CardPlay } from './Card'
+import { Card, type CardPlay, echoText } from './Card'
 import { CardTabs, type Tab } from './CardTabs'
 
 afterEach(cleanup)
@@ -324,5 +325,56 @@ describe('カードの名前', () => {
   it('押せない名前でも、使い終わったことを伝える', () => {
     render(<CardTabs tabs={[tab({ card: 'flameStrike', used: true })]} />)
     expect(screen.getByText('炎撃').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
+  })
+})
+
+describe('好きな目のダイスと、直前の効果をもう一度出すカード', () => {
+  /** 振ったダイスは捨て、好きな目のダイスが3個ある */
+  const FORGED = [6, 2, 1, WILD, WILD, WILD]
+
+  it('置いた好きな目のダイスは、選んだ目と角の印で描き、まだ選んでいなければ点を打たない', () => {
+    const card = draw({
+      card: 'flameStrike',
+      roll: FORGED,
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [3, 4], set: [6, null], complete: false },
+    })
+    expect(card.getByRole('img', { name: '6の目' }).getAttribute('aria-description')).toBe('好きな目のダイス')
+    expect(card.getByRole('img', { name: '好きな目' }).getAttribute('aria-description')).toBe('好きな目のダイス')
+  })
+  it('何も持たずに置いた好きな目のダイスを押すと目を選び、持っていれば入れ替える', () => {
+    const onWild = vi.fn()
+    const onPlaced = vi.fn()
+    const shown = { card: 'barrier' as const, kind: 'barrier' as const, slots: [3], set: [5], complete: true }
+    const card = draw({ card: 'barrier', roll: FORGED, shown, play: play({ onWild, onPlaced }) })
+    fireEvent.click(card.getByRole('button', { name: '好きな目のダイス 5。目を選ぶ' }))
+    expect(onWild).toHaveBeenCalledWith(3)
+    expect(onPlaced).not.toHaveBeenCalled()
+    cleanup()
+    const holding = draw({ card: 'barrier', roll: FORGED, shown, play: play({ onWild, onPlaced, targets: [0] }) })
+    fireEvent.click(holding.getByRole('button', { name: '5の目と入れ替える' }))
+    expect(onPlaced).toHaveBeenCalledWith(0, 3)
+  })
+  it('組み上がった好きな目のダイスの効果は、選んだ目で求める', () => {
+    const card = draw({
+      card: 'flameStrike',
+      roll: FORGED,
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [3, 4], set: [6, 1], complete: true },
+    })
+    expect(card.getByText('8')).toBeTruthy()
+  })
+  it('直前の効果をもう一度出すカードには、今使えば出す効果を書き、無ければ無いと書く', () => {
+    expect(echoText([{ kind: 'flameStrike', vals: [6, 1] }])).toBe('炎撃 6・1')
+    expect(
+      echoText([
+        { kind: 'barrier', vals: [3] },
+        { kind: 'interrupt', vals: [2] },
+      ]),
+    ).toBe('風壁 3、氷礫 2')
+    expect(draw({ card: 'echo', last: [{ kind: 'flameStrike', vals: [6, 1] }] }).getByText('炎撃 6・1')).toBeTruthy()
+    cleanup()
+    expect(draw({ card: 'echo', last: [] }).getByText('繰り返すものが無い')).toBeTruthy()
+    cleanup()
+    // 渡さなければ書かない。カードを選ぶ画面やルールの画面
+    expect(draw({ card: 'echo' }).queryByText('繰り返すものが無い')).toBeNull()
   })
 })

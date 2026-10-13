@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { legalActions, resolveStep } from '../game/rules'
 import type { Action, PlayerIndex, StepReport } from '../game/types'
 import { makeState, stateArb } from '../test/helpers'
-import { actionLabel, CANNOT_USE, endingText, issueText, reportLines, resultText } from './text'
+import { actionLabel, CANNOT_USE, endingText, issueText, playLabel, reportLines, resultText } from './text'
 
 const pass: Action = { kind: 'pass' }
 const bullet: Action = { kind: 'bullet', dice: [0, 1] }
@@ -195,5 +195,65 @@ describe('戦闘履歴の決着の文', () => {
     expect(endingText(0, [-1, -3], 1)).toBe('相打ち。−3 対 −1 で、あなたの負け')
     expect(endingText(1, [-4, 0], 0)).toBe('相打ち。−4 対 0 で、あなたの負け')
     expect(endingText('draw', [-2, -2], 0)).toBe('相打ち。−2 対 −2 で、引き分け')
+  })
+})
+
+describe('一緒に使ったカードと、もう一度出した効果の文', () => {
+  const DECK = ['doubleCast', 'echo', 'flameStrike', 'interrupt', 'freeze'] as const
+  const board = (r0: number[], r1: number[], step: 1 | 2 = 1) =>
+    makeState(
+      { roll: r0, deck: DECK },
+      { roll: r1, deck: ['barrier', 'spear', 'bullet', 'interrupt', 'flameStrike'] },
+      step,
+    )
+
+  it('一緒に使ったカードを先に書き、効果ごとに一文で書く。炎で焼けた分は焼けたカードの名前で書く', () => {
+    const a: Action = {
+      kind: 'doubleCast',
+      dice: [0],
+      with: [
+        { kind: 'interrupt', dice: [1] },
+        { kind: 'flameStrike', dice: [2, 3] },
+      ],
+    }
+    const r = resolveStep(board([1, 3, 6, 2], [4, 5, 6]), [a, { kind: 'spearChant', dice: [0] }]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは二重詠唱で、氷礫と炎撃を一緒に使った',
+      'あなたの氷礫 2点',
+      'あなたの炎撃 8点',
+      '相手は 4 で魔槍を詠唱',
+      '相手の詠唱は氷礫で崩れた',
+      'あなたは炎撃で自分も 2点受けた',
+    ])
+    expect(playLabel(r, 0)).toBe('二重詠唱・氷礫・炎撃')
+    expect(playLabel(r, 1)).toBe('魔槍の詠唱')
+  })
+  it('守りが減らした攻撃と、守りが返したダメージを、それぞれの効果の文に書く', () => {
+    const a: Action = { kind: 'doubleCast', dice: [0], with: [{ kind: 'interrupt', dice: [1] }] }
+    const r = resolveStep(board([1, 3, 6], [2, 5, 6]), [a, { kind: 'barrier', dice: [0] }]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは二重詠唱で、氷礫を一緒に使った',
+      'あなたの氷礫 2点、風壁 2 に削られて 0点',
+      '相手は 2 で風壁を張った。3点を返した',
+    ])
+  })
+  it('もう一度出した効果は、何を出したかを書き、出した効果の名前で書く', () => {
+    const s = makeState(
+      { roll: [1, 3, 6], deck: DECK, last: [{ kind: 'flameStrike', vals: [6, 1] }] },
+      { roll: [4, 5, 6] },
+      2,
+    )
+    const r = resolveStep(s, [{ kind: 'echo', dice: [0] }, pass]).history[0]
+    expect(reportLines(r, 0)).toEqual([
+      'あなたは残響で、炎撃をもう一度出した',
+      'あなたの炎撃 8点',
+      '相手は何もしなかった',
+      'あなたは炎撃で自分も 1点受けた',
+    ])
+    expect(playLabel(r, 0)).toBe('残響→炎撃')
+  })
+  it('好きな目を選ぶことと、ほかのカードにも置くことを伝える', () => {
+    expect(issueText({ type: 'pick' })).toBe('好きな目を選ぶ')
+    expect(issueText({ type: 'with' })).toBe('ほかのカードにも置く')
   })
 })

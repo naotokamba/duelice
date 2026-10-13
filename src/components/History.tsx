@@ -11,7 +11,7 @@ import type { EndReason } from '../online/protocol'
 import { Modal } from './Dialog'
 import { Die } from './Die'
 import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
-import { actionLabel, endingText, reportLines } from './text'
+import { endingText, playLabel, reportLines } from './text'
 
 /** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
 export function Recent({ history }: { history: StepReport[] }) {
@@ -95,6 +95,12 @@ interface Fx {
 /** 行動のカード。パスでない行動にだけ使う */
 const cardOf = (a: Action): CardId => ACTION_DEFS[(a as { kind: ActionKind }).kind].card
 
+/** who の効果のうち、性質 has を持つ最初の効果のカード。無ければ行動のカード */
+function cardWith(report: StepReport, who: PlayerIndex, has: (d: (typeof ACTION_DEFS)[ActionKind]) => unknown): CardId {
+  const m = report.moves[who].find((x) => has(ACTION_DEFS[x.kind]))
+  return m ? ACTION_DEFS[m.kind].card : cardOf(report.actions[who])
+}
+
 /**
  * who の行で起きたことの内訳。カードの色で、放った攻撃の威力、守りで減らした分、守りが返した分、自分も受けた分、詠唱の結果を並べる。
  * 貫通した攻撃は、守りを突き抜けた星で描く
@@ -111,16 +117,25 @@ function details(report: StepReport, who: PlayerIndex): Fx[] {
     }
     // 自分の守りが減らした分は、守った側の行に出す
     if (s.to === who && s.outcome === 'guarded') {
-      out.push({ key: `g${i}`, card: cardOf(report.actions[who]), glyph: <ShieldGlyph value={s.power - s.dealt} /> })
+      out.push({
+        key: `g${i}`,
+        card: cardWith(report, who, (d) => d.guard),
+        glyph: <ShieldGlyph value={s.power - s.dealt} />,
+      })
     }
   })
   const burn = report.burn[who]
-  if (burn > 0) out.push({ key: 'burn', card: cardOf(report.actions[who]), glyph: <BurnGlyph value={String(burn)} /> })
+  if (burn > 0)
+    out.push({
+      key: 'burn',
+      card: cardWith(report, who, (d) => d.burn || d.missBurn),
+      glyph: <BurnGlyph value={String(burn)} />,
+    })
   const chant = report.chants[who]
   if (chant) {
     const broken = chant === 'broken'
     const glyph = <ChantGlyph broken={broken} className={broken ? 'is-broken' : 'is-kept'} />
-    out.push({ key: 'chant', card: cardOf(report.actions[who]), glyph })
+    out.push({ key: 'chant', card: cardWith(report, who, (d) => d.chant), glyph })
   }
   return out
 }
@@ -137,7 +152,7 @@ function Side({ who, report, detail }: { who: PlayerIndex; report: StepReport; d
           <SkipForward aria-hidden="true" />
         </span>
       ) : (
-        <span className={`history-act card-${ACTION_DEFS[a.kind].card}`}>{actionLabel(a)}</span>
+        <span className={`history-act card-${ACTION_DEFS[a.kind].card}`}>{playLabel(report, who)}</span>
       )}
       <span className="history-dice">
         {report.values[who].map((v, i) => (

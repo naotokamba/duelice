@@ -20,8 +20,8 @@ export interface TrayPlay {
 
 interface Props {
   seat: SeatView
-  /** カードに置いているか、公開しているダイス */
-  shown: Shown | null
+  /** カードに置いているか、公開しているダイス。一緒に使ったカードも並ぶ */
+  shown: readonly Shown[]
   /** 新しいターンに振ったところ。転がる動きを付ける */
   rolling: boolean
   play?: TrayPlay
@@ -30,17 +30,20 @@ interface Props {
 /** 跡を残してもダイスが席の幅に収まる、手元のダイスの数 */
 export const SOCKETS_UP_TO = 4
 
+/** カードに置いているか、公開しているダイスか */
+const onCard = (shown: readonly Shown[], i: number) => shown.some((s) => s.slots.includes(i))
+
 /** 手元に並べるダイスと跡の数 */
-export function trayCount(seat: SeatView, shown: Shown | null): number {
+export function trayCount(seat: SeatView, shown: readonly Shown[]): number {
   const { roll } = seat.player
   if (roll.length <= SOCKETS_UP_TO) return roll.length
   const free = freeDice(seat.player)
-  return free.filter((i) => !shown?.slots.includes(i)).length
+  return free.filter((i) => !onCard(shown, i)).length
 }
 
 export function Tray({ seat, shown, rolling, play }: Props) {
   const free = freeDice(seat.player)
-  const away = (i: number) => !free.includes(i) || !!shown?.slots.includes(i)
+  const away = (i: number) => !free.includes(i) || onCard(shown, i)
   const sockets = seat.player.roll.length <= SOCKETS_UP_TO
   return (
     <fieldset

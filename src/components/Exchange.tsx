@@ -6,13 +6,13 @@
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
 import { SkipForward } from 'lucide-react'
-import type { CSSProperties, ReactNode } from 'react'
+import { type CSSProperties, Fragment, type ReactNode } from 'react'
 import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
 import { effectParts } from '../game/face'
-import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
+import type { Move, PlayerIndex, StepReport, Strike } from '../game/types'
 import { BurnGlyph, ChantGlyph, PartGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
 import { HpBar } from './HpBar'
-import { actionLabel } from './text'
+import { playLabel } from './text'
 
 /** 舞台の高さ。卓の上に重ねるので、席の間に収める必要はない */
 export const STAGE_H = 300
@@ -84,10 +84,19 @@ const stanceY = (who: PlayerIndex) => (who === 1 ? STANCE : H - STANCE)
 const stanceRim = (who: PlayerIndex) => (who === 1 ? STANCE + STANCE_R : H - STANCE - STANCE_R)
 const otherOf = (who: PlayerIndex): PlayerIndex => (who === 0 ? 1 : 0)
 
-/** 攻撃の矢印を通す横の位置。撃ち合いなら左右にずらしてすれ違わせる */
-function laneX(list: Strike[], from: PlayerIndex): number {
+/** 同じ側から複数の矢印が飛ぶときの、矢印どうしの間 */
+const SPREAD = 14
+
+/** who の側の矢印を通す横の位置の中心。撃ち合いなら左右にずらしてすれ違わせる */
+function sideX(list: Strike[], from: PlayerIndex): number {
   if (list.length < 2) return 50
   return from === 1 ? 36 : 64
+}
+
+/** 攻撃 s の矢印を通す横の位置。同じ側から複数飛べば、側の中心の左右に間を空けて並べ、当たる星が重ならないようにする */
+function laneX(list: Strike[], s: Strike): number {
+  const mine = list.filter((x) => x.from === s.from)
+  return sideX(list, s.from) + (mine.indexOf(s) - (mine.length - 1) / 2) * SPREAD
 }
 
 /** 矢印と重ならないように、横にずらす量 */
@@ -105,18 +114,28 @@ function attackMark(piercing: boolean | undefined, power: number): ReactNode {
 }
 
 /**
- * 行動の印を、実際に出た値で描く。攻撃は放った威力、守りは減らす量。
- * ほかの行動は、カード面の最初の印を出た値で描く。詠唱、凍らせた目、振り足す数、持ち越す目など
+ * 効果の印を、実際に出た値で描く。攻撃は放った威力、守りは減らす量。
+ * ほかの効果は、カード面の最初の印を出た値で描く。詠唱、凍らせた目、振り足す数、持ち越す目など
  */
-function actionMark(a: Action, vals: number[], strike?: Strike): ReactNode {
-  if (a.kind === 'pass') return <SkipForward />
-  const def = ACTION_DEFS[a.kind]
+function moveMark(m: Move, strike?: Strike): ReactNode {
+  const def = ACTION_DEFS[m.kind]
   // 威力は放った時の体力で変わることがあるので、放った攻撃の記録があればその威力を書く
-  if (def.power) return attackMark(def.piercing, strike?.power ?? effectValue(def, vals))
-  if (def.guard) return <ShieldGlyph value={def.guard(vals)} />
+  if (def.power) return attackMark(def.piercing, strike?.power ?? effectValue(def, m.vals))
+  if (def.guard) return <ShieldGlyph value={def.guard(m.vals)} />
   // どの行動のカード面にも印があることは、face.test.ts が確かめている
-  const [first] = effectParts(a.kind, vals).flatMap((p) => (p.icon ? [{ icon: p.icon, value: p.value }] : []))
+  const [first] = effectParts(m.kind, m.vals).flatMap((p) => (p.icon ? [{ icon: p.icon, value: p.value }] : []))
   return <PartGlyph {...first} />
+}
+
+/** who の起きた効果。先に当たる攻撃で倒れた側は、先に当たる攻撃のほかは起きない */
+function liveMoves(report: StepReport, who: PlayerIndex): Move[] {
+  return report.moves[who].filter((m) => !report.cancelled[who] || ACTION_DEFS[m.kind].fast)
+}
+
+/** 名乗りや構えに出す効果。行動の回数を増やすカードの効果は、ほかに効果があれば名前で分かるので出さない */
+function shownMoves(moves: Move[]): Move[] {
+  const rest = moves.filter((m) => !ACTION_DEFS[m.kind].multi)
+  return rest.length > 0 ? rest : moves
 }
 
 /** 凍らせた目の印。凍らせる攻撃の構えに使う。凍らせるのは印の置き場の目 */
@@ -162,14 +181,14 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                 key={who}
                 who={who}
                 report={report}
-                x={incoming ? laneX(list, incoming.from) : 50}
+                x={incoming ? laneX(list, incoming) : 50}
                 aside={!!incoming}
                 incoming={incoming}
               />
             )
           })}
           {list.map((s, i) => {
-            const x = laneX(list, s.from)
+            const x = laneX(list, s)
             const other = otherOf(s.from)
             // 構えに返された攻撃も、構えの縁で止まり、放った側に星が出る
             const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
@@ -184,6 +203,7 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                 delay={START_MS}
                 card={ACTION_DEFS[s.kind].card}
                 spent={stops}
+                nth={list.filter((t) => t.from === s.from).indexOf(s)}
               />,
               s.dealt > 0 && (
                 // 守りに削られて通ったダメージは、守りの印の横に出す
@@ -199,9 +219,10 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
             if (burned === 0) return null
             // 自分が焼けたダメージ。飛んでくる攻撃があればその星の横に、無ければ自分の放った矢印の札の横に出す
             const incoming = list.find((s) => s.to === who)
+            const own = list.find((s) => s.from === who)
             const style = incoming
-              ? at(laneX(list, incoming.from), hit(who), BURN_MS, -ASIDE)
-              : at(laneX(list, who), hit(who), BURN_MS, -PILL_ASIDE)
+              ? at(laneX(list, incoming), hit(who), BURN_MS, -ASIDE)
+              : at(own ? laneX(list, own) : sideX(list, who), hit(who), BURN_MS, -PILL_ASIDE)
             return (
               <div key={`m${who}`} className="burst burst-burn" style={style}>
                 <BurnGlyph value={`−${burned}`} />
@@ -225,20 +246,37 @@ export function ClashSide({ side, name, hp, maxHp }: { side: 'me' | 'cpu'; name:
   )
 }
 
-/** who がこのステップの行動で放った攻撃。守りが吹き返したダメージとターンの終わりの攻撃は含まない */
-function firstStrike(report: StepReport, who: PlayerIndex): Strike | undefined {
-  return report.strikes.find((s) => s.from === who && s.outcome !== 'returned' && s.phase !== 'end')
+/** who が効果 m で放った攻撃。守りが吹き返したダメージとターンの終わりの攻撃は含まない。同じ種類の効果が重なれば、記録の順に結びつける */
+function strikeOf(report: StepReport, who: PlayerIndex, moves: Move[], m: Move): Strike | undefined {
+  const mine = report.strikes.filter(
+    (s) => s.from === who && s.outcome !== 'returned' && s.phase !== 'end' && s.kind === m.kind,
+  )
+  return mine[moves.filter((x) => x.kind === m.kind).indexOf(m)]
 }
 
-/** 名乗りの札。上が相手、下が自分。技の名前と、実際に出た値の印を大きく出し、構えの拍で消える */
+/** これより長い名前の名乗りの札は、字を小さくする */
+const LONG_PLATE = 6
+
+/** 名乗りの札。上が相手、下が自分。技の名前と、実際に出た値の印を大きく出し、構えの拍で消える。一緒に使った効果の印も並べる */
 function Plate({ who, report }: { who: PlayerIndex; report: StepReport }) {
   const a = report.actions[who]
   const card = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].card
-  const cls = ['plate', who === 0 ? 'side-me' : 'side-cpu', card && `card-${card}`].filter(Boolean).join(' ')
+  const name = a.kind === 'pass' ? 'パス' : playLabel(report, who)
+  const moves = shownMoves(report.moves[who])
+  const long = name.length > LONG_PLATE || moves.length > 1
+  const cls = ['plate', who === 0 ? 'side-me' : 'side-cpu', card && `card-${card}`, long && 'is-long']
+    .filter(Boolean)
+    .join(' ')
   return (
     <div className={cls} style={at(50, who === 1 ? H * 0.3 : H * 0.7)}>
-      <span className="plate-name">{a.kind === 'pass' ? 'パス' : actionLabel(a)}</span>
-      <span className="plate-mark">{actionMark(a, report.values[who], firstStrike(report, who))}</span>
+      <span className="plate-name">{name}</span>
+      <span className="plate-mark">
+        {a.kind === 'pass' ? (
+          <SkipForward />
+        ) : (
+          moves.map((m, i) => <Fragment key={i}>{moveMark(m, strikeOf(report, who, report.moves[who], m))}</Fragment>)
+        )}
+      </span>
     </div>
   )
 }
@@ -254,14 +292,17 @@ interface ArrowProps {
   card: CardId
   /** 守りに当たって止まり、薄くなる矢印 */
   spent?: boolean
+  /** 同じ側から放った矢印のうち、何本目か。札を少しずつずらして重ならないようにする */
+  nth?: number
 }
 
-function Arrow({ label, mark, x, y0, y1, delay, card, spent }: ArrowProps) {
+function Arrow({ label, mark, x, y0, y1, delay, card, spent, nth = 0 }: ArrowProps) {
   const style = {
     ...at(x, Math.min(y0, y1), delay),
     height: Math.abs(y1 - y0),
     '--fly': `${FLY_MS}ms`,
     '--gone': `${IMPACT_MS}ms`,
+    '--nth': nth,
   } as CSSProperties
   const cls = ['arrow', y1 < y0 ? 'is-up' : 'is-down', `card-${card}`, spent && 'is-spent'].filter(Boolean).join(' ')
   return (
@@ -298,6 +339,20 @@ function reachesStance(s: Strike): number {
 const stanceAt = (x: number, y: number, delay: number, dx = 0) =>
   ({ ...at(x, y, delay, dx), '--appear': `${STANCE_AT}ms` }) as CSSProperties
 
+/** 横へずらした構えの印の中心の、舞台の左端からの最小の距離。名前を印の下に添えるので、名前の半分の幅を空ける */
+const ASIDE_MIN = 48
+
+/** 横へずらした構えの印の位置。舞台の左端からはみ出さない */
+const asideAt = (x: number, y: number, delay: number, dx: number) => {
+  const style = stanceAt(x, y, delay, dx)
+  return { ...style, left: `max(${ASIDE_MIN}px, ${style.left})` } as CSSProperties
+}
+
+/**
+ * 構えの印を、効果ごとに出す。守りと返す構えは、飛んでくる矢印の上に置く。
+ * 詠唱や、凍らせる、振り足す、持ち越すなど攻撃を止めない効果は、矢印や守りと重ならないように横へずらして並べる。
+ * 横へずらした印は、名前を印の下に添え、舞台の左端からはみ出さないようにする
+ */
 function Stance({ who, report, x, aside, incoming }: StanceProps) {
   const a = report.actions[who]
   const y = stanceY(who)
@@ -308,43 +363,53 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
       </div>
     )
   }
-  const def = ACTION_DEFS[a.kind]
-  const vals = report.values[who]
-  const cls = `stance card-${def.card}`
-  // 印の横に技の名前を添える
-  const name = <span className="stance-name">{def.label}</span>
-  if (def.guard || def.reflects) {
-    // 止めた守りや返した構えは当たった時に揺れる。貫通された構えは、矢印が通る時に薄くなる
-    const pierced = incoming?.outcome === 'pierced'
-    const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
+  const moves = shownMoves(liveMoves(report, who))
+  const blocking = moves.some((m) => ACTION_DEFS[m.kind].guard || ACTION_DEFS[m.kind].reflects)
+  /** 横へずらす印の数。守りや矢印があれば、一つ目からずらす */
+  let side = aside || blocking ? 1 : 0
+  return moves.map((m, i) => {
+    const def = ACTION_DEFS[m.kind]
+    const cls = `stance card-${def.card}`
+    // 印の横に技の名前を添える
+    const name = <span className="stance-name">{def.label}</span>
+    if (def.guard || def.reflects) {
+      // 止めた守りや返した構えは当たった時に揺れる。貫通された構えは、矢印が通る時に薄くなる
+      const pierced = incoming?.outcome === 'pierced'
+      const state = pierced ? ' is-pierced' : incoming ? ' is-blocking' : ''
+      return (
+        <div
+          key={i}
+          className={cls + state}
+          style={stanceAt(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}
+        >
+          {moveMark(m)}
+          {name}
+        </div>
+      )
+    }
+    // 攻撃は矢印で描くので、構えは出さない。凍らせる攻撃だけは、凍らせた目を構えの位置に残す
+    if (def.power && !def.freezes) return null
+    const dx = -ASIDE * side++
+    if (def.chant) {
+      // 詠唱は攻撃を止めないので、矢印の横に置く。崩されたなら、相手の攻撃が当たった時に印が切り替わる
+      const broken = report.chants[who] === 'broken'
+      return (
+        <div
+          key={i}
+          className={`${cls} stance-chant is-aside${broken ? ' is-broken' : ''}`}
+          style={asideAt(x, y, IMPACT_MS, dx)}
+        >
+          <ChantGlyph className="chant-on" />
+          {broken && <ChantGlyph broken className="chant-off" />}
+          {name}
+        </div>
+      )
+    }
     return (
-      <div className={cls + state} style={stanceAt(x, y, pierced && incoming ? reachesStance(incoming) : IMPACT_MS)}>
-        {actionMark(a, vals)}
+      <div key={i} className={`${cls} is-aside`} style={asideAt(x, y, IMPACT_MS, dx)}>
+        {def.power ? frostMark(m.vals) : moveMark(m)}
         {name}
       </div>
     )
-  }
-  if (def.chant) {
-    // 詠唱は攻撃を止めないので、矢印の横に置く。崩されたなら、相手の攻撃が当たった時に印が切り替わる
-    const broken = report.chants[who] === 'broken'
-    return (
-      <div
-        className={`${cls} stance-chant${broken ? ' is-broken' : ''}`}
-        style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}
-      >
-        <ChantGlyph className="chant-on" />
-        {broken && <ChantGlyph broken className="chant-off" />}
-        {name}
-      </div>
-    )
-  }
-  // 攻撃は矢印で描くので、構えは出さない。凍らせる攻撃だけは、凍らせた目を構えの位置に残す
-  if (def.power && !def.freezes) return null
-  // 凍らせる、振り足す、持ち越すなど、攻撃を止めない行動は、詠唱と同じく矢印の横に印を出す
-  return (
-    <div className={cls} style={stanceAt(x, y, IMPACT_MS, aside ? -ASIDE : 0)}>
-      {def.power ? frostMark(vals) : actionMark(a, vals)}
-      {name}
-    </div>
-  )
+  })
 }

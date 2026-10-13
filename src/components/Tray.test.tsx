@@ -29,7 +29,7 @@ describe('手元のダイス', () => {
     render(
       <Tray
         seat={seat()}
-        shown={{ card: 'flameStrike', kind: 'flameStrike', slots: [1, null], complete: false }}
+        shown={[{ card: 'flameStrike', kind: 'flameStrike', slots: [1, null], complete: false }]}
         rolling={false}
         play={play}
       />,
@@ -42,7 +42,7 @@ describe('手元のダイス', () => {
   })
 
   it('選んでいない間や相手の手元は、押せない絵として描く', () => {
-    render(<Tray seat={seat()} shown={null} rolling={false} />)
+    render(<Tray seat={seat()} shown={[]} rolling={false} />)
     const tray = within(screen.getByRole('group', { name: 'ダイス' }))
     expect(tray.queryAllByRole('button')).toEqual([])
     expect(tray.getAllByRole('img').map((d) => d.getAttribute('aria-label'))).toEqual(['2の目', '1の目'])
@@ -52,7 +52,7 @@ describe('手元のダイス', () => {
     const deck = ['transmute', 'freeze', 'meditate', 'barrier', 'allOut'] as const
     const s = makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] })
     const next = resolveStep(s, [{ kind: 'transmute', dice: [0] }, { kind: 'pass' }])
-    render(<Tray seat={seatView(next, 0)} shown={null} rolling={false} />)
+    render(<Tray seat={seatView(next, 0)} shown={[]} rolling={false} />)
     const tray = within(screen.getByRole('group', { name: 'ダイス' }))
     const wild = tray.getAllByRole('img').filter((d) => d.getAttribute('aria-label') === '好きな目')
     expect(wild).toHaveLength(3)
@@ -66,7 +66,7 @@ describe('手元のダイス', () => {
     render(
       <Tray
         seat={seatView(next, 0)}
-        shown={null}
+        shown={[]}
         rolling={false}
         play={{ held: null, onTap: vi.fn(), drag: noDrag, lifted: null }}
       />,
@@ -92,7 +92,7 @@ describe('手元のダイス', () => {
     render(
       <Tray
         seat={seatView(s, 0)}
-        shown={null}
+        shown={[]}
         rolling={false}
         play={{ held: null, onTap, drag: noDrag, lifted: null }}
       />,
@@ -109,11 +109,11 @@ describe('手元のダイス', () => {
   })
 
   it('並べる数は、4個までなら跡も数え、それより多ければ残っているダイスだけを数える', () => {
-    expect(trayCount(seat(), null)).toBe(3)
+    expect(trayCount(seat(), [])).toBe(3)
     const deck = ['overload', 'freeze', 'meditate', 'barrier', 'allOut'] as const
     const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3] })
     const next = seatView(resolveStep(s, [{ kind: 'overload', dice: [0] }, { kind: 'pass' }], [[5, 3], []]), 0)
-    expect(trayCount(next, null)).toBe(5)
-    expect(trayCount(next, { card: 'allOut', kind: 'allOut', slots: [4, null, null, null], complete: true })).toBe(4)
+    expect(trayCount(next, [])).toBe(5)
+    expect(trayCount(next, [{ card: 'allOut', kind: 'allOut', slots: [4, null, null, null], complete: true }])).toBe(4)
   })
 })

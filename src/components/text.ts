@@ -2,7 +2,8 @@
 
 import { ACTION_DEFS } from '../game/cards'
 import type { Issue } from '../game/hand'
-import type { Action, Move, PlayerIndex, StepReport } from '../game/types'
+import { partsOf } from '../game/rules'
+import type { Action, Move, PlayerIndex, StepReport, Strike } from '../game/types'
 import type { EndReason } from '../online/protocol'
 
 /** 公開や履歴に出す行動の名前 */
@@ -10,33 +11,90 @@ export function actionLabel(a: Action): string {
   return a.kind === 'pass' ? '何もしない' : ACTION_DEFS[a.kind].label
 }
 
-/** who の行動を一文にする */
-function sentence(report: StepReport, who: PlayerIndex, name: string): string {
+/**
+ * ステップの記録の、who の行動の名前。一緒に使ったカードは「・」でつなぎ、
+ * 直前の効果をもう一度出したカードは、出した効果を「→」の後に並べる
+ */
+export function playLabel(report: StepReport, who: PlayerIndex): string {
   const a = report.actions[who]
-  if (a.kind === 'pass') return `${name}は何もしなかった`
-  const def = ACTION_DEFS[a.kind]
-  if (report.cancelled[who]) return `${name}は先に倒れて、${def.label}は起きなかった`
+  if (a.kind === 'pass') return actionLabel(a)
+  const echoed = report.moves[who].filter((m) => m.echoed).map((m) => ACTION_DEFS[m.kind].label)
+  return partsOf(a)
+    .map((x) => {
+      const label = ACTION_DEFS[x.kind].label
+      return ACTION_DEFS[x.kind].echo && echoed.length > 0 ? `${label}→${echoed.join('・')}` : label
+    })
+    .join('・')
+}
+
+/** 効果を一文にする。s はその効果が放った攻撃か、守りが返したダメージ */
+function moveLine(report: StepReport, who: PlayerIndex, name: string, m: Move, s: Strike | undefined): string {
+  const def = ACTION_DEFS[m.kind]
   const other: PlayerIndex = who === 0 ? 1 : 0
-  const b = report.actions[other]
-  const answer = b.kind === 'pass' ? '' : ACTION_DEFS[b.kind].label
-  // ターンの終わりの攻撃は、後で別の行に書く
-  const s = report.strikes.find((x) => x.from === who && x.phase !== 'end')
-  const done = `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
+  const done = `${name}は ${m.vals.join('と')} で${def.done ?? def.label}`
   if (!s) return done
+  // 攻撃を受けた側の構え。守りか、攻撃を返す構え
+  const stances = liveMoves(report, other).filter((x) => ACTION_DEFS[x.kind].guard || ACTION_DEFS[x.kind].reflects)
+  const answer = stances.map((x) => ACTION_DEFS[x.kind].label).join('と')
   const head = `${name}の${def.label} ${s.power}点`
   switch (s.outcome) {
     case 'pierced':
       return `${head}、${answer}をすり抜けた`
     case 'reflected':
       return `${head}、${answer}に返されて自分が ${s.dealt}点受けた`
-    case 'guarded':
-      return `${head}、${answer} ${report.values[other].join('と')} に削られて ${s.dealt}点`
+    case 'guarded': {
+      const guards = stances.filter((x) => ACTION_DEFS[x.kind].guard)
+      const vals = guards.flatMap((x) => x.vals)
+      return `${head}、${guards.map((x) => ACTION_DEFS[x.kind].label).join('と')} ${vals.join('と')} に削られて ${s.dealt}点`
+    }
     case 'returned':
       // 守りが攻撃を受けて返した。守った目も添える
       return `${done}。${s.dealt}点を返した`
     default:
       return head
   }
+}
+
+/**
+ * who の行動を文にする。効果ごとに一文で、放った攻撃はその行方まで書く。
+ * 一緒に使ったカードがあれば、その前に何を一緒に使ったかを、直前の効果をもう一度出したなら、何を出したかを書く
+ */
+function sentences(report: StepReport, who: PlayerIndex, name: string): string[] {
+  const a = report.actions[who]
+  if (a.kind === 'pass') return [`${name}は何もしなかった`]
+  const lines: string[] = []
+  const parts = partsOf(a)
+  const more = parts.slice(1).map((x) => ACTION_DEFS[x.kind].label)
+  if (more.length > 0) lines.push(`${name}は${ACTION_DEFS[a.kind].label}で、${more.join('と')}を一緒に使った`)
+  const echoed = report.moves[who].filter((m) => m.echoed)
+  if (echoed.length > 0) {
+    const what = echoed.map((m) => ACTION_DEFS[m.kind].label).join('と')
+    lines.push(
+      `${name}は${parts.map((x) => ACTION_DEFS[x.kind]).find((d) => d.echo)?.label}で、${what}をもう一度出した`,
+    )
+  }
+  if (report.cancelled[who]) lines.push(`${name}は先に倒れて、${playLabel(report, who)}は起きなかった`)
+  // 効果ごとに、その効果が放った攻撃か、守りが返したダメージを、記録の順に一つずつ結びつける
+  const taken = new Set<Strike>()
+  const strikeOf = (m: Move) => {
+    const def = ACTION_DEFS[m.kind]
+    const s = report.strikes.find(
+      (x) =>
+        !taken.has(x) &&
+        x.from === who &&
+        x.phase !== 'end' &&
+        x.kind === m.kind &&
+        (x.outcome === 'returned') === !def.power,
+    )
+    if (s) taken.add(s)
+    return s
+  }
+  for (const m of liveMoves(report, who)) {
+    // 行動の回数を増やすカードの効果は、何を一緒に使ったかを前に書いたので、ここでは書かない
+    if (ACTION_DEFS[m.kind].multi) continue
+    lines.push(moveLine(report, who, name, m, strikeOf(m)))
+  }
+  return lines
 }
 
 /** 決着した後に中央に大きく出す勝敗。見ている側から、勝ち、負け、引き分けのどれかだけを短く書き、どの幅でも1行に収める */
@@ -82,11 +140,13 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
     [viewer, 'あなた'],
     [viewer === 0 ? 1 : 0, '相手'],
   ]
-  const lines = order.map(([who, name]) => sentence(report, who, name))
+  const lines = order.flatMap(([who, name]) => sentences(report, who, name))
   for (const [who, name] of order) {
     const chant = report.chants[who]
-    // 詠唱は、相手の詠唱を崩す行動でだけ崩れる
-    const by = actionLabel(report.actions[who === 0 ? 1 : 0])
+    // 詠唱は、相手の詠唱を崩す効果でだけ崩れる
+    const other: PlayerIndex = who === 0 ? 1 : 0
+    const breaker = liveMoves(report, other).find((m) => ACTION_DEFS[m.kind].disrupts)
+    const by = breaker ? ACTION_DEFS[breaker.kind].label : actionLabel(report.actions[other])
     if (chant === 'broken') lines.push(`${name}の詠唱は${by}で崩れた`)
     if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
   }
@@ -101,10 +161,12 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   for (const [who, name] of order) {
     // 自分が受けた分のうち、炎で焼けた分と、返す構えに返す攻撃が来ずに受けた分を分けて書く
     const live = liveMoves(report, who)
-    const burnt = live.reduce((sum, m) => sum + (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0), 0)
+    const burners = live.filter((m) => (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0) > 0)
+    const burnt = burners.reduce((sum, m) => sum + (ACTION_DEFS[m.kind].burn?.(m.vals) ?? 0), 0)
     const ward = live.find((m) => ACTION_DEFS[m.kind].missBurn)
     const missed = report.burn[who] - burnt
-    if (burnt > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で自分も ${burnt}点受けた`)
+    const by = [...new Set(burners.map((m) => ACTION_DEFS[m.kind].label))].join('と')
+    if (burnt > 0) lines.push(`${name}は${by}で自分も ${burnt}点受けた`)
     if (ward && missed > 0)
       lines.push(`${name}の${ACTION_DEFS[ward.kind].label}に返す攻撃が来ず、自分が ${missed}点受けた`)
     if (report.refunded[who]) lines.push(`${name}は防ぎきって、ダイスが戻った`)
@@ -135,6 +197,10 @@ export function issueText(issue: Issue): string {
       return '左の枠に置く'
     case 'same':
       return `同じ目を${issue.count}個置く`
+    case 'pick':
+      return '好きな目を選ぶ'
+    case 'with':
+      return 'ほかのカードにも置く'
     default:
       return CANNOT_USE
   }

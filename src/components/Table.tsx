@@ -22,6 +22,7 @@ import { SOCKETS_UP_TO, Tray, trayCount } from './Tray'
 import { issueText, reportLines } from './text'
 import { useHand } from './useHand'
 import { type Resolved, useRevealClock } from './useRevealClock'
+import { WildPicker } from './WildPicker'
 
 /** 卓に渡す対局。自分を席0とした向き */
 export interface TableMatch {
@@ -79,12 +80,12 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
   const over = board.winner !== null && (clock.ended || !revealing) ? board.winner : null
 
   /** 自分のカードに置いて見せるダイス。行動を出した後は、出した行動を相手の決定を待つ間も見せる */
-  const myShown: Shown | null = clock.reveal
+  const myShown: Shown[] = clock.reveal
     ? revealed(clock.reveal.report.actions[0])
     : view.mine
       ? revealed(view.mine)
-      : hand.row && { ...hand.row, complete: hand.action !== null }
-  const cpuShown = clock.reveal ? revealed(clock.reveal.report.actions[1]) : null
+      : hand.rows.map((row) => ({ ...row, complete: hand.action !== null }))
+  const cpuShown: Shown[] = clock.reveal ? revealed(clock.reveal.report.actions[1]) : []
   const myCurrent = currentCard({
     revealing,
     shown: myShown,
@@ -100,15 +101,25 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
     hand.look(myCurrent)
   }
 
+  /**
+   * 決定を出すカード。一緒に使うカードに置いていても、決定は一枚にだけ出す。
+   * 狭い画面では、置いたカードを見ていればそのカードに、ほかは最後に置いたカードに出す
+   */
+  const placed = hand.drafts.map((p) => p.card)
+  const confirmOn = narrow && placed.includes(myCurrent) ? myCurrent : placed.at(-1)
+
   const playFor = (c: CardId): CardPlay | undefined => {
     if (!choosing) return undefined
-    const here = hand.draft?.card === c
+    const here = c === confirmOn
     const { action, issue } = hand
     return {
       targets: hand.targets.get(c) ?? [],
       hint: hand.held === null,
       onSlot: (slot) => hand.act({ type: 'put', card: c, slot }),
       onPlaced: (slot, die) => hand.tap({ type: 'tapPlaced', card: c, slot, die }),
+      onWild: (die) => {
+        if (!hand.dragging) hand.ask(die)
+      },
       drag: hand.dragDie,
       lifted: hand.dragging?.die ?? null,
       onConfirm: action && here ? () => commit(action) : undefined,
@@ -134,10 +145,18 @@ export function Table({ match, narrow, opponent = '相手', opponentAway, timer,
       <Modal ref={peekDialog} title="相手のカード" className="modal-peek" onClose={() => setPeek(null)}>
         {peek && (
           <ul className="cards cards-one">
-            <SeatCard seat={seats[1]} card={peek} shown={null} revealing={false} />
+            <SeatCard seat={seats[1]} card={peek} shown={[]} revealing={false} />
           </ul>
         )}
       </Modal>
+      <WildPicker
+        die={choosing ? hand.asking : null}
+        chosen={hand.asking === null ? undefined : hand.chosen?.[hand.asking]}
+        frozen={board.players[0].frozen}
+        onChoose={(value) => hand.asking !== null && hand.act({ type: 'choose', die: hand.asking, value })}
+        onReturn={() => hand.asking !== null && hand.act({ type: 'takeBack', die: hand.asking })}
+        onClose={hand.stopAsking}
+      />
       <ConfirmDialog
         ref={passDialog}
         title="パスしますか？"
