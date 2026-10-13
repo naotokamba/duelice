@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest'
 import { makeState, type SeatSetup, seeded } from '../test/helpers'
 import type { ActionKind, CardId } from './cards'
 import {
+  actionKey,
   diceValues,
   extraDiceOf,
   isLegal,
@@ -506,6 +507,43 @@ describe('二重詠唱', () => {
     expect(s.history[0].refunded).toEqual([false, true])
     expect(s.players[1].usedDice).toEqual([0, 1])
   })
+  it('一緒に使う行動の順が違っても同じ手で、合法手には一つだけ並ぶ', () => {
+    const s = start()
+    const ab = along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2))
+    const ba = along(play('doubleCast', 0), play('barrier', 2), play('interrupt', 1))
+    expect(actionKey(s, 0, ab)).toBe(actionKey(s, 0, ba))
+    const both = legalActions(s, 0).filter((a) => a.kind === 'doubleCast' && a.with?.length === 2)
+    expect(both.filter((a) => actionKey(s, 0, a) === actionKey(s, 0, ab))).toHaveLength(1)
+  })
+  it('詠唱を一緒に使えば詠唱が保たれ、発動を一緒に使えば詠唱を使い切る', () => {
+    const spell: CardId[] = ['doubleCast', 'spear', 'interrupt', 'barrier', 'flameStrike']
+    let s = makeState(seat(spell, { roll: [1, 2, 3, 4, 5] }), { roll: [1, 2, 3] })
+    s = resolveStep(s, [along(play('doubleCast', 0), play('spearChant', 1), play('interrupt', 2)), pass])
+    expect(s.players[0].chant).toBe('charged')
+    expect(s.history[0].chants).toEqual(['kept', null])
+    const later = makeState(
+      seat(spell, { roll: [1, 2, 3, 4, 5], usedDice: [0], usedCards: ['spear'], chant: 'charged' }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    const cast = resolveStep(later, [along(play('doubleCast', 1), play('spearCast', 2, 3), play('interrupt', 4)), pass])
+    expect(cast.players[0].chant).toBe('none')
+    expect(cast.history[0].damage).toEqual([0, 9])
+    // 詠唱で使ったカードを発動で使っても、使ったカードは一度だけ数える
+    expect(cast.players[0].usedCards).toEqual(['spear', 'doubleCast', 'interrupt'])
+  })
+  it('守りが返すのは、先に当たる攻撃とほかの攻撃の両方を受けても一度だけ', () => {
+    const fast: CardId[] = ['doubleCast', 'thunder', 'flameStrike', 'interrupt', 'barrier']
+    const s = resolveStep(makeState(seat(fast, { roll: [1, 5, 1, 6, 1] }), seat(fast, { roll: [2, 1, 3] })), [
+      along(play('doubleCast', 0), play('thunder', 1, 2), play('flameStrike', 3, 4)),
+      act('barrier', 0),
+    ])
+    expect(s.history[0].strikes.map((x) => [x.kind, x.phase, x.outcome, x.dealt])).toEqual([
+      ['thunder', 'fast', 'guarded', 1],
+      ['barrier', 'fast', 'returned', 3],
+      ['flameStrike', 'main', 'guarded', 8],
+    ])
+  })
   it('先に当たる攻撃で倒れたら、ほかの効果は起きない。先に当たる攻撃と一緒なら、倒した後に残りが当たる', () => {
     const fast: CardId[] = ['doubleCast', 'thunder', 'flameStrike', 'interrupt', 'barrier']
     const down = resolveStep(makeState(seat(fast, { roll: [1, 6, 1, 2], hp: 2 }), seat(fast, { roll: [5, 1, 3] })), [
@@ -524,6 +562,36 @@ describe('二重詠唱', () => {
       ['flameStrike', 'main', 8],
     ])
     expect(win.players[0].hp).toBe(19)
+    // 先に当たる攻撃と一緒でも、先に倒されれば、先に当たる攻撃のほかは起きない
+    const mixed = resolveStep(
+      makeState(seat(fast, { roll: [1, 5, 1, 6, 1], hp: 2 }), seat(fast, { roll: [5, 1, 3] })),
+      [along(play('doubleCast', 0), play('thunder', 1, 2), play('flameStrike', 3, 4)), act('thunder', 0, 1)],
+    )
+    expect(mixed.history[0].cancelled).toEqual([true, false])
+    expect(mixed.history[0].strikes.map((x) => [x.from, x.kind])).toEqual([
+      [0, 'thunder'],
+      [1, 'thunder'],
+    ])
+    // 何もしなかった側も、先に当たる攻撃で倒れれば、起きなかったと記録する
+    const idle = resolveStep(makeState(seat(fast, { roll: [1, 5, 1], hp: 2 }), seat(fast, { roll: [5, 1, 3] })), [
+      pass,
+      act('thunder', 0, 1),
+    ])
+    expect(idle.history[0].cancelled).toEqual([true, false])
+  })
+})
+
+describe('同じ手の見分け', () => {
+  const deck: CardId[] = ['interrupt', 'transmute', 'doubleCast', 'barrier', 'flameStrike']
+  it('一ステップ目は残る目の組で見分け、二ステップ目と錬成の後は残るダイスを数えない', () => {
+    const s = makeState(seat(deck, { roll: [1, 3, 6, 6] }), { roll: [1, 2, 3] })
+    expect(actionKey(s, 0, act('interrupt', 0))).not.toBe(actionKey(s, 0, act('interrupt', 2)))
+    expect(actionKey(s, 0, act('interrupt', 2))).toBe(actionKey(s, 0, act('interrupt', 3)))
+    const forged = (d: number) => along(play('doubleCast', 3), play('transmute', d))
+    expect(actionKey(s, 0, forged(0))).toBe(actionKey(s, 0, forged(2)))
+    const later = { ...s, step: 2 as const }
+    expect(actionKey(later, 0, act('interrupt', 0))).toBe(actionKey(later, 0, act('interrupt', 2)))
+    expect(legalActions(later, 0).filter((a) => a.kind === 'interrupt')).toHaveLength(1)
   })
 })
 

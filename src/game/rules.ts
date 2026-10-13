@@ -102,19 +102,23 @@ export function isTwoPairs(vals: number[]): boolean {
 /** 効果の定義 */
 const defOf = (m: Move): ActionDef => ACTION_DEFS[m.kind]
 
+/** 置き場のダイスが好きな目のダイスか。空けた置き場は違う */
+// Stryker disable next-line ConditionalExpression: 空けた置き場の null で引いた目は undefined で、好きな目にならない
+const wildAt = (p: PlayerState, d: number | null) => d !== null && p.roll[d] === WILD
+
 /** 好きな目のダイスに選べる目か。1から6で、凍らされた目でない */
 const choosable = (p: PlayerState, v: number | null): boolean =>
   Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 6 && v !== p.frozen
 
 /** 選んだ目が、好きな目のダイスを置いた置き場にだけあり、選べる目か */
 function setOk(p: PlayerState, x: Play): boolean {
-  const wild = x.dice.map((d) => d !== null && p.roll[d] === WILD)
+  const wild = x.dice.map((d) => wildAt(p, d))
   if (x.set === undefined) return !wild.includes(true)
   if (!Array.isArray(x.set) || x.set.length !== x.dice.length) return false
   return x.set.every((v, k) => (wild[k] ? choosable(p, v) : v === null))
 }
 
-/** カードの行動一つが、このステップで合法か。ほかの行動とダイスやカードが重ならないかは見ない */
+/** カードの行動一つが、このステップで合法か。同じダイスを重ねていないかと、ほかの行動とカードが重ならないかは isLegal が見る */
 function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
   if (!Object.hasOwn(ACTION_DEFS, x.kind) || !Array.isArray(x.dice)) return false
   const def = ACTION_DEFS[x.kind]
@@ -125,7 +129,6 @@ function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
   if (x.dice.length !== slotsOf(def)) return false
   if (!fillsRequired(def, x.dice)) return false
   if (!def.dice.includes(dice.length)) return false
-  if (new Set(dice).size !== dice.length) return false
   if (!dice.every((i) => free.includes(i))) return false
   if (!setOk(p, x)) return false
   if (def.step !== undefined && def.step !== state.step) return false
@@ -182,8 +185,9 @@ function placements(def: ActionDef, dice: number[]): (number | null)[][] {
 
 /** 好きな目のダイスを置いた置き場に、選べる目を割り当てる全ての組。好きな目のダイスが無ければ、選ぶものの無い一つ */
 function choices(p: PlayerState, dice: (number | null)[]): ((number | null)[] | undefined)[] {
-  const wild = dice.map((d) => d !== null && p.roll[d] === WILD)
+  const wild = dice.map((d) => wildAt(p, d))
   if (!wild.includes(true)) return [undefined]
+  // Stryker disable next-line MethodExpression,ConditionalExpression: 凍らされた目を外さなくても、合法かの判定で除かれる。速さだけが変わる
   const values = [1, 2, 3, 4, 5, 6].filter((v) => v !== p.frozen)
   let out: (number | null)[][] = [[]]
   for (const w of wild) out = out.flatMap((rest) => (w ? values.map((v) => [...rest, v]) : [[...rest, null]]))
@@ -196,6 +200,7 @@ function choices(p: PlayerState, dice: (number | null)[]): ((number | null)[] | 
  */
 function signature(def: ActionDef, vals: number[], maxHp: number): string {
   const power = def.power
+  // Stryker disable next-line ArithmeticOperator,ArrayDeclaration: 体力の範囲が少しずれても、威力を持たない行動に何を並べても、今の表の行動は同じに見分けられる
   const powers = power ? Array.from({ length: maxHp }, (_, i) => power(vals, { hp: i + 1, maxHp })) : []
   const mark = def.freezes || def.carries ? vals[0] : null
   return JSON.stringify([vals.length, powers, def.guard?.(vals), def.burn?.(vals), mark])
@@ -203,10 +208,9 @@ function signature(def: ActionDef, vals: number[], maxHp: number): string {
 
 /** 行動の後に残るダイスの目の組。どのダイスを使ったかではなく、残った目の組だけが次のステップに効く */
 function restOf(p: PlayerState, used: number[]): number[] {
-  return freeDice(p)
-    .filter((d) => !used.includes(d))
-    .map((d) => p.roll[d])
-    .sort((a, b) => a - b)
+  // Stryker disable next-line BooleanLiteral: 使ったダイスの目の組でも、残る目の組と一対一に決まるので、同じ手の見分けは変わらない
+  const rest = freeDice(p).filter((d) => !used.includes(d))
+  return rest.map((d) => p.roll[d]).sort((a, b) => a - b)
 }
 
 /** カードの行動一つを見分ける鍵。種類と、効果の署名と、残るダイスの目の組が同じなら、同じ置き方とみなす */
@@ -221,7 +225,6 @@ function playKey(p: PlayerState, x: Play, maxHp: number): string {
  * 二ステップ目の後はダイスを振り直し、残りのダイスを捨てる効果の後はダイスが残らないので、残るダイスは数えない
  */
 export function actionKey(state: GameState, who: PlayerIndex, a: Action): string {
-  if (a.kind === 'pass') return a.kind
   const p = state.players[who]
   const { maxHp } = state.config
   const moves = movesOf(p, a)
@@ -249,7 +252,9 @@ function playsWith(state: GameState, who: PlayerIndex, kinds: ActionKind[], dice
           const x: Play = set ? { kind, dice: placed, set } : { kind, dice: placed }
           if (!playLegal(state, who, x)) continue
           const key = playKey(p, x, state.config.maxHp)
+          // Stryker disable next-line ConditionalExpression: ここでまとめなくても、legalActions が同じ鍵の手をまとめる。速さだけが変わる
           if (seen.has(key)) continue
+          // Stryker disable next-line CallExpression: 同じ
           seen.add(key)
           out.push(x)
         }
@@ -341,6 +346,7 @@ interface Field {
  */
 function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx], phase: Phase, f: Field) {
   const out: Strike[] = []
+  // Stryker disable next-line ArrayDeclaration: 空の配列でも、まだ受けていない側は undefined で、受けていないと読む
   const hit: [boolean, boolean] = [false, false]
   for (const from of [0, 1] as const) {
     const to = otherOf(from)
@@ -401,6 +407,7 @@ export interface Clash {
  * 守りの量は、先に当たる攻撃から続けて減っていく。ctx は双方の、ステップを解決する前の様子
  */
 export function clash(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx] = FRESH): Clash {
+  // Stryker disable next-line ArrayDeclaration: 空の配列でも、まだ返していない側は undefined で、返していないと読む
   const f: Field = { pool: [guardOf(moves[0]), guardOf(moves[1])], returned: [false, false] }
   const first = attacks(moves, ctx, 'fast', f)
   const hp = [ctx[0].hp, ctx[1].hp]
@@ -508,8 +515,9 @@ export function resolveStep(
       frozen: largest(theirs.filter((m) => defOf(m).freezes).map((m) => m.vals[0])),
       last: [],
     }
+    // 何もしなかった側は、起きた効果もダイスも無いので、下の更新をしても同じ盤になる
     const a = acts[i]
-    if (a.kind === 'pass' || c.cancelled[i]) return base
+    if (c.cancelled[i]) return base
     const mine = c.live[i]
     const parts = partsOf(a)
     let chant = p.chant

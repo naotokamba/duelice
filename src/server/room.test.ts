@@ -419,6 +419,16 @@ describe('保存されていた部屋', () => {
     expect(s.match?.state.turn).toBe(2)
     expect(restoreRoom(legacy(s))).toEqual(s)
   })
+  it('後で足した欄の無い席は、まだ記録の無い対局なら、直前の効果もこのターンに起きた効果も無い', () => {
+    const s = fixed(playing())
+    if (!s.match) throw new Error('対局が要る')
+    const old = s.match.state.players.map((p) => {
+      const { last: _, acted: __, ...rest } = p
+      return rest
+    })
+    const saved = { ...s, match: { ...s.match, state: { ...s.match.state, players: old } } } as unknown as RoomState
+    expect(restoreRoom(saved)).toEqual(s)
+  })
   it('対局の無い部屋もそのまま', () => {
     const s = created()
     expect(restoreRoom(s)).toEqual(s)

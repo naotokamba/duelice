@@ -91,7 +91,8 @@ type Saved<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 /**
  * 保存されていた席。カードを選べるようになる前の盤には、持ち込んだ5枚やターンをまたぐ効果の欄が無い。
  * 直前の効果とこのターンに起きた効果は、そろえた記録から作る。直前の効果は一番新しい記録の効果で、
- * このターンに起きた効果は、このターンの記録の効果。どちらも倒れて起きなかった記録は数えない
+ * このターンに起きた効果は、このターンの記録の効果。オンライン対戦はスターターの5枚どうしで、
+ * 先に当たる攻撃が無く倒れて起きなかった効果も無いので、記録の効果は全て起きている
  */
 function restorePlayer(
   p: Saved<PlayerState, 'deck' | 'frozen' | 'burned' | 'carry' | 'last' | 'acted'>,
@@ -99,16 +100,14 @@ function restorePlayer(
   turn: number,
   history: StepReport[],
 ): PlayerState {
-  const happened = (r: StepReport) => (r.cancelled[who] ? [] : r.moves[who])
-  const latest = history.at(-1)
   return {
     ...p,
     deck: p.deck ?? [...STARTER],
     frozen: p.frozen ?? null,
     burned: p.burned ?? 0,
     carry: p.carry ?? null,
-    last: p.last ?? (latest ? happened(latest) : []),
-    acted: p.acted ?? history.filter((r) => r.turn === turn).flatMap((r) => happened(r).map((m) => m.kind)),
+    last: p.last ?? history.at(-1)?.moves[who] ?? [],
+    acted: p.acted ?? history.filter((r) => r.turn === turn).flatMap((r) => r.moves[who].map((m) => m.kind)),
   }
 }
 
