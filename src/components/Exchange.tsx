@@ -1,5 +1,6 @@
 // 公開した一ステップで起きたことを、卓の上に重ねた幕の中で、上下の間を飛ぶ矢印と印で見せる。
-// 上が相手、下が自分。攻撃は矢印、障壁や反射や詠唱は受ける側の端に置く印、受けたダメージは星で描く。
+// 上が相手、下が自分。攻撃は矢印、障壁や反撃や詠唱は受ける側の端に置く印、受けたダメージは星で描く。
+// 反撃が外れて自分で受けたダメージは、中を抜いた星で描く。
 // 幕の上下の端には双方の体力の帯を出し、当たった時に減らす。
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
@@ -7,7 +8,7 @@ import { SkipForward } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
 import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
-import { ChantGlyph, PierceStar, ReflectGlyph, ShieldGlyph, Star } from './glyphs'
+import { BackfireStar, ChantGlyph, CounterGlyph, PierceStar, ShieldGlyph, Star } from './glyphs'
 import { HpBar } from './HpBar'
 import { actionLabel } from './text'
 
@@ -22,12 +23,12 @@ const EDGE = 16
 const HIT = 38
 /** 構えの印の中心の、端からの距離の割合。当たった星と重ならないように端から離す */
 const STANCE_SHARE = 0.35
-/** 構えの印の半径。障壁や反射に当たる矢印はここで止まる。印の大きさは、この値を CSS の変数で渡して決める */
+/** 構えの印の半径。障壁や反撃に当たる矢印はここで止まる。印の大きさは、この値を CSS の変数で渡して決める */
 const STANCE_R = 28
 
 // 公開は三つの拍に分けて、拍ごとに間を取る。
 // 一つ目は名乗り。使ったカードが光り、技の名前と値の札が中央に出る。
-// 二つ目は構え。札が消え、障壁や反射や詠唱の印が技の名前と一緒に出る。
+// 二つ目は構え。札が消え、障壁や反撃や詠唱の印が技の名前と一緒に出る。
 // 三つ目は攻撃と結果。技の名前を付けた矢印が飛び、当たって体力が減る。
 // 時間はここで決め、CSS の変数で動きに渡す
 
@@ -43,8 +44,10 @@ export const START_MS = 1300
 const FLY_MS = 550
 /** 矢印が当たる時刻 */
 export const IMPACT_MS = START_MS + FLY_MS
-/** 反射で返った矢印が当たる時刻 */
+/** 反撃で返した矢印が当たる時刻 */
 export const RETURN_MS = IMPACT_MS + FLY_MS
+/** 反撃が外れて、自分でダメージを受ける時刻。攻撃が来ていれば当たる時、来なければ当たるはずだった時 */
+export const BACKFIRE_MS = IMPACT_MS
 /** 最後の矢印が当たってから次へ進むまでの間。結果を見せる */
 export const HOLD_MS = 1500
 /** 攻撃が無いときに構えを見せておく時間 */
@@ -52,15 +55,26 @@ const CALM_MS = 900
 /** 舞台が消えていく時間。次へ進む前に、この時間をかけて薄くなる */
 const OUT_MS = 350
 
-/** 攻撃が当たる時刻 */
+/** 攻撃が当たる時刻。反撃に打ち消された攻撃は、返した矢印が当たる時刻 */
 export function landsAt(s: Strike): number {
-  return s.outcome === 'reflected' ? RETURN_MS : IMPACT_MS
+  return s.outcome === 'countered' ? RETURN_MS : IMPACT_MS
+}
+
+/** 公開の長さを決める、ステップの記録の部分 */
+type Landing = Pick<StepReport, 'strikes' | 'backfire'>
+
+/** ダメージが入る時刻を全て。攻撃が当たる時刻と、反撃が外れて自分で受ける時刻 */
+export function landings(report: Landing): number[] {
+  const times = report.strikes.map(landsAt)
+  if (report.backfire.some((v) => v > 0)) times.push(BACKFIRE_MS)
+  return times
 }
 
 /** 公開してから次へ進むまでの時間 */
-export function revealMs(list: Strike[]): number {
-  if (list.length === 0) return START_MS + CALM_MS
-  return Math.max(...list.map(landsAt)) + HOLD_MS
+export function revealMs(report: Landing): number {
+  const times = landings(report)
+  if (times.length === 0) return START_MS + CALM_MS
+  return Math.max(...times) + HOLD_MS
 }
 
 /** 舞台の上での位置。上が相手、下が自分 */
@@ -83,21 +97,21 @@ function laneX(list: Strike[], from: PlayerIndex): number {
 
 /** 矢印と重ならないように、横にずらす量 */
 const ASIDE = 64
-/** 反射で返る矢印を、行きの矢印の横に並べる量 */
+/** 反撃で返す矢印を、行きの矢印の横に並べる量 */
 const BACK = 34
 
 /** CSS の変数を含む style。dx は横にずらす画素数 */
 const at = (x: number, y: number, delay = 0, dx = 0): CSSProperties =>
   ({ left: `calc(${x}% + ${dx}px)`, top: y, '--delay': `${delay}ms` }) as CSSProperties
 
-/** 行動の印を、実際に出た値で描く。攻撃は威力、障壁は減らす量、詠唱は崩れる境目 */
+/** 行動の印を、実際に出た値で描く。攻撃は威力、障壁は減らす量、反撃は打ち消せる上限、詠唱は崩れる境目 */
 function actionMark(a: Action, vals: number[]): ReactNode {
   if (a.kind === 'pass') return <SkipForward />
   const def = ACTION_DEFS[a.kind]
   const v = effectValue(def, vals)
   if (def.power) return def.piercing ? <PierceStar value={String(v)} /> : <Star value={String(v)} />
   if (def.guard) return <ShieldGlyph value={v} />
-  if (def.reflects) return <ReflectGlyph />
+  if (def.counter) return <CounterGlyph value={def.counter.upTo} />
   return <ChantGlyph value={v} />
 }
 
@@ -112,7 +126,7 @@ interface ExchangeProps {
 export function Exchange({ report, top, bottom }: ExchangeProps) {
   const list = report.strikes
   const vars = {
-    '--out-at': `${revealMs(list) - OUT_MS}ms`,
+    '--out-at': `${revealMs(report) - OUT_MS}ms`,
     '--out': `${OUT_MS}ms`,
     '--plate': `${PLATE_MS}ms`,
     '--stance-d': `${STANCE_R * 2}px`,
@@ -142,9 +156,11 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
           {list.map((s) => {
             const x = laneX(list, s.from)
             const other = otherOf(s.from)
-            const stops = s.outcome === 'guarded' || s.outcome === 'reflected'
+            const countered = s.outcome === 'countered'
+            const stops = s.outcome === 'guarded' || countered
             const a = report.actions[s.from]
             const mark = actionMark(a, report.values[s.from])
+            const answer = report.actions[other]
             return [
               <Arrow
                 key={`a${s.from}`}
@@ -156,37 +172,47 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
                 delay={START_MS}
                 card={ACTION_DEFS[s.kind].card}
                 spent={stops}
-                returned={s.outcome === 'reflected'}
+                returned={countered}
               />,
-              s.outcome === 'reflected' && (
+              countered && answer.kind !== 'pass' && (
+                // 反撃が返す矢印。反撃の名前と、返す量の星を付ける
                 <Arrow
                   key={`r${s.from}`}
-                  label={actionLabel(a)}
-                  mark={mark}
+                  label={actionLabel(answer)}
+                  mark={<Star value={String(s.dealt)} />}
                   x={x}
                   dx={BACK}
                   y0={stanceRim(other)}
                   y1={hit(s.from)}
                   delay={IMPACT_MS}
-                  card={ACTION_DEFS[s.kind].card}
+                  card={ACTION_DEFS[answer.kind].card}
                 />
               ),
               s.dealt > 0 && (
-                // 障壁に削られて通ったダメージは、障壁の横に出す。反射で返ったダメージは返る矢印の先に出す
+                // 障壁に削られて通ったダメージは、障壁の横に出す。反撃で返したダメージは返す矢印の先に出す
                 <div
                   key={`b${s.from}`}
                   className="burst"
-                  style={at(
-                    x,
-                    hit(s.to),
-                    landsAt(s),
-                    s.outcome === 'guarded' ? ASIDE : s.outcome === 'reflected' ? BACK : 0,
-                  )}
+                  style={at(x, hit(s.to), landsAt(s), s.outcome === 'guarded' ? ASIDE : countered ? BACK : 0)}
                 >
                   <Star value={`−${s.dealt}`} />
                 </div>
               ),
             ]
+          })}
+          {([0, 1] as const).map((who) => {
+            if (report.backfire[who] === 0) return null
+            // 反撃が外れて自分で受けたダメージ。通された攻撃の星と重ならないように、その横に出す
+            const incoming = list.find((s) => s.to === who)
+            return (
+              <div
+                key={`m${who}`}
+                className="burst burst-backfire"
+                style={at(incoming ? laneX(list, incoming.from) : 50, hit(who), BACKFIRE_MS, incoming ? -ASIDE : 0)}
+              >
+                <BackfireStar value={`−${report.backfire[who]}`} />
+              </div>
+            )
           })}
         </div>
         {bottom}
@@ -228,9 +254,9 @@ interface ArrowProps {
   y1: number
   delay: number
   card: CardId
-  /** 障壁や反射に当たって止まり、薄くなる矢印 */
+  /** 障壁や反撃に当たって止まり、薄くなる矢印 */
   spent?: boolean
-  /** 反射で返された矢印。返る矢印と入れ替わりに札を消す */
+  /** 反撃に打ち消された矢印。返す矢印と入れ替わりに札を消す */
   returned?: boolean
 }
 
@@ -255,7 +281,7 @@ function Arrow({ label, mark, x, dx = 0, y0, y1, delay, card, spent, returned }:
   )
 }
 
-/** 受ける側の構え。障壁、反射、詠唱、パスを印で出す。攻撃した側は何も出さない */
+/** 受ける側の構え。障壁、反撃、詠唱、パスを印で出す。攻撃した側は何も出さない */
 interface StanceProps {
   who: PlayerIndex
   report: StepReport
@@ -304,10 +330,13 @@ function Stance({ who, report, x, aside, incoming }: StanceProps) {
       </div>
     )
   }
-  if (def.reflects) {
+  if (def.counter) {
+    // 打ち消した反撃は当たった時に揺れる。上限を超えて通された反撃は矢印が通る時に、攻撃が来なかった反撃は当たるはずだった時に、薄くなる
+    const through = incoming?.outcome === 'overpowered'
+    const state = incoming?.outcome === 'countered' ? ' is-blocking' : ' is-missed'
     return (
-      <div className={cls} style={stanceAt(x, y, 0)}>
-        <ReflectGlyph />
+      <div className={cls + state} style={stanceAt(x, y, through && incoming ? reachesStance(incoming) : IMPACT_MS)}>
+        <CounterGlyph value={def.counter.upTo} />
         {name}
       </div>
     )

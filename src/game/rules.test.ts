@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import { makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS } from './cards'
 import {
+  backfires,
   breaksChant,
   isLegal,
   keptRow,
@@ -11,6 +12,7 @@ import {
   newGame,
   nextTurn,
   resolveStep,
+  stepDamage,
   strikes,
   turnOver,
   winnerOf,
@@ -165,14 +167,19 @@ describe('ターンの進行', () => {
     expect(next.history[0].strikes).toEqual([{ from: 0, kind: 'fireball', power: 2, outcome: 'hit', to: 1, dealt: 2 }])
     expect(next.history[0].damage).toEqual([0, 2])
   })
-  it('反射はゾロ目でしか置けない', () => {
-    const s = makeState({ roll: [2, 2, 5] }, { roll: [1, 3, 5] })
-    expect(legalActions(s, 0).some((a) => a.kind === 'reflect')).toBe(true)
-    expect(legalActions(s, 1).some((a) => a.kind === 'reflect')).toBe(false)
+  it('反撃はどの目1個でも置け、どちらのステップでも使える', () => {
+    const counters = (step: 1 | 2) =>
+      legalActions(makeState({ roll: [1, 3, 5] }, { roll: [1, 2, 3] }, step), 0).filter((a) => a.kind === 'counter')
+    expect(counters(1)).toEqual([
+      { kind: 'counter', dice: [0] },
+      { kind: 'counter', dice: [1] },
+      { kind: 'counter', dice: [2] },
+    ])
+    expect(counters(2)).toHaveLength(3)
   })
   it('不正な行動を解決しようとすると例外', () => {
     const s = makeState({ roll: [1, 3, 5] }, { roll: [1, 2, 3] })
-    expect(() => resolveStep(s, [{ kind: 'reflect', dice: [0, 1] }, pass])).toThrow()
+    expect(() => resolveStep(s, [{ kind: 'spearCast', dice: [0, 1] }, pass])).toThrow()
   })
   it('同時に0以下になったら、体力の残りが多い方の勝ち。同じなら引き分け', () => {
     const fire = (hp0: number, hp1: number) =>
@@ -242,7 +249,8 @@ describe('攻撃の行方', () => {
   const fire: Action = { kind: 'fireball', dice: [0, 1] }
   it.each([
     ['何もしない相手には当たる', [6, 2], fire, [], pass, { outcome: 'hit', to: 1, dealt: 6 }],
-    ['障壁に削られる', [6, 2], fire, [4], { kind: 'barrier', dice: [0] }, { outcome: 'guarded', to: 1, dealt: 2 }],
+    // 障壁は置いた目の倍を減らす
+    ['障壁に削られる', [6, 2], fire, [2], { kind: 'barrier', dice: [0] }, { outcome: 'guarded', to: 1, dealt: 2 }],
     [
       '障壁が上回ると0になる',
       [3, 2],
@@ -260,12 +268,28 @@ describe('攻撃の行方', () => {
       { outcome: 'pierced', to: 1, dealt: 2 },
     ],
     [
-      '反射で攻撃した側に返る',
+      '雷槍の発動は障壁をすり抜ける',
+      [6, 5],
+      { kind: 'spearCast', dice: [0, 1] },
+      [6],
+      { kind: 'barrier', dice: [0] },
+      { outcome: 'pierced', to: 1, dealt: 11 },
+    ],
+    [
+      '反撃の上限以下なら打ち消され、返す量が攻撃した側に入る',
+      [5, 2],
+      fire,
+      [3],
+      { kind: 'counter', dice: [0] },
+      { outcome: 'countered', to: 0, dealt: 4 },
+    ],
+    [
+      '反撃の上限を超えると、そのまま通る',
       [6, 2],
       fire,
-      [3, 3],
-      { kind: 'reflect', dice: [0, 1] },
-      { outcome: 'reflected', to: 0, dealt: 6 },
+      [3],
+      { kind: 'counter', dice: [0] },
+      { outcome: 'overpowered', to: 1, dealt: 6 },
     ],
   ] as const)('%s', (_, mine, a, theirs, b, want) => {
     const [x, ...rest] = strikes([[...mine], [...theirs]], [a as Action, b as Action])
@@ -279,10 +303,10 @@ describe('攻撃の行方', () => {
     ])
     expect(
       strikes(
-        [[4], [3, 3]],
+        [[4], [3]],
         [
           { kind: 'barrier', dice: [0] },
-          { kind: 'reflect', dice: [0, 1] },
+          { kind: 'counter', dice: [0] },
         ],
       ),
     ).toEqual([])
@@ -293,6 +317,50 @@ describe('攻撃の行方', () => {
   })
 })
 
+describe('反撃が外れる', () => {
+  const counter: Action = { kind: 'counter', dice: [0] }
+  const fire: Action = { kind: 'fireball', dice: [0, 1] }
+  const miss = (mine: number[], a: Action, theirs: number[], b: Action) => {
+    const vals: [number[], number[]] = [mine, theirs]
+    return backfires(vals, [a, b], strikes(vals, [a, b]))
+  }
+  it('攻撃を打ち消せたら外れない', () => {
+    expect(miss([3], counter, [5, 1], fire)).toEqual([0, 0])
+  })
+  it('攻撃が来なければ外れて、X の枠の目の倍を受ける', () => {
+    expect(miss([3], counter, [], pass)).toEqual([6, 0])
+    expect(miss([2], counter, [4], { kind: 'barrier', dice: [0] })).toEqual([4, 0])
+  })
+  it('上限を超えて通されても外れる', () => {
+    expect(miss([1], counter, [6, 1], fire)).toEqual([2, 0])
+  })
+  it('反撃どうしは双方が外れる', () => {
+    expect(miss([1], counter, [3], counter)).toEqual([2, 6])
+  })
+  it('外れて受けたダメージは記録に別に残り、受けたダメージにも体力にも入る', () => {
+    const s = resolveStep(makeState({ roll: [6, 2, 1] }, { roll: [3, 4, 5] }), [fire, counter])
+    expect(s.history[0].backfire).toEqual([0, 6])
+    expect(s.history[0].damage).toEqual([0, 12])
+    expect(s.players.map((p) => p.hp)).toEqual([20, 8])
+  })
+  it('打ち消せば、攻撃した側が返す量を受け、反撃した側は何も受けない', () => {
+    const s = resolveStep(makeState({ roll: [5, 2, 1] }, { roll: [3, 4, 5] }), [fire, counter])
+    expect(s.history[0].backfire).toEqual([0, 0])
+    expect(s.history[0].damage).toEqual([4, 0])
+  })
+  it('外れた反撃の自傷は、詠唱した相手の詠唱を崩さない', () => {
+    const s = resolveStep(makeState({ roll: [1, 2, 3] }, { roll: [6, 4, 5] }), [
+      { kind: 'spearChant', dice: [0] },
+      counter,
+    ])
+    expect(s.history[0].chants).toEqual(['kept', null])
+    expect(s.history[0].damage).toEqual([0, 12])
+  })
+  it('受けるダメージの計算にも、外れた反撃の自傷が入る', () => {
+    expect(stepDamage([[3], []], [counter, pass])).toEqual([6, 0])
+  })
+})
+
 describe('記録', () => {
   it('何もしない手のダイスの値は空', () => {
     const s = resolveStep(makeState({ roll: [1, 2, 3] }, { roll: [1, 2, 3] }), [pass, pass])
@@ -300,7 +368,7 @@ describe('記録', () => {
   })
   it('例外の文で原因が分かる', () => {
     const s = makeState({ roll: [1, 3, 5] }, { roll: [1, 2, 3] })
-    expect(() => resolveStep(s, [{ kind: 'reflect', dice: [0, 1] }, pass])).toThrow(/不正な行動/)
+    expect(() => resolveStep(s, [{ kind: 'spearCast', dice: [0, 1] }, pass])).toThrow(/不正な行動/)
     const over = { ...s, winner: 0 as const }
     expect(() => resolveStep(over, [pass, pass])).toThrow(/終了/)
   })
@@ -315,10 +383,10 @@ describe('1ステップ目のダイス', () => {
   it('2ステップ目には、双方が1ステップ目に使ったダイスが、置いた置き場のままカードに残る', () => {
     const s = resolveStep(start, [
       { kind: 'fireball', dice: [1, 0] },
-      { kind: 'reflect', dice: [0, 1] },
+      { kind: 'counter', dice: [2] },
     ])
     expect(keptRow(s, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
-    expect(keptRow(s, 1)).toEqual({ card: 'reflect', kind: 'reflect', slots: [0, 1] })
+    expect(keptRow(s, 1)).toEqual({ card: 'counter', kind: 'counter', slots: [2] })
     // 2ステップ目を解決しても、ターンが変わるまでは残る
     const after = resolveStep(s, [pass, pass])
     expect(keptRow(after, 0)).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })

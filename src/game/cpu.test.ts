@@ -98,8 +98,8 @@ describe('CPU', () => {
   })
   it('倒し切れるときは倒しに行く', () => {
     const t = new Thinker()
-    // 相手は残り3でゾロ目なし。魔弾2個なら障壁も関係なく3点で倒せる
-    const s = makeState({ roll: [1, 2, 3], hp: 3 }, { roll: [6, 6, 1] })
+    // 相手は残り3で、反撃はもう使った。魔弾2個なら障壁も関係なく3点で倒せる
+    const s = makeState({ roll: [1, 2, 3], hp: 3, usedDice: [0], usedCards: ['counter'] }, { roll: [6, 6, 1] }, 2)
     const best = t.analyze(s, 1, 'hard').sort((a, b) => b.prob - a.prob)[0]
     expect(best.action.kind === 'fireball' || best.action.kind === 'bullet').toBe(true)
   })
@@ -171,8 +171,8 @@ describe('無意味なパス', () => {
   })
 
   it('一ステップ目に目を温めるパスは残る', () => {
-    // 1,1,4 対 1,1,3 では、つよいもパスを混ぜる
-    const s = makeState({ roll: [1, 1, 4] }, { roll: [1, 1, 3] })
+    // 1,1,2 対 1,1,2 では、つよいもパスを混ぜる
+    const s = makeState({ roll: [1, 1, 2] }, { roll: [1, 1, 2] })
     const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
     expect(pass?.prob).toBeGreaterThan(0)
   })

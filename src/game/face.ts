@@ -12,6 +12,7 @@ const anyVals = (n: number) => Array<number>(n).fill(1)
 
 /**
  * カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。
+ * 記号を含む値の欄は、記号ごと効果の値になる。反撃の返す量のように記号を含まない値は、そのまま描く。
  * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす。
  * 記号を使わない行動は、値を書かない印に、置いた個数で決まる値を入れる。置く前は空けられない置き場だけを埋めた値にし、
  * 省いてもよい置き場まで埋めると値が増えるなら、その値も添える
@@ -26,9 +27,10 @@ export function faceParts(def: ActionDef, vals?: number[]): EffectPart[] {
   if (sym) {
     if (!vals) return [...def.face.effect]
     const value = String(effectValue(def, vals))
+    // 値の欄は、記号を含む式ごと値に置き換える。障壁の 2X は、X が 3 なら 6 になる
     return def.face.effect.map((p) => ({
       ...p,
-      value: p.value?.replaceAll(sym, value),
+      value: p.value?.includes(sym) ? value : p.value,
       text: p.text?.replaceAll(sym, value),
     }))
   }

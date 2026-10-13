@@ -26,11 +26,11 @@ describe('手元の対戦', () => {
 
   it('始める前や、合法でない行動は、作りの誤りとして止める', () => {
     const { result } = renderHook(() =>
-      useLocalMatch({ rng: seeded(3), level: 'easy', opponent: () => ({ kind: 'reflect', dice: [9, 9] }) }),
+      useLocalMatch({ rng: seeded(3), level: 'easy', opponent: () => ({ kind: 'spearCast', dice: [9, 9] }) }),
     )
     expect(() => result.current.play({ kind: 'pass' })).toThrow('対局が始まっていない')
     act(() => result.current.start())
-    expect(() => result.current.play({ kind: 'reflect', dice: [9, 9] })).toThrow('自分の行動を受け付けなかった')
+    expect(() => result.current.play({ kind: 'spearCast', dice: [9, 9] })).toThrow('自分の行動を受け付けなかった')
     expect(() => result.current.play({ kind: 'pass' })).toThrow('相手の行動を受け付けなかった')
   })
 })

@@ -17,13 +17,13 @@
   --barrier: #2f7f86;
   --bullet: #6a4bc4;
   --spear: #a87c00;
-  --reflect: #5f6b7d;
+  --counter: #5f6b7d;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --fireball-ink: #a22d18;
   --barrier-ink: #246268;
   --bullet-ink: #603fc0;
   --spear-ink: #725400;
-  --reflect-ink: #515b6a;
+  --counter-ink: #515b6a;
   /* 色の付いた札やボタンに乗せる文字 */
   --on-accent: #fff;
   /* 切り替わりの幕。卓より少しだけ暗い */
@@ -62,12 +62,12 @@
     --barrier: #5fb8bf;
     --bullet: #a690f0;
     --spear: #e0b43a;
-    --reflect: #9aa6b8;
+    --counter: #9aa6b8;
     --fireball-ink: #f28069;
     --barrier-ink: #5fb8bf;
     --bullet-ink: #ab97f1;
     --spear-ink: #e0b43a;
-    --reflect-ink: #9aa6b8;
+    --counter-ink: #9aa6b8;
   }
 }
 
@@ -610,10 +610,10 @@ button.die {
   --spell-ink: var(--spear-ink);
   --card-ink: var(--spear-ink);
 }
-.card-reflect {
-  --spell: var(--reflect);
-  --spell-ink: var(--reflect-ink);
-  --card-ink: var(--reflect-ink);
+.card-counter {
+  --spell: var(--counter);
+  --spell-ink: var(--counter-ink);
+  --card-ink: var(--counter-ink);
 }
 .card-head {
   display: flex;
@@ -931,6 +931,19 @@ button.fx[aria-describedby] {
 .glyph-pierce {
   overflow: visible;
 }
+/* 反撃が外れて自分で受けるダメージ。星の中を抜いて縁だけ赤くし、数も赤で書く */
+.glyph-backfire polygon {
+  fill: var(--glyph-bg, var(--surface));
+  stroke: var(--hit);
+  stroke-width: 8;
+  stroke-linejoin: round;
+}
+.glyph-backfire {
+  overflow: visible;
+}
+.glyph-star.glyph-backfire .glyph-value {
+  fill: var(--hit);
+}
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
   margin-left: auto;
@@ -1215,12 +1228,12 @@ button.tab {
 .arrow.is-down .arrow-value {
   top: 18px;
 }
-/* 障壁や反射に当たった矢印は、そこで止まって薄くなる */
+/* 障壁や反撃に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
   animation: fade 260ms ease var(--gone) both;
 }
 /* 障壁で止まった矢印の札は残し、何を止めたかを読めるようにする。
-   反射で返された矢印の札は、返る矢印が出たら消す。返る矢印が同じ札を付けて出るので、二つ並べない */
+   反撃に打ち消された矢印の札は、返す矢印が出たら消す。返す矢印に反撃の札が付くので、札を二つ並べない */
 .arrow.is-returned .arrow-value {
   animation:
     appear 200ms ease var(--delay) both,
@@ -1284,7 +1297,7 @@ button.tab {
     opacity: 1;
   }
 }
-/* 構え。障壁、反射、詠唱は受ける側の端に置く。矢印が縁で止まるので、大きさは Exchange.tsx が --stance-d で渡す */
+/* 構え。障壁、反撃、詠唱は受ける側の端に置く。矢印が縁で止まるので、大きさは Exchange.tsx が --stance-d で渡す */
 .stance {
   --glyph-bg: var(--surface);
   width: var(--stance-d);
@@ -1386,7 +1399,7 @@ button.tab {
   width: 24px;
   height: 24px;
 }
-/* 攻撃を止めた障壁は、当たった時に揺れる */
+/* 攻撃を止めた障壁や反撃は、当たった時に揺れる */
 .stance.is-blocking {
   animation:
     stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
@@ -1397,8 +1410,9 @@ button.tab {
     transform: translate(-50%, -50%) scale(1.18);
   }
 }
-/* すり抜けられた障壁は、矢印が通る時に斜線の入った盾に変わって薄くなる */
-.stance.is-pierced {
+/* すり抜けられた障壁と、外れた反撃は、薄くなる */
+.stance.is-pierced,
+.stance.is-missed {
   animation:
     stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
     fade-half 240ms ease var(--delay) both;
@@ -1601,7 +1615,8 @@ button.tab {
   .arrow.is-spent {
     opacity: 0.25;
   }
-  .stance.is-pierced {
+  .stance.is-pierced,
+  .stance.is-missed {
     opacity: 0.45;
   }
   .stance.is-broken .chant-on {

@@ -27,7 +27,7 @@ export async function advance(ms: number) {
   })
 }
 
-/** 一番長い公開、反射で返った矢印が当たって結果を見せ終わるまでの時間 */
+/** 一番長い公開、反撃で返した矢印が当たって結果を見せ終わるまでの時間 */
 export const LONGEST_REVEAL_MS = RETURN_MS + HOLD_MS
 
 /** 公開の動きが終わり、次のステップかターンへ進むまで待つ */

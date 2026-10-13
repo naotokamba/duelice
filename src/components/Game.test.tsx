@@ -38,6 +38,9 @@ import { HOLD_MS, IMPACT_MS, revealMs } from './Exchange'
 import type { Opponent } from './Game'
 import { BANNER_MS } from './useRevealClock'
 
+/** 攻撃も反撃の外れも無い公開。構えを見せてから短く進む */
+const CALM = { strikes: [], backfire: [0, 0] as [number, number] }
+
 beforeEach(useFakeClock)
 afterEach(() => {
   cleanup()
@@ -125,7 +128,7 @@ describe('一ターンの流れ', () => {
     await fireSixes(user)
     await settle()
     await pass(user)
-    await advance(revealMs([]))
+    await advance(revealMs(CALM))
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
     expect(screen.getByText('Turn 2', { selector: '.banner span' })).toBeTruthy()
     expect(diceOn(myCard('火球'))).toEqual([])
@@ -140,7 +143,7 @@ describe('一ターンの流れ', () => {
     await fireSixes(user)
     await settle()
     await pass(user)
-    await advance(revealMs([]) + BANNER_MS)
+    await advance(revealMs(CALM) + BANNER_MS)
     // 中央には一つ前の結果だけを出す
     const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))
     expect(latest.getAllByRole('listitem')).toHaveLength(1)
@@ -230,26 +233,32 @@ describe('置く', () => {
     expect(screen.getByText('あなたの魔弾 3点')).toBeTruthy()
   })
 
-  it('反射は違う目も置けるが、同じ目が揃うまで決定を押せない', async () => {
-    const user = await start(roll([3, 5, 3]))
-    await place(user, 3, '反射')
-    expect(blockedReason()).toBe('同じ目をあと1個置く')
-    await place(user, 5, '反射')
-    expect(blockedReason()).toBe('同じ目を2個置く')
-    // 押せない決定を押しても何も起きない
-    fireEvent.click(confirmButton() as HTMLButtonElement)
-    expect(screen.queryByText(/反射を構えた/)).toBeNull()
-    // 違う目のある置き場に同じ目を置けば、入れ替わって決定できる
-    await user.click(trayDie(3))
-    await user.click(myCard('反射').getByRole('button', { name: '5の目と入れ替える' }))
+  it('反撃はどの目でも X の枠に1個置けば決定でき、攻撃が来なければ外れて目の倍を受ける', async () => {
+    const user = await start(roll([3, 5, 1]))
+    expect(blockedReason()).toBeNull()
+    await place(user, 3, '反撃')
     expect(blockedReason()).toBeNull()
     await user.click(button('決定'))
-    expect(screen.getByText('あなたは 3と3 で反射を構えた')).toBeTruthy()
+    expect(screen.getByText('あなたは 3 で反撃を構えた')).toBeTruthy()
+    expect(screen.getByText('あなたの反撃は外れて 6点を受けた')).toBeTruthy()
+    await settle()
+    expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
   })
 
-  it('ゾロ目が無いと反射は使えない', async () => {
-    await start(roll([1, 2, 3]))
-    expect(emptySlots('反射')).toHaveLength(0)
+  it('相手の5以下の攻撃を反撃で打ち消すと、相手に4点返す', async () => {
+    const user = await start({
+      rng: dice([
+        [1, 2, 3],
+        [5, 4, 1],
+      ]),
+      opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
+    })
+    await place(user, 1, '反撃')
+    await user.click(button('決定'))
+    expect(screen.getByText('相手の火球 5点は反撃で打ち消され、4点返された')).toBeTruthy()
+    await settle()
+    expect(mySeat().getByLabelText('体力 20 / 20')).toBeTruthy()
+    expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()
   })
 
   it('決定できない理由は読み上げでも伝える', async () => {
@@ -283,7 +292,7 @@ describe('雷槍の詠唱', () => {
     ])
     await place(user, 6, '雷槍')
     await place(user, 6, '雷槍')
-    expect(myCard('雷槍').getByRole('button', { name: '12ダメージを与える' })).toBeTruthy()
+    expect(myCard('雷槍').getByRole('button', { name: '障壁で減らない12ダメージを与える' })).toBeTruthy()
     await user.click(button('決定'))
     // 2ステップ目の公開の間は、詠唱のダイスと発動のダイスが並ぶ
     expect(diceOn(myCard('雷槍'))).toEqual(['5の目', '6の目', '6の目'])
@@ -360,7 +369,7 @@ describe('引きずって置く', () => {
 
   it('置き場の外や何も無い所で離すと、ダイスは手元に残る', async () => {
     await start(six())
-    dragTo(trayDie(2), mySeat().getByRole('listitem', { name: '反射' }))
+    dragTo(trayDie(2), mySeat().getByRole('listitem', { name: '反撃' }))
     dragTo(trayDie(2), null)
     expect(trayOf(mySeat()).getAllByRole('button', { name: /の目$/ })).toHaveLength(3)
     expect(confirmButton()).toBeNull()
@@ -510,7 +519,7 @@ describe('メニュー', () => {
     const dialog = screen.getByRole('dialog', { name: 'ルール' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     const cards = within(dialog).getAllByRole('listitem', { name: /./ })
-    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['火球', '障壁', '魔弾', '雷槍', '反射'])
+    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['火球', '障壁', '魔弾', '雷槍', '反撃'])
   })
 
   it('降参は確かめてからタイトルに戻り、続けるを選べば対局が続く', async () => {

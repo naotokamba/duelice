@@ -189,7 +189,7 @@ describe('カードの名前', () => {
   })
 
   it('押せない名前でも、使い終わったことを伝える', () => {
-    render(<CardTabs tabs={[tab({ card: 'reflect', used: true })]} />)
-    expect(screen.getByText('反射').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
+    render(<CardTabs tabs={[tab({ card: 'counter', used: true })]} />)
+    expect(screen.getByText('反撃').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
   })
 })

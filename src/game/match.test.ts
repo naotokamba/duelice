@@ -54,7 +54,7 @@ describe('行動を出す', () => {
     expect(late).toEqual(both(start, fire, pass))
   })
   it('合法でない行動、同じステップに二度出した行動、決着した後の行動は受け付けない', () => {
-    expect(submit(start, 0, { kind: 'reflect', dice: [0, 1] }, seeded(1))).toEqual({ ok: false, reason: 'illegal' })
+    expect(submit(start, 0, { kind: 'spearCast', dice: [0, 1] }, seeded(1))).toEqual({ ok: false, reason: 'illegal' })
     const once = accepted(submit(start, 0, pass, seeded(1))).match
     expect(submit(once, 0, fire, seeded(1))).toEqual({ ok: false, reason: 'already' })
     const over = matchOf({ ...start.state, winner: 1 })
@@ -105,10 +105,16 @@ describe('ステップとターンの進行', () => {
   })
 })
 
-/** 一つの攻撃が一人に与えうる、一番大きなダメージ。全ての目を6にしたときの威力 */
-const MAX_POWER = Math.max(
-  ...ACTION_KINDS.map((k) => ACTION_DEFS[k].power?.(Array(slotsOf(ACTION_DEFS[k])).fill(6)) ?? 0),
-)
+/** 全ての目を6にしたときの値の、行動の中での最大 */
+const maxOver = (f: (k: (typeof ACTION_KINDS)[number], sixes: number[]) => number | undefined) =>
+  Math.max(...ACTION_KINDS.map((k) => f(k, Array(slotsOf(ACTION_DEFS[k])).fill(6)) ?? 0))
+
+/**
+ * 一つのステップで一人が受けうる、一番大きなダメージ。
+ * 全ての目を6にした攻撃が反撃の上限を超えて通り、さらにその反撃が外れて、6の目の分を自分で受けたときの量
+ */
+const MAX_TAKEN =
+  maxOver((k, sixes) => ACTION_DEFS[k].power?.(sixes)) + maxOver((k, sixes) => ACTION_DEFS[k].counter?.miss(sixes))
 
 describe('対局全体の性質', () => {
   const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })
@@ -159,7 +165,7 @@ describe('対局全体の性質', () => {
             // 体力は増えず、一つのステップで受けるダメージには上限がある
             expect(p1.hp).toBe(p0.hp - res.report.damage[who])
             expect(p1.hp).toBeLessThanOrEqual(p0.hp)
-            expect(p1.hp).toBeGreaterThanOrEqual(1 - MAX_POWER)
+            expect(p1.hp).toBeGreaterThanOrEqual(1 - MAX_TAKEN)
             // 使ったダイスとカードは、このターンに出した行動と一致する
             const turnActs = res.state.history.filter((r) => r.turn === before.turn).map((r) => r.actions[who])
             expect([...p1.usedDice].sort()).toEqual(

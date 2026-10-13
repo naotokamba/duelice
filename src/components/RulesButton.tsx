@@ -4,7 +4,7 @@
 
 import { CircleHelp } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
-import { CARD_ORDER, type EffectIcon, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
+import { CARD_ORDER, COUNTER_LABEL, type EffectIcon, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
 import { Modal } from './Dialog'
 import { EffectGlyph } from './glyphs'
@@ -14,7 +14,11 @@ const MARK_TEXT: Record<EffectIcon, { value?: string; text: string }> = {
   damage: { value: 'X', text: 'X ダメージを与える' },
   pierce: { value: 'X', text: `${GUARD_LABEL}で減らない X ダメージを与える` },
   guard: { value: 'X', text: 'このステップに受けるダメージを X 減らす' },
-  bounce: { text: 'このステップに受けた攻撃を、そのまま相手に返す' },
+  bounce: {
+    value: 'N',
+    text: `${COUNTER_LABEL}。このステップに受けた攻撃の威力が N 以下なら、打ち消して横の星の分を相手に返す`,
+  },
+  backfire: { value: 'X', text: `${COUNTER_LABEL}で返せなかったら、自分が X ダメージを受ける` },
   chant: {
     value: 'X',
     text: '詠唱。このステップに X 以上のダメージを受けると崩れる。崩れなければ、次のステップで下の段を使える',

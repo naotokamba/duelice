@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import type { Resolution } from '../game/match'
 import type { PlayerIndex, StepReport } from '../game/types'
-import { IMPACT_MS, landsAt, revealMs } from './Exchange'
+import { BACKFIRE_MS, IMPACT_MS, landings, landsAt, revealMs } from './Exchange'
 
 /** ステップやターンの切り替わりを知らせる帯を出す時間 */
 export const BANNER_MS = 1100
@@ -16,9 +16,13 @@ export interface Banner {
   turn: boolean
 }
 
-/** 公開してから landed ミリ秒目まででは、まだ当たっていない who へのダメージ。その分だけ体力を多く見せる */
+/**
+ * 公開してから landed ミリ秒目まででは、まだ入っていない who へのダメージ。その分だけ体力を多く見せる。
+ * 攻撃が当たる分と、反撃が外れて自分で受ける分を数える
+ */
 export function unlanded(report: StepReport, who: PlayerIndex, landed: number): number {
-  return report.strikes.filter((s) => s.to === who && landsAt(s) > landed).reduce((sum, s) => sum + s.dealt, 0)
+  const hits = report.strikes.filter((s) => s.to === who && landsAt(s) > landed).reduce((sum, s) => sum + s.dealt, 0)
+  return hits + (BACKFIRE_MS > landed ? report.backfire[who] : 0)
 }
 
 export function useRevealClock() {
@@ -33,7 +37,7 @@ export function useRevealClock() {
   useEffect(() => {
     if (!reveal) return
     const { report } = reveal
-    const timers = [...new Set(report.strikes.map(landsAt))].map((t) => setTimeout(() => setLanded(t), t))
+    const timers = [...new Set(landings(report))].map((t) => setTimeout(() => setLanded(t), t))
     timers.push(
       setTimeout(() => {
         setLanded(Number.POSITIVE_INFINITY)
@@ -44,7 +48,7 @@ export function useRevealClock() {
         const turn = report.step === 2
         setReveal(null)
         setBanner({ text: turn ? `Turn ${report.turn + 1}` : 'Step 2', turn })
-      }, revealMs(report.strikes)),
+      }, revealMs(report)),
     )
     return () => {
       for (const t of timers) clearTimeout(t)

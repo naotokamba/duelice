@@ -21,8 +21,10 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
   if (!s) return `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
   const head = `${name}の${def.label} ${s.power}点`
   switch (s.outcome) {
-    case 'reflected':
-      return `${head}は${answer}で返された`
+    case 'countered':
+      return `${head}は${answer}で打ち消され、${s.dealt}点返された`
+    case 'overpowered':
+      return `${head}、${answer}では返せなかった`
     case 'pierced':
       return `${head}、${answer}をすり抜けた`
     case 'guarded':
@@ -32,10 +34,6 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
   }
 }
 
-/**
- * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
- * 詠唱したなら、その結果を後に添える
- */
 /** 勝敗の文。同時に体力が0以下になって決着したときは、はみ出した体力を見ている側から並べて示す */
 export function resultText(winner: PlayerIndex | 'draw', hp: [number, number], viewer: PlayerIndex): string {
   if (winner === 'draw') return '相打ち。引き分けです'
@@ -49,6 +47,10 @@ export function resultText(winner: PlayerIndex | 'draw', hp: [number, number], v
 /** 体力の数。マイナスは記号の − で書く */
 const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
 
+/**
+ * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
+ * 詠唱したならその結果を、反撃が外れたなら自分で受けたダメージを、後に添える
+ */
 export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   const order: [PlayerIndex, string][] = [
     [viewer, 'あなた'],
@@ -59,6 +61,10 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
     const chant = report.chants[who]
     if (chant === 'broken') lines.push(`${name}の詠唱は ${report.damage[who]}点を受けて崩れた`)
     if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
+  }
+  for (const [who, name] of order) {
+    const miss = report.backfire[who]
+    if (miss > 0) lines.push(`${name}の${actionLabel(report.actions[who])}は外れて ${miss}点を受けた`)
   }
   return lines
 }
@@ -72,11 +78,9 @@ export function issueText(issue: Issue): string {
     case 'mark':
       return `${issue.mark} の枠に置く`
     case 'more':
-      return `${issue.same ? '同じ目を' : ''}あと${issue.count}個置く`
+      return `あと${issue.count}個置く`
     case 'left':
       return '左の枠に置く'
-    case 'same':
-      return `同じ目を${issue.count}個置く`
     default:
       return CANNOT_USE
   }

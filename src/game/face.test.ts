@@ -14,10 +14,12 @@ describe('カード面', () => {
   it.each([
     ['fireball', [6, 2], 'damage:6'],
     ['fireball', [2, 6], 'damage:2'],
-    ['barrier', [4], 'guard:4'],
+    // 記号を含む式は、式ごと値になる。障壁の 2X は、X が 3 なら 6
+    ['barrier', [3], 'guard:6'],
     ['spearChant', [5], 'chant:5'],
-    ['spearCast', [6, 5], 'damage:11'],
-    ['reflect', [2, 2], 'bounce'],
+    ['spearCast', [6, 5], 'pierce:11'],
+    // 反撃は、打ち消せる上限と返す量はそのまま、外れたときに受ける 2X だけが値になる
+    ['counter', [3], 'bounce:5 damage:4 backfire:6'],
     ['bullet', [3], 'pierce:2'],
     ['bullet', [3, 1], 'pierce:3'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
@@ -26,9 +28,10 @@ describe('カード面', () => {
   it('目が決まるまでは記号のまま。記号の無い行動は、空けられない置き場だけを埋めた値を出す', () => {
     expect(flat(effectParts('fireball'))).toBe('damage:X')
     expect(flat(effectParts('spearChant'))).toBe('chant:X')
-    expect(flat(effectParts('spearCast'))).toBe('damage:Y')
+    expect(flat(effectParts('spearCast'))).toBe('pierce:Y')
+    expect(flat(effectParts('barrier'))).toBe('guard:2X')
     expect(flat(effectParts('bullet'))).toBe('pierce:2')
-    expect(flat(effectParts('reflect'))).toBe('bounce')
+    expect(flat(effectParts('counter'))).toBe('bounce:5 damage:4 backfire:2X')
   })
   it('点線の枠にも置くと値が増えるなら、増えた値を添える。点線の枠まで埋めたら添えない', () => {
     expect(effectParts('bullet')).toEqual([{ icon: 'pierce', value: '2', full: '3' }])
@@ -48,6 +51,12 @@ describe('カード面', () => {
       { icon: 'pierce', value: '2', full: '3' },
       { icon: 'guard', value: '1' },
     ])
+  })
+  it('記号も、威力も、減らす量も無い行動は、カード面をそのまま描く', () => {
+    // 記号の置き場を持たず、効果に値を書かない仮のカード
+    const def = { ...ACTION_DEFS.counter, face: { effect: [{ icon: 'bounce' as const }, { text: '仮' }] } }
+    expect(faceParts(def, [3])).toEqual([{ icon: 'bounce' }, { text: '仮' }])
+    expect(faceParts(def)).toEqual([{ icon: 'bounce' }, { text: '仮' }])
   })
   it('記号を使う行動でも、文や値の無い印はそのまま残す', () => {
     // X の枠を持ち、値の無い印と文も並べた仮のカード
@@ -85,10 +94,9 @@ describe('カード面', () => {
       }
     }
   })
-  it('同じ目を求める行動は置き場を = でつなぎ、合計を名付ける行動は + でつなぐ', () => {
+  it('合計を名付ける行動は、置き場を + でつなぐ', () => {
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
-      if (def.sameValues) expect(def.face.join).toBe('=')
       if (def.face.sum) expect(def.face.join).toBe('+')
     }
   })
@@ -96,12 +104,27 @@ describe('カード面', () => {
     for (const kind of ACTION_KINDS) {
       const def = ACTION_DEFS[kind]
       const icons = new Set(def.face.effect.map((p) => p.icon).filter(Boolean))
-      // 攻撃は、貫通するかどうかで星の印を使い分ける
-      expect(icons.has('damage'), kind).toBe(!!def.power && !def.piercing)
+      // 攻撃は、貫通するかどうかで星の印を使い分ける。反撃は返す量を、ダメージの星で描く
+      expect(icons.has('damage'), kind).toBe((!!def.power && !def.piercing) || !!def.counter)
       expect(icons.has('pierce'), kind).toBe(!!def.power && !!def.piercing)
       expect(icons.has('guard'), kind).toBe(!!def.guard)
-      expect(icons.has('bounce'), kind).toBe(!!def.reflects)
+      expect(icons.has('bounce'), kind).toBe(!!def.counter)
+      expect(icons.has('backfire'), kind).toBe(!!def.counter)
       expect(icons.has('chant'), kind).toBe(!!def.chant)
+    }
+  })
+  it('反撃のカード面は、打ち消せる上限、返す量、外れたときに受ける量を、定義と同じ値で描く', () => {
+    for (const kind of ACTION_KINDS) {
+      const def = ACTION_DEFS[kind]
+      if (!def.counter) continue
+      const value = (icon: string) => def.face.effect.find((p) => p.icon === icon)?.value
+      expect(value('bounce'), kind).toBe(String(def.counter.upTo))
+      expect(value('damage'), kind).toBe(String(def.counter.back))
+      // 外れたときに受ける量は X の枠の目で決まる。どの目でも、カード面の値が定義と揃う
+      for (const x of [1, 2, 3, 4, 5, 6]) {
+        const parts = effectParts(kind, [x])
+        expect(parts.find((p) => p.icon === 'backfire')?.value, `${kind} ${x}`).toBe(String(def.counter.miss([x])))
+      }
     }
   })
   it('置き場の記号は、どの行動でも効果に現れる', () => {

@@ -193,12 +193,10 @@ export function missingDice(counts: readonly number[], placed: number): number |
 export type Issue =
   /** 印の置き場が空いている。印の置き場の目が効果の値になるので、まずそこに置く */
   | { type: 'mark'; mark: string }
-  /** 個数が足りない。same は同じ目を揃える行動 */
-  | { type: 'more'; count: number; same: boolean }
+  /** 個数が足りない */
+  | { type: 'more'; count: number }
   /** 個数は足りているが、点線の枠にだけ置いて、空けられない置き場が空いている。空けられない置き場は行の前、左に並ぶ */
   | { type: 'left' }
-  /** 同じ目を揃える行動で、目が揃っていない */
-  | { type: 'same'; count: number }
   /** 決まった理由に当たらない。カードを足して新しい条件が増えても、何かは伝える */
   | { type: 'unusable' }
 
@@ -206,8 +204,7 @@ export type Issue =
  * 置いたダイスが行動にならないとき、決定できない理由を返す。行動になるなら null。
  * 理由は定義表の性質から決めるので、カードを足しても追従する。
  * 印の置き場が空いていれば、そこに置くこと。個数が足りなければ、あと何個置くか。
- * 個数は足りていても空けられない置き場が空いていれば、左の枠に置くこと。
- * 同じ目を揃える行動なら、目が揃っていないこと
+ * 個数は足りていても空けられない置き場が空いていれば、左の枠に置くこと
  */
 export function placementIssue(state: GameState, who: PlayerIndex, draft: Placement): Issue | null {
   if (composeAction(state, who, draft.card, draft.slots)) return null
@@ -219,10 +216,8 @@ export function placementIssue(state: GameState, who: PlayerIndex, draft: Placem
   const { mark } = def.face
   if (mark !== undefined && draft.slots[MARK_SLOT] === null) return { type: 'mark', mark }
   const missing = missingDice(def.dice, picked.length)
-  if (missing !== null) return { type: 'more', count: missing, same: !!def.sameValues }
+  if (missing !== null) return { type: 'more', count: missing }
   if (!fillsRequired(def, draft.slots)) return { type: 'left' }
-  const vals = picked.map((i) => state.players[who].roll[i])
-  if (def.sameValues && new Set(vals).size > 1) return { type: 'same', count: picked.length }
   return { type: 'unusable' }
 }
 

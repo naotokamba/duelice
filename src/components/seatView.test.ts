@@ -7,10 +7,10 @@ import { currentCard, revealed, seatView, usedUp } from './seatView'
 
 describe('席の様子', () => {
   it('使えるカードと、カードごとに今使える行を求める', () => {
-    const view = seatView(makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] }), 0)
-    // ゾロ目が無いので反射は使えない
-    expect(view.usable.has('reflect')).toBe(false)
-    expect(view.active.get('reflect')).toEqual([])
+    const view = seatView(makeState({ roll: [6, 2, 1], usedCards: ['counter'] }, { roll: [1, 2, 3] }), 0)
+    // 使い終わった反撃は使えない
+    expect(view.usable.has('counter')).toBe(false)
+    expect(view.active.get('counter')).toEqual([])
     // 1ステップ目の雷槍は詠唱の行だけ
     expect(view.active.get('spear')).toEqual(['spearChant'])
     expect(view.kept).toBeNull()

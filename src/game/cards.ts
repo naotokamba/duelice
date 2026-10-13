@@ -11,10 +11,11 @@ export interface CardDef {
 /**
  * 効果を描く印。数を添える印は、印の中に数を描く。
  * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
- * reflect は受けた攻撃を返す、chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
+ * bounce は反撃で、数は打ち消して返せる攻撃の威力の上限。backfire は反撃が外れたときに自分が受けるダメージ。
+ * chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'bounce' | 'chant'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'bounce' | 'backfire' | 'chant'
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -36,13 +37,14 @@ export interface EffectPart {
 export interface Face {
   /**
    * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
-   * ほかの置き場に置いたダイスは、払うだけのダイスになる
+   * ほかの置き場に置いたダイスは、払うだけのダイスになる。
+   * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。障壁の 2X など
    */
   mark?: string
   /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
   extra?: string
   /** 置き場の間に書く記号 */
-  join?: '+' | '='
+  join?: '+'
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
   sum?: string
   /** 効果。文はなるべく使わず、印で描く */
@@ -57,14 +59,12 @@ export interface ActionDef {
   dice: readonly number[]
   /** 使えるステップを限定する */
   step?: 1 | 2
-  /** 置くダイスが全て同じ目である必要がある */
-  sameValues?: boolean
   /** 詠唱。置いた目以上のダメージをそのステップに受けると崩れる */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
   needsCharge?: boolean
   /**
-   * 攻撃の威力。障壁や反射の前の値。
+   * 攻撃の威力。障壁や反撃の前の値。
    * vals はダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす。
    * face.mark のある行動では印の置き場が必ず埋まっているので、vals[0] が印の置き場の目になる
    */
@@ -73,8 +73,11 @@ export interface ActionDef {
   piercing?: boolean
   /** 受ける攻撃を減らす量。vals は power と同じ */
   guard?: (vals: number[]) => number
-  /** 受ける攻撃を無効化して相手に返す */
-  reflects?: boolean
+  /**
+   * 反撃。このステップに受けた攻撃の威力が upTo 以下なら、その攻撃を打ち消して、攻撃した側に back のダメージを与える。
+   * 返せなかったら、攻撃が来なかったときも、上限を超えてそのまま通されたときも、miss の値だけ自分が受ける。vals は power と同じ
+   */
+  counter?: { upTo: number; back: number; miss: (vals: number[]) => number }
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
   done?: string
   /** カード面の描き方 */
@@ -88,7 +91,7 @@ const CARDS = {
   barrier: { name: '障壁' },
   bullet: { name: '魔弾' },
   spear: { name: '雷槍' },
-  reflect: { name: '反射' },
+  counter: { name: '反撃' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -113,9 +116,9 @@ const ACTIONS = {
     card: 'barrier',
     label: '障壁',
     dice: [1],
-    guard: (v) => v[0],
+    guard: (v) => 2 * v[0],
     done: '障壁を張った',
-    face: { mark: 'X', effect: [{ icon: 'guard', value: 'X' }] },
+    face: { mark: 'X', effect: [{ icon: 'guard', value: '2X' }] },
   },
   bullet: {
     card: 'bullet',
@@ -142,16 +145,24 @@ const ACTIONS = {
     step: 2,
     needsCharge: true,
     power: (v) => v[0] + v[1],
-    face: { join: '+', sum: 'Y', effect: [{ icon: 'damage', value: 'Y' }] },
+    piercing: true,
+    face: { join: '+', sum: 'Y', effect: [{ icon: 'pierce', value: 'Y' }] },
   },
-  reflect: {
-    card: 'reflect',
-    label: '反射',
-    dice: [2],
-    sameValues: true,
-    reflects: true,
-    done: '反射を構えた',
-    face: { join: '=', effect: [{ icon: 'bounce' }] },
+  counter: {
+    card: 'counter',
+    label: '反撃',
+    dice: [1],
+    // 5以下の攻撃を打ち消して4を返す。返せなかったら、X の枠に置いた目の倍を自分が受ける
+    counter: { upTo: 5, back: 4, miss: (v) => 2 * v[0] },
+    done: '反撃を構えた',
+    face: {
+      mark: 'X',
+      effect: [
+        { icon: 'bounce', value: '5' },
+        { icon: 'damage', value: '4' },
+        { icon: 'backfire', value: '2X' },
+      ],
+    },
   },
 } satisfies Record<string, ActionDef>
 
@@ -168,14 +179,19 @@ export function kindsOfCard(card: CardId): ActionKind[] {
 }
 
 /**
- * 効果の値。攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる印の置き場の目。
+ * 効果の値。攻撃なら威力、障壁なら減らす量、反撃なら外れたときに自分が受けるダメージ、詠唱なら崩れる境目になる印の置き場の目。
  * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの
  */
 export function effectValue(def: ActionDef, vals: number[]): number {
-  return def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
+  return def.power?.(vals) ?? def.guard?.(vals) ?? def.counter?.miss(vals) ?? vals[0]
 }
 
 /** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */
 // Stryker disable next-line OptionalChaining,StringLiteral: 減らす行動が表に無いときの備え。今の表では通らない
 // Stryker disable next-line ArrowFunction: 表を読めなくするとこのファイルの読み込みが失敗し、見つけたと数えられない。名前は cards.test.ts で確かめる
 export const GUARD_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.guard)?.label ?? ''
+
+/** 反撃する行動の名前。反撃が外れたときの説明に使う */
+// Stryker disable next-line OptionalChaining,StringLiteral: 反撃する行動が表に無いときの備え。今の表では通らない
+// Stryker disable next-line ArrowFunction: 表を読めなくするとこのファイルの読み込みが失敗し、見つけたと数えられない。名前は cards.test.ts で確かめる
+export const COUNTER_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.counter)?.label ?? ''

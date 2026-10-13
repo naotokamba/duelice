@@ -25,9 +25,9 @@ describe('公開の文', () => {
     expect(lines([2, 6, 1], [1, 2, 3], fireball, pass)).toEqual(['あなたの火球 2点', '相手は何もしなかった'])
   })
   it('障壁に削られた攻撃は、削った目と通った点を示す', () => {
-    expect(lines([5, 1, 1], [3, 2, 1], fireball, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの火球 5点、障壁 3 に削られて 2点',
-      '相手は 3 で障壁を張った',
+    expect(lines([5, 1, 1], [1, 2, 1], fireball, { kind: 'barrier', dice: [0] })).toEqual([
+      'あなたの火球 5点、障壁 1 に削られて 3点',
+      '相手は 1 で障壁を張った',
     ])
   })
   it('障壁をすり抜けた攻撃', () => {
@@ -36,10 +36,24 @@ describe('公開の文', () => {
       '相手は 6 で障壁を張った',
     ])
   })
-  it('反射で返された攻撃', () => {
-    expect(lines([6, 4, 1], [2, 2, 1], fireball, { kind: 'reflect', dice: [0, 1] })).toEqual([
-      'あなたの火球 6点は反射で返された',
-      '相手は 2と2 で反射を構えた',
+  it('反撃に打ち消されて返された攻撃', () => {
+    expect(lines([5, 4, 1], [2, 2, 1], fireball, { kind: 'counter', dice: [0] })).toEqual([
+      'あなたの火球 5点は反撃で打ち消され、4点返された',
+      '相手は 2 で反撃を構えた',
+    ])
+  })
+  it('反撃の上限を超えて通した攻撃と、外れた反撃', () => {
+    expect(lines([6, 4, 1], [2, 2, 1], fireball, { kind: 'counter', dice: [0] })).toEqual([
+      'あなたの火球 6点、反撃では返せなかった',
+      '相手は 2 で反撃を構えた',
+      '相手の反撃は外れて 4点を受けた',
+    ])
+  })
+  it('攻撃が来なくて外れた反撃は、自分で受けた点を添える', () => {
+    expect(lines([3, 4, 1], [2, 2, 1], { kind: 'counter', dice: [0] }, pass)).toEqual([
+      'あなたは 3 で反撃を構えた',
+      '相手は何もしなかった',
+      'あなたの反撃は外れて 6点を受けた',
     ])
   })
   it('詠唱が崩れたときと保たれたとき', () => {
@@ -69,7 +83,10 @@ describe('公開の文', () => {
           const out = reportLines(r, viewer)
           expect(out[0]).toMatch(/^あなた/)
           expect(out[1]).toMatch(/^相手/)
-          expect(out).toHaveLength(2 + r.chants.filter((c) => c !== null).length)
+          // 詠唱した側には詠唱の結果を、反撃が外れた側には自分で受けた点を、一行ずつ添える
+          expect(out).toHaveLength(
+            2 + r.chants.filter((c) => c !== null).length + r.backfire.filter((n) => n > 0).length,
+          )
           for (const l of out) expect(l).toMatch(/\S/)
         },
       ),
@@ -84,10 +101,8 @@ describe('公開の文', () => {
 describe('決定できない理由の文', () => {
   it.each([
     [{ type: 'mark', mark: 'X' }, 'X の枠に置く'],
-    [{ type: 'more', count: 1, same: false }, 'あと1個置く'],
-    [{ type: 'more', count: 1, same: true }, '同じ目をあと1個置く'],
+    [{ type: 'more', count: 1 }, 'あと1個置く'],
     [{ type: 'left' }, '左の枠に置く'],
-    [{ type: 'same', count: 2 }, '同じ目を2個置く'],
     [{ type: 'unusable' }, CANNOT_USE],
   ] as const)('%j', (issue, want) => {
     expect(issueText(issue)).toBe(want)

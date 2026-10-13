@@ -61,9 +61,7 @@ export function isLegal(state: GameState, who: PlayerIndex, a: Action): boolean 
   if (!dice.every((i) => free.includes(i))) return false
   if (def.step !== undefined && def.step !== state.step) return false
   if (def.needsCharge) return p.chant === 'charged'
-  if (p.usedCards.includes(def.card)) return false
-  if (def.sameValues && new Set(diceValues(p, a)).size !== 1) return false
-  return true
+  return !p.usedCards.includes(def.card)
 }
 
 function combinations(items: number[], k: number): number[][] {
@@ -125,11 +123,15 @@ export function legalActions(state: GameState, who: PlayerIndex): Action[] {
   return out
 }
 
-function reflects(a: Action): boolean {
-  return a.kind !== 'pass' && !!ACTION_DEFS[a.kind].reflects
-}
+/** 行動の定義。パスは null */
+// Stryker disable next-line ConditionalExpression,StringLiteral: パスを表で引いても undefined になり、null と同じく性質を持たない行動として扱われる
+const defOf = (a: Action): ActionDef | null => (a.kind === 'pass' ? null : ACTION_DEFS[a.kind])
 
-/** 一つのステップで放たれた攻撃を全て、その行方とともに返す */
+/**
+ * 一つのステップで放たれた攻撃を全て、その行方とともに返す。
+ * 相手が反撃を構えていれば、威力が上限以下の攻撃は打ち消されて、反撃が返す量だけ攻撃した側が受ける。
+ * 上限を超えた攻撃は、反撃を気にせずそのまま通る
+ */
 export function strikes(vals: [number[], number[]], acts: [Action, Action]): Strike[] {
   const out: Strike[] = []
   for (const from of [0, 1] as const) {
@@ -139,32 +141,45 @@ export function strikes(vals: [number[], number[]], acts: [Action, Action]): Str
     if (!def.power) continue
     const power = def.power(vals[from])
     const other: PlayerIndex = from === 0 ? 1 : 0
-    const b = acts[other]
-    const guardOf = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind].guard
+    const answer = defOf(acts[other])
+    const counter = answer?.counter
+    if (counter && power <= counter.upTo) {
+      out.push({ from, kind: a.kind, power, outcome: 'countered', to: from, dealt: counter.back })
+      continue
+    }
+    const guardOf = answer?.guard
     const guard = guardOf && !def.piercing ? guardOf(vals[other]) : 0
-    const outcome: Outcome = reflects(b) ? 'reflected' : guardOf ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
-    out.push({
-      from,
-      kind: a.kind,
-      power,
-      outcome,
-      to: outcome === 'reflected' ? from : other,
-      dealt: Math.max(0, power - guard),
-    })
+    const outcome: Outcome = counter ? 'overpowered' : guardOf ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
+    out.push({ from, kind: a.kind, power, outcome, to: other, dealt: Math.max(0, power - guard) })
   }
   return out
 }
 
-/** 攻撃が双方に与えたダメージ [0が受ける, 1が受ける] */
-function damageOf(list: Strike[]): [number, number] {
-  const dmg: [number, number] = [0, 0]
+/**
+ * 反撃が外れて、双方が自分で受けるダメージ [0が受ける, 1が受ける]。
+ * 相手の攻撃を打ち消せたときだけ外れない。攻撃が来なかったときも、上限を超えて通されたときも外れる。
+ * 反撃した側は攻撃していないので、打ち消された攻撃があれば、それは相手の攻撃
+ */
+export function backfires(vals: [number[], number[]], acts: [Action, Action], list: Strike[]): [number, number] {
+  const miss = (who: PlayerIndex): number => {
+    const counter = defOf(acts[who])?.counter
+    if (!counter) return 0
+    return list.some((s) => s.outcome === 'countered') ? 0 : counter.miss(vals[who])
+  }
+  return [miss(0), miss(1)]
+}
+
+/** 双方が受けたダメージ [0が受ける, 1が受ける]。攻撃で受けた分と、反撃が外れて自分で受けた分を足す */
+function damageOf(list: Strike[], backfire: [number, number]): [number, number] {
+  const dmg: [number, number] = [...backfire]
   for (const s of list) dmg[s.to] += s.dealt
   return dmg
 }
 
 /** 一つのステップで双方が受けるダメージ [0が受ける, 1が受ける] */
 export function stepDamage(vals: [number[], number[]], acts: [Action, Action]): [number, number] {
-  return damageOf(strikes(vals, acts))
+  const list = strikes(vals, acts)
+  return damageOf(list, backfires(vals, acts, list))
 }
 
 /** 詠唱に置いた目以上のダメージを受けると、詠唱は崩れる。詠唱の目は、詠唱の効果の値 */
@@ -183,7 +198,8 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
   })
   const vals: [number[], number[]] = [diceValues(state.players[0], acts[0]), diceValues(state.players[1], acts[1])]
   const list = strikes(vals, acts)
-  const dmg = damageOf(list)
+  const backfire = backfires(vals, acts, list)
+  const dmg = damageOf(list, backfire)
   const chants: [ChantResult, ChantResult] = [null, null]
 
   const update = (p: PlayerState, i: PlayerIndex): PlayerState => {
@@ -213,6 +229,7 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     actions: acts,
     values: vals,
     strikes: list,
+    backfire,
     damage: dmg,
     chants,
   }
