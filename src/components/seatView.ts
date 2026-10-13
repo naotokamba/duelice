@@ -6,6 +6,7 @@ import { kindsNow, usableCards } from '../game/hand'
 import { ctxOf, freeDice, keptRow } from '../game/rules'
 import { type PlacedRow, rowOf } from '../game/slots'
 import type { Action, GameState, PlayerIndex, PlayerState } from '../game/types'
+import { WILD } from '../game/types'
 import type { DieMark } from './Die'
 
 /** カードに置いて見せるダイス。complete は行動として組み上がっていること。効果の記号を値に置き換える */
@@ -49,16 +50,18 @@ export function seatView(board: GameState, who: PlayerIndex): SeatView {
 
 /**
  * ダイスごとの印。ターンの初めに振ったダイスの後ろに、持ち越したダイス、このターンに振り足したダイスの順に並ぶ。
- * まだ使っていないダイスのうち、凍らされた目のものは凍って置けない
+ * まだ使っていないダイスのうち、凍らされた目のものは凍って置けない。好きな目のダイスは、目の無い面で見分けるので印を付けない
  */
 export function diceMarks(board: GameState, who: PlayerIndex): (DieMark | null)[] {
   const p = board.players[who]
   const rolled = board.config.diceCount
   const extra = board.history.filter((r) => r.turn === board.turn).reduce((n, r) => n + r.extra[who].length, 0)
   const free = freeDice(p)
+  const wild = p.roll.filter((v) => v === WILD).length
   return p.roll.map((v, i) => {
+    if (v === WILD) return null
     if (free.includes(i) && v === p.frozen) return 'frozen'
-    if (i >= p.roll.length - extra) return 'extra'
+    if (i >= p.roll.length - wild - extra) return 'extra'
     return i >= rolled ? 'carried' : null
   })
 }

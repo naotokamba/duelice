@@ -107,6 +107,13 @@ describe('ダイスの印', () => {
     expect(diceMarks({ ...next, turn: 2 }, 0)).toEqual([null, null, null, 'carried', 'carried', 'carried'])
   })
 
+  it('好きな目のダイスには印を付けない。持ち越したダイスは、その前に並ぶ', () => {
+    const forge = ['transmute', 'freeze', 'meditate', 'barrier', 'allOut'] as const
+    const s = makeState({ roll: [6, 2, 1, 4], deck: forge }, { roll: [1, 2, 3], deck })
+    const next = resolveStep(s, [{ kind: 'transmute', dice: [0] }, { kind: 'pass' }])
+    expect(diceMarks(next, 0)).toEqual([null, null, null, 'carried', null, null, null])
+  })
+
   it('相手に凍らされた目のダイスは、まだ使っていなければ凍って置けない', () => {
     const s = makeState({ roll: [2, 5, 2], deck }, { roll: [2, 3, 1], deck })
     // 自分は 5 で相手の 5 を、相手は 2 で自分の 2 を凍らせる

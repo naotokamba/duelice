@@ -5,7 +5,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { CARD_DEFS, type CardId, STARTER } from '../game/cards'
+import { CARD_DEFS, type CardId, POOL, STARTER } from '../game/cards'
 import { CPU_DECKS } from '../game/decks'
 import {
   button,
@@ -76,7 +76,7 @@ describe('カードを選ぶ画面', () => {
 
   it('選べる全てのカードを、カード面で並べる。覚えていなければスターターの5枚を選んだ状態から始まる', () => {
     draw()
-    expect(screen.getAllByRole('button', { name: /を選ぶ$/ })).toHaveLength(16)
+    expect(screen.getAllByRole('button', { name: /を選ぶ$/ })).toHaveLength(POOL.length)
     expect(screen.getAllByRole('listitem', { name: /./ }).map((c) => c.getAttribute('aria-label'))).toContain('双竜')
     expect(picked()).toEqual(['炎撃', '風壁', '魔弾', '魔槍', '氷礫'])
     expect(toggle('炎撃').getAttribute('aria-pressed')).toBe('true')

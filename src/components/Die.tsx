@@ -1,7 +1,9 @@
 // ダイス。目は九つの升に点を打って描く。押せるダイスはボタン、押せないダイスは絵として読み上げる。
 // 前のターンから持ち越したダイス、振り足したダイス、凍って置けないダイスは、角に小さな印を付けて見分ける。
+// 好きな目のダイスは、目が決まっていないので点を打たない。目を選ぶ操作はまだ無い。
 
 import { ArrowRight, Plus, Snowflake } from 'lucide-react'
+import { WILD } from '../game/types'
 import type { DragHandlers } from './useDiceDrag'
 
 /** ダイスの出どころや様子の印。持ち越した、振り足した、凍って置けない */
@@ -14,6 +16,7 @@ const MARKS: Record<DieMark, { icon: typeof Plus; note: string }> = {
 }
 
 const PIPS: Record<number, number[]> = {
+  [WILD]: [],
   1: [4],
   2: [0, 8],
   3: [0, 4, 8],
@@ -55,7 +58,7 @@ export function Die({ value, selected, hint, onClick, size = 'large', label, dra
   ]
     .filter(Boolean)
     .join(' ')
-  const name = label ?? `${value}の目`
+  const name = label ?? (value === WILD ? '好きな目' : `${value}の目`)
   const badge = mark && MARKS[mark]
   const Icon = badge?.icon
   const pips = (

@@ -48,6 +48,17 @@ describe('手元のダイス', () => {
     expect(tray.getAllByRole('img').map((d) => d.getAttribute('aria-label'))).toEqual(['2の目', '1の目'])
   })
 
+  it('好きな目のダイスは、点を打たずに好きな目と読み上げる', () => {
+    const deck = ['transmute', 'freeze', 'meditate', 'barrier', 'allOut'] as const
+    const s = makeState({ roll: [6, 2, 1], deck }, { roll: [1, 2, 3] })
+    const next = resolveStep(s, [{ kind: 'transmute', dice: [0] }, { kind: 'pass' }])
+    render(<Tray seat={seatView(next, 0)} shown={null} rolling={false} />)
+    const tray = within(screen.getByRole('group', { name: 'ダイス' }))
+    const wild = tray.getAllByRole('img').filter((d) => d.getAttribute('aria-label') === '好きな目')
+    expect(wild).toHaveLength(3)
+    for (const d of wild) expect(d.querySelectorAll('.pip:not(.pip-empty)')).toHaveLength(0)
+  })
+
   it('持ち越したダイスと振り足したダイスは、押せるまま角の印と説明を付ける', () => {
     const deck = ['overload', 'freeze', 'meditate', 'barrier', 'allOut'] as const
     const s = makeState({ roll: [6, 2, 1, 4], deck }, { roll: [1, 2, 3] })
