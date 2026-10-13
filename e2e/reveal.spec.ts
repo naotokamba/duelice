@@ -48,6 +48,8 @@ async function expectStarsInside(page: Page) {
   const stars = await page.locator('.clash .burst').all()
   expect(stars.length).toBeGreaterThan(0)
   for (const star of stars) {
+    // 星としずくは大きさ0から膨らんで出るので、見えるまで待ってから測る
+    await expect(star).toBeVisible()
     const b = await star.boundingBox()
     if (!b) throw new Error('星が見えていない')
     expect(b.y).toBeGreaterThanOrEqual(stage.y)
@@ -59,6 +61,8 @@ async function expectStarsInside(page: Page) {
 
 /** 二つの箱が横に重ならない */
 async function apart(a: Locator, b: Locator) {
+  await expect(a).toBeVisible()
+  await expect(b).toBeVisible()
   const ba = await a.boundingBox()
   const bb = await b.boundingBox()
   if (!ba || !bb) throw new Error('星かしずくが見えていない')
