@@ -2,9 +2,10 @@
 
 import { describe, expect, it } from 'vitest'
 import { STARTER } from '../game/cards'
+import { stakesOf } from '../game/cpu'
 import { makeState } from '../test/helpers'
 import { emptyTally, mergeTally, tallyRows } from './dominance'
-import { playGame, stakesOf } from './game'
+import { playGame } from './game'
 import { bradleyTerry, close, expected, mean, wilson } from './stats'
 import { canonical, cardFingerprint, deckKey, deckOf, seatsOf, seedOf } from './store'
 

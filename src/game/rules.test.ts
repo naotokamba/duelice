@@ -320,6 +320,11 @@ describe('攻撃の行方', () => {
     ])
     expect(strikes(movesFor([[4], [3]], [wall, { kind: 'spearChant', dice: [0] }]))).toEqual([])
   })
+  it('様子を渡さなければ、二人とも体力の減っていない様子で威力を決める', () => {
+    // 背水は失った体力で威力が増える。体力が減っていなければ 2
+    const stand: Action = { kind: 'lastStand', dice: [0, 1] }
+    expect(strikes(movesFor([[1, 1], []], [stand, pass]))[0]).toMatchObject({ power: 2, dealt: 2 })
+  })
   it('詠唱を崩すのは、詠唱を崩す性質を持つ行動だけ', () => {
     const by = (a: Action, vals: number[]) => movesFor([vals, []], [a, pass])[0]
     expect(breaksChant(by(interrupt, [3]))).toBe(true)

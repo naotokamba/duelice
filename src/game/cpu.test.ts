@@ -1,7 +1,7 @@
 import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { expectEquilibrium } from '../test/equilibrium'
-import { makeState, rollArb, seeded } from '../test/helpers'
+import { makeState, poolStateArb, rollArb, seeded } from '../test/helpers'
 import { type CardId, STARTER } from './cards'
 import {
   CPU_VERSION,
@@ -9,7 +9,9 @@ import {
   KILL_BONUS,
   LEVEL_NAMES,
   type Level,
+  pick,
   rollOutcomes,
+  stakesOf,
   Thinker,
   weaklyDominated,
 } from './cpu'
@@ -354,5 +356,57 @@ describe('拡張のカードの見積もり', () => {
   it('見積もりは CPU の版と一緒に記録に残せる', () => {
     expect(CPU_VERSION).toBeGreaterThanOrEqual(2)
     expect(ESTIMATES).toEqual({ carry: 1.5, freeze: 0.5 })
+  })
+})
+
+describe('大きい行列ゲームを double oracle で解く', () => {
+  it('全ての要素を求めて解いたときと同じ候補で、同じ価値の均衡になり、期待得点と賭け金もその均衡のもの', () => {
+    // 大きさの上限を0にして、どの局面でも double oracle で解かせる。比べる相手は、全ての要素を求めた行列ゲーム
+    const lazy = new Thinker(ESTIMATES, 0)
+    const full = new Thinker()
+    fc.assert(
+      fc.property(poolStateArb, fc.constantFrom(0, 1) as fc.Arbitrary<0 | 1>, (s, who) => {
+        // 全ての要素を求める側が重くなりすぎない局面に絞る
+        fc.pre(legalActions(s, 0).length * legalActions(s, 1).length <= 500)
+        const g = full.game(s, who)
+        const got = lazy.solve(s, who)
+        expect(got.mine).toEqual(g.mine)
+        expect(got.theirs).toEqual(g.theirs)
+        expect(got.sol.value).toBeCloseTo(solveMatrixGame(g.payoff).value, 6)
+        expectEquilibrium(g.payoff, got.sol)
+        g.payoff.forEach((r, i) => {
+          expect(got.ev[i]).toBeCloseTo(
+            r.reduce((acc, v, j) => acc + v * got.sol.col[j], 0),
+            6,
+          )
+        })
+        expect(got.stakes).toBeCloseTo(stakesOf(g.payoff, got.sol.row, got.sol.col, got.sol.value), 6)
+      }),
+      { numRuns: 40 },
+    )
+    // 比べる側は二ステップ目まで全ての要素を求めるので重い
+  }, 60_000)
+
+  it('小さい行列ゲームは全ての要素を求めて解き、つよいの確率はその行列ゲームを解いた均衡のまま', () => {
+    const t = new Thinker()
+    const s = makeState({ roll: [6, 5, 2] }, { roll: [3, 3, 6] })
+    for (const who of [0, 1] as const) {
+      const got = t.solve(s, who)
+      const g = t.game(s, who)
+      expect(got.sol).toEqual(solveMatrixGame(g.payoff))
+      expect(got.stakes).toBeCloseTo(stakesOf(g.payoff, got.sol.row, got.sol.col, got.sol.value), 9)
+    }
+  })
+})
+
+describe('確率に従って選ぶ', () => {
+  it('乱数を一度引き、確率を順に引いていって0以下になった手を選ぶ。丸めで届かなければ最後の手', () => {
+    const options = [
+      { action: { kind: 'pass' as const }, prob: 0.5, ev: 0 },
+      { action: { kind: 'interrupt' as const, dice: [0] }, prob: 0.4999, ev: 0 },
+    ]
+    expect(pick(options, () => 0.2)).toBe(options[0].action)
+    expect(pick(options, () => 0.7)).toBe(options[1].action)
+    expect(pick(options, () => 0.99999)).toBe(options[1].action)
   })
 })

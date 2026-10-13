@@ -596,6 +596,8 @@ describe('二重詠唱', () => {
     ])
     expect(down.history[0].cancelled).toEqual([true, false])
     expect(down.history[0].damage).toEqual([5, 0])
+    // 起きなかった側は、ダイスも戻らない
+    expect(down.history[0].refunded).toEqual([false, false])
     const win = resolveStep(makeState(seat(fast, { roll: [1, 5, 1, 6, 1] }), seat(fast, { roll: [6, 1, 2], hp: 3 })), [
       along(play('doubleCast', 0), play('thunder', 1, 2), play('flameStrike', 3, 4)),
       act('flameStrike', 0, 1),
@@ -674,6 +676,14 @@ describe('残響', () => {
       2,
     )
     expect(resolveStep(meteor, [act('echo', 1), pass]).history[0].damage).toEqual([0, 17])
+  })
+  it('同じ効果と同じ残りのダイスでも、残響で出すのとカードで出すのは別の手。使ったカードが違うので後の盤が違う', () => {
+    // 前のステップの風壁 3 を、残響に 3 を置いて繰り返すのと、風壁に 3 を置くのは、効果も残る 3 と 5 も同じ
+    const s = makeState(seat(deck, { roll: [3, 3, 5], last: [{ kind: 'barrier', vals: [3] }] }), { roll: [1, 2, 3] })
+    const both = legalActions(s, 0).filter(
+      (a) => a.kind !== 'pass' && a.with === undefined && diceValues(s.players[0], a).join() === '3',
+    )
+    expect(new Set(both.map((a) => a.kind))).toEqual(new Set(['echo', 'barrier', 'interrupt']))
   })
   it('何もしなかったステップの後は、繰り返すものが無いので使えない', () => {
     let s = makeState(seat(deck, { roll: [1, 2, 3], last: [{ kind: 'interrupt', vals: [2] }] }), { roll: [1, 2, 3] })

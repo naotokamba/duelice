@@ -81,20 +81,6 @@ function sample(probs: number[], rng: Rng): number {
 }
 
 /**
- * 均衡での賭け金。双方が最適戦略で選んだときの、得点と価値の差の絶対値の平均。
- * 読みが当たるか外れるかで、どれだけ得点が動くかを表す
- */
-export function stakesOf(payoff: number[][], row: number[], col: number[], value: number): number {
-  let sum = 0
-  payoff.forEach((r, i) => {
-    r.forEach((v, j) => {
-      sum += row[i] * col[j] * Math.abs(v - value)
-    })
-  })
-  return sum
-}
-
-/**
  * decks の二人を、つよいCPUどうしで最後まで戦わせる。席0が decks[0]。
  * estimates は席ごとの見積もりで、省くと二人とも既定の見積もり。visit には、行動を選ぶ前の盤を順に渡す
  */
@@ -115,7 +101,7 @@ export function playGame(
   const pick = (state: GameState) => {
     if (same) {
       const g = thinkers[0].solve(state, 0)
-      stakes[state.step - 1] += stakesOf(g.payoff, g.sol.row, g.sol.col, g.sol.value)
+      stakes[state.step - 1] += g.stakes
       return [
         { action: g.mine[sample(g.sol.row, mind)], probs: g.sol.row },
         { action: g.theirs[sample(g.sol.col, mind)], probs: g.sol.col },
@@ -123,7 +109,7 @@ export function playGame(
     }
     return ([0, 1] as const).map((who) => {
       const g = thinkers[who].solve(state, who)
-      if (who === 0) stakes[state.step - 1] += stakesOf(g.payoff, g.sol.row, g.sol.col, g.sol.value)
+      if (who === 0) stakes[state.step - 1] += g.stakes
       return { action: g.mine[sample(g.sol.row, mind)], probs: g.sol.row }
     })
   }

@@ -191,6 +191,26 @@ function choices(p: PlayerState, dice: (number | null)[]): ((number | null)[] | 
  * 署名が同じ目の組は、もう一度出すときも含めて、どの局面でも同じ効果になる
  */
 function signature(def: ActionDef, vals: number[], maxHp: number): string {
+  // 同じ行動の同じ目は何度も現れるので、一度求めた署名を覚えておく。定義の表は変わらないので、覚えた署名も変わらない
+  // Stryker disable all: 覚えた署名を使わなくても、覚えなくても、求め直せば同じ署名になる。目は一桁で、体力の上限は対局で変わらないので、区切りが無くても鍵は重ならない。速さだけが変わる
+  let memo = signatures.get(def)
+  if (!memo) {
+    memo = new Map()
+    signatures.set(def, memo)
+  }
+  const key = `${vals.join(',')}|${maxHp}`
+  const hit = memo.get(key)
+  if (hit !== undefined) return hit
+  const sig = signatureOf(def, vals, maxHp)
+  memo.set(key, sig)
+  // Stryker restore all
+  return sig
+}
+
+/** 行動の定義ごとに、目と体力の上限から覚えた署名 */
+const signatures = new WeakMap<ActionDef, Map<string, string>>()
+
+function signatureOf(def: ActionDef, vals: number[], maxHp: number): string {
   const power = def.power
   // Stryker disable next-line ArithmeticOperator,ArrayDeclaration,ObjectLiteral: 体力の範囲が少しずれても、威力を持たない行動に何を並べても、様子を渡さなくても、今の表の行動は同じに見分けられる。体力で威力の変わる行動は、今は目で威力が変わらない
   const powers = power ? Array.from({ length: maxHp }, (_, i) => power(vals, { hp: i + 1, maxHp })) : []
@@ -500,6 +520,14 @@ export function resolveStep(
     if (extra[i].length !== extraDiceOf(state, i as PlayerIndex, a))
       throw new Error(`振り足すダイスの数が違う: ${JSON.stringify(extra[i])}`)
   })
+  return resolveTrusted(state, acts, extra)
+}
+
+/**
+ * 合法と分かっている行動を、確かめずに解決する。CPU が合法手の列挙から選んだ手を、先読みで何度も解決するときに使う。
+ * 決着した後の盤や、不正な行動を渡したときの結果は決めていない。対局を進めるときは resolveStep を使う
+ */
+export function resolveTrusted(state: GameState, acts: [Action, Action], extra: [number[], number[]]): GameState {
   const vals: [number[], number[]] = [diceValues(state.players[0], acts[0]), diceValues(state.players[1], acts[1])]
   const moves: [Move[], Move[]] = [movesOf(state.players[0], acts[0]), movesOf(state.players[1], acts[1])]
   const c = clash(moves, [ctxOf(state, 0), ctxOf(state, 1)])
