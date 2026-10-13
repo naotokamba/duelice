@@ -79,10 +79,10 @@ describe('一ターンの流れ', () => {
     opponent: passOpponent,
   })
 
-  /** 双炎に6を二つ置いて決定する */
+  /** 魔弾に6を二つ置いて決定する */
   async function fireSixes(user: User) {
-    await place(user, 6, '双炎')
-    await place(user, 6, '双炎')
+    await place(user, 6, '魔弾')
+    await place(user, 6, '魔弾')
     await user.click(button('決定'))
   }
 
@@ -90,12 +90,12 @@ describe('一ターンの流れ', () => {
     const user = await start(sixes())
     expect(confirmButton()).toBeNull()
     await fireSixes(user)
-    expect(screen.getByText('あなたの双炎 8点')).toBeTruthy()
+    expect(screen.getByText('あなたの魔弾 4点')).toBeTruthy()
     // 公開の間も、置いたダイスはカードの上に残る
-    expect(diceOn(myCard('双炎'))).toEqual(['6の目', '6の目'])
+    expect(diceOn(myCard('魔弾'))).toEqual(['6の目', '6の目'])
     expect(cpuSeat().getByLabelText('体力 20 / 20')).toBeTruthy()
     await advance(IMPACT_MS)
-    expect(cpuSeat().getByLabelText('体力 12 / 20')).toBeTruthy()
+    expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()
   })
 
   it('公開が終わると二ステップ目に進んで知らせ、中央に一つ前の結果を出す', async () => {
@@ -107,18 +107,18 @@ describe('一ターンの流れ', () => {
     await advance(BANNER_MS)
     expect(screen.queryByText('Step 2', { selector: '.banner span' })).toBeNull()
     const latest = within(screen.getByRole('region', { name: '一つ前の結果' }))
-    expect(latest.getByText('双炎')).toBeTruthy()
-    expect(latest.getByRole('img', { name: '8ダメージ' })).toBeTruthy()
+    expect(latest.getByText('魔弾')).toBeTruthy()
+    expect(latest.getByRole('img', { name: '4ダメージ' })).toBeTruthy()
   })
 
   it('二ステップ目には、一ステップ目のダイスが押せない駒としてカードに残り、手元には跡だけが残る', async () => {
     const user = await start(sixes())
     await fireSixes(user)
     await settle()
-    expect(myCard('双炎').getByText('使用済み')).toBeTruthy()
-    expect(emptySlots('双炎')).toHaveLength(0)
-    expect(myCard('双炎').getAllByRole('img', { name: '6の目' })).toHaveLength(2)
-    expect(myCard('双炎').queryAllByRole('button', { name: /の目/ })).toHaveLength(0)
+    expect(myCard('魔弾').getByText('使用済み')).toBeTruthy()
+    expect(emptySlots('魔弾')).toHaveLength(0)
+    expect(myCard('魔弾').getAllByRole('img', { name: '6の目' })).toHaveLength(2)
+    expect(myCard('魔弾').queryAllByRole('button', { name: /の目/ })).toHaveLength(0)
     expect(trayOf(mySeat()).queryAllByRole('button', { name: '6の目' })).toHaveLength(0)
     expect(trayDie(2)).toBeTruthy()
   })
@@ -131,10 +131,10 @@ describe('一ターンの流れ', () => {
     await advance(revealMs(CALM))
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
     expect(screen.getByText('Turn 2', { selector: '.banner span' })).toBeTruthy()
-    expect(diceOn(myCard('双炎'))).toEqual([])
-    expect(emptySlots('双炎').map((b) => b.getAttribute('aria-label'))).toEqual([
-      '双炎の1つ目の枠に置く',
-      '双炎の2つ目の枠に置く',
+    expect(diceOn(myCard('魔弾'))).toEqual([])
+    expect(emptySlots('魔弾').map((b) => b.getAttribute('aria-label'))).toEqual([
+      '魔弾の1つ目の枠に置く',
+      '魔弾の2つ目の枠に置く',
     ])
   })
 
@@ -178,14 +178,14 @@ describe('置く', () => {
   it('ダイスは押した置き場に入り、置いた場所は公開でも次のステップでも変わらない', async () => {
     const user = await start(roll([6, 2, 1]))
     await user.click(trayDie(6))
-    await user.click(myCard('血弾').getByRole('button', { name: '血弾のYの枠に置く' }))
+    await user.click(myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }))
     await user.click(trayDie(1))
-    await user.click(myCard('血弾').getByRole('button', { name: '血弾のXの枠に置く' }))
-    expect(diceOn(myCard('血弾'))).toEqual(['1の目', '6の目'])
+    await user.click(myCard('火球').getByRole('button', { name: '火球のXの枠に置く' }))
+    expect(diceOn(myCard('火球'))).toEqual(['1の目', '6の目'])
     await user.click(button('決定'))
-    expect(diceOn(myCard('血弾'))).toEqual(['1の目', '6の目'])
+    expect(diceOn(myCard('火球'))).toEqual(['1の目', '6の目'])
     await settle()
-    expect(diceOn(myCard('血弾'))).toEqual(['1の目', '6の目'])
+    expect(diceOn(myCard('火球'))).toEqual(['1の目', '6の目'])
   })
 
   it('埋まった置き場に置くと、あったダイスは手元に戻る。置いたダイスを押せば手元に戻る', async () => {
@@ -209,19 +209,18 @@ describe('置く', () => {
     expect(trayDie(4)).toBeTruthy()
   })
 
-  it('血弾は X の枠に置いた目で撃ち、Y の枠の目の血を払う。X の枠が空なら決定を押せず理由が出る', async () => {
+  it('火球は X の枠に置いた目で撃ち、もう一つの枠のダイスは払うだけ。X の枠が空なら決定を押せず理由が出る', async () => {
     const user = await start(roll([6, 2, 1]))
     await user.click(trayDie(6))
-    await user.click(myCard('血弾').getByRole('button', { name: '血弾のYの枠に置く' }))
+    await user.click(myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }))
     expect(blockedReason()).toBe('X の枠に置く')
-    await place(user, 2, '血弾')
+    await place(user, 2, '火球')
     expect(blockedReason()).toBeNull()
     await user.click(button('決定'))
-    expect(screen.getByText('あなたの血弾 2点')).toBeTruthy()
-    expect(screen.getByText('あなたは血弾で 6点の血を払った')).toBeTruthy()
+    expect(screen.getByText('あなたの火球 2点')).toBeTruthy()
     await settle()
     expect(cpuSeat().getByLabelText('体力 18 / 20')).toBeTruthy()
-    expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
+    expect(mySeat().getByLabelText('体力 20 / 20')).toBeTruthy()
   })
 
   it('過負荷は点線の枠だけでは撃てず、置くほど強く、払う血も増える', async () => {
@@ -236,17 +235,17 @@ describe('置く', () => {
     expect(screen.getByText('あなたは過負荷で 2点の血を払った')).toBeTruthy()
   })
 
-  it('双炎は同じ目を2個置けば撃て、目が違えば決定を押せず理由が出る', async () => {
+  it('魔弾は同じ目を2個置けば撃て、目が違えば決定を押せず理由が出る', async () => {
     const user = await start(roll([3, 5, 3]))
-    await place(user, 3, '双炎')
+    await place(user, 3, '魔弾')
     expect(blockedReason()).toBe('同じ目をあと1個置く')
-    await place(user, 5, '双炎')
+    await place(user, 5, '魔弾')
     expect(blockedReason()).toBe('同じ目を2個置く')
     await user.click(trayDie(3))
-    await user.click(myCard('双炎').getByRole('button', { name: '5の目と入れ替える' }))
+    await user.click(myCard('魔弾').getByRole('button', { name: '5の目と入れ替える' }))
     expect(blockedReason()).toBeNull()
     await user.click(button('決定'))
-    expect(screen.getByText('あなたの双炎 5点')).toBeTruthy()
+    expect(screen.getByText('あなたの魔弾 4点')).toBeTruthy()
   })
 
   it('相手が払った血は、相手の体力から減る', async () => {
@@ -255,20 +254,20 @@ describe('置く', () => {
         [1, 2, 3],
         [5, 4, 1],
       ]),
-      opponent: scriptedOpponent({ kind: 'bloodBullet', dice: [0, 1] }),
+      opponent: scriptedOpponent({ kind: 'overload', dice: [0, 1, 2] }),
     })
     await pass(user)
-    expect(screen.getByText('相手の血弾 5点')).toBeTruthy()
-    expect(screen.getByText('相手は血弾で 4点の血を払った')).toBeTruthy()
+    expect(screen.getByText('相手の過負荷 6点')).toBeTruthy()
+    expect(screen.getByText('相手は過負荷で 3点の血を払った')).toBeTruthy()
     await settle()
-    expect(mySeat().getByLabelText('体力 15 / 20')).toBeTruthy()
-    expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()
+    expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
+    expect(cpuSeat().getByLabelText('体力 17 / 20')).toBeTruthy()
   })
 
   it('決定できない理由は読み上げでも伝える', async () => {
     const user = await start(roll([6, 2, 1]))
     expect(screen.getByRole('status').textContent).toBe('')
-    await place(user, 6, '血弾')
+    await place(user, 6, '火球')
     expect(screen.getByRole('status').textContent).toBe('あと1個置く')
   })
 })
@@ -310,7 +309,7 @@ describe('雷槍の詠唱', () => {
         [2, 5, 5],
         [6, 4, 1],
       ]),
-      opponent: scriptedOpponent({ kind: 'bloodBullet', dice: [0, 1] }),
+      opponent: scriptedOpponent({ kind: 'fireball', dice: [0, 1] }),
     })
     await place(user, 2, '雷槍')
     await user.click(button('決定'))
@@ -331,14 +330,14 @@ describe('相手', () => {
         [6, 5, 4],
       ]),
       // X の枠に5、Y の枠に6を置く
-      opponent: scriptedOpponent({ kind: 'bloodBullet', dice: [1, 0] }),
+      opponent: scriptedOpponent({ kind: 'fireball', dice: [1, 0] }),
     })
     await pass(user)
-    expect(screen.getByText('相手の血弾 5点')).toBeTruthy()
-    expect(diceOn(cardIn(cpuSeat(), '血弾'))).toEqual(['5の目', '6の目'])
+    expect(screen.getByText('相手の火球 5点')).toBeTruthy()
+    expect(diceOn(cardIn(cpuSeat(), '火球'))).toEqual(['5の目', '6の目'])
     await settle()
     expect(mySeat().getByLabelText('体力 15 / 20')).toBeTruthy()
-    expect(diceOn(cardIn(cpuSeat(), '血弾'))).toEqual(['5の目', '6の目'])
+    expect(diceOn(cardIn(cpuSeat(), '火球'))).toEqual(['5の目', '6の目'])
     // 相手の手元には、使っていないダイスだけが残る
     expect(trayOf(cpuSeat()).getAllByRole('img')).toHaveLength(1)
   })
@@ -373,7 +372,7 @@ describe('引きずって置く', () => {
 
   it('置き場の外や何も無い所で離すと、ダイスは手元に残る', async () => {
     await start(six())
-    dragTo(trayDie(2), mySeat().getByRole('listitem', { name: '双炎' }))
+    dragTo(trayDie(2), mySeat().getByRole('listitem', { name: '魔弾' }))
     dragTo(trayDie(2), null)
     expect(trayOf(mySeat()).getAllByRole('button', { name: /の目$/ })).toHaveLength(3)
     expect(confirmButton()).toBeNull()
@@ -387,13 +386,13 @@ describe('引きずって置く', () => {
       ]),
       opponent: passOpponent,
     })
-    dragTo(trayDie(6), myCard('血弾').getByRole('button', { name: '血弾のXの枠に置く' }))
-    dragTo(trayDie(2), myCard('血弾').getByRole('button', { name: '血弾のYの枠に置く' }))
-    expect(diceOn(myCard('血弾'))).toEqual(['6の目', '2の目'])
-    const two = myCard('血弾').getByRole('button', { name: '2の目を戻す' })
-    dragTo(two, myCard('血弾').getByRole('button', { name: '6の目を戻す' }))
-    expect(diceOn(myCard('血弾'))).toEqual(['2の目', '6の目'])
-    expect(myCard('血弾').getByRole('button', { name: '2ダメージを与える' })).toBeTruthy()
+    dragTo(trayDie(6), myCard('火球').getByRole('button', { name: '火球のXの枠に置く' }))
+    dragTo(trayDie(2), myCard('火球').getByRole('button', { name: '火球の2つ目の枠に置く' }))
+    expect(diceOn(myCard('火球'))).toEqual(['6の目', '2の目'])
+    const two = myCard('火球').getByRole('button', { name: '2の目を戻す' })
+    dragTo(two, myCard('火球').getByRole('button', { name: '6の目を戻す' }))
+    expect(diceOn(myCard('火球'))).toEqual(['2の目', '6の目'])
+    expect(myCard('火球').getByRole('button', { name: '2ダメージを与える' })).toBeTruthy()
   })
 
   it('引きずっている間はダイスが指についてきて、取り消せば元に戻る', async () => {
@@ -427,8 +426,8 @@ describe('狭い画面', () => {
 
   it('カードの名前が並び、使える最初のカードが出る。押したカードが一枚だけ出る。相手は名前だけ', async () => {
     const user = await start({ rng: roll(), opponent: passOpponent })
-    // 4,5,6 にはゾロ目が無いので、左端の双炎は使えず、次の障壁が出る
-    expect(shownCardNames(mySeat())).toEqual(['障壁'])
+    // 4,5,6 では左端の火球が使える
+    expect(shownCardNames(mySeat())).toEqual(['火球'])
     expect(shownCardNames(cpuSeat())).toEqual([])
     await user.click(tab(mySeat, '過負荷'))
     expect(shownCardNames(mySeat())).toEqual(['過負荷'])
@@ -460,7 +459,7 @@ describe('狭い画面', () => {
   })
 
   it('2ステップ目も見ていたカードを出し続け、新しいターンには使える最初のカードに戻る', async () => {
-    // 2ターン目はゾロ目があるので、左端の双炎に戻る
+    // 2ターン目は、使える最初のカードの火球に戻る
     const rng = dice(
       [
         [4, 5, 6],
@@ -492,7 +491,7 @@ describe('狭い画面', () => {
     expect(shownCardNames(mySeat())).toEqual(['障壁'])
     await settle()
     expect(screen.getByText('Turn 2 - Step 1')).toBeTruthy()
-    expect(shownCardNames(mySeat())).toEqual(['双炎'])
+    expect(shownCardNames(mySeat())).toEqual(['火球'])
   })
 
   it('名前へ引きずって離すと、そのカードを出すだけで置かない', async () => {
@@ -506,12 +505,12 @@ describe('狭い画面', () => {
   it('相手のカードの名前を押すと窓で大きく出し、置いた場所どおりのダイスも見える', async () => {
     const user = await start({
       rng: roll([6, 5, 4]),
-      opponent: scriptedOpponent({ kind: 'bloodBullet', dice: [1, 0] }),
+      opponent: scriptedOpponent({ kind: 'fireball', dice: [1, 0] }),
     })
     await pass(user)
     expect(shownCardNames(cpuSeat())).toEqual([])
     await settle()
-    await user.click(tab(cpuSeat, '血弾'))
+    await user.click(tab(cpuSeat, '火球'))
     const dialog = screen.getByRole('dialog', { name: '相手のカード' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     expect(diceOn(within(dialog))).toEqual(['5の目', '6の目'])
@@ -535,7 +534,7 @@ describe('メニュー', () => {
     const dialog = screen.getByRole('dialog', { name: 'ルール' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     const cards = within(dialog).getAllByRole('listitem', { name: /./ })
-    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['双炎', '障壁', '血弾', '雷槍', '過負荷'])
+    expect(cards.map((c) => c.getAttribute('aria-label'))).toEqual(['火球', '障壁', '魔弾', '雷槍', '過負荷'])
   })
 
   it('降参は確かめてからタイトルに戻り、続けるを選べば対局が続く', async () => {
@@ -568,16 +567,16 @@ describe('パス', () => {
 })
 
 describe('決着', () => {
-  /** 双炎がまだ使えるか */
-  const twinReady = () => emptySlots('双炎').length > 0
+  /** 魔弾がまだ使えるか */
+  const bulletReady = () => emptySlots('魔弾').length > 0
 
-  /** 毎ターン 6,6,6 を振り、双炎と過負荷で攻め続ける */
+  /** 毎ターン 6,6,6 を振り、魔弾と過負荷で攻め続ける */
   async function attackUntilEnd(user: User) {
     for (let k = 0; k < 20 && !screen.queryByText(RESULT); k++) {
-      const card = twinReady() ? '双炎' : '過負荷'
+      const card = bulletReady() ? '魔弾' : '過負荷'
       await place(user, 6, card)
-      // 双炎には6をもう一つ置く。二ステップ目の過負荷には、残った6を1個だけ置く
-      if (card === '双炎') await place(user, 6, card)
+      // 魔弾には6をもう一つ置く。二ステップ目の過負荷には、残った6を1個だけ置く
+      if (card === '魔弾') await place(user, 6, card)
       await user.click(button('決定'))
       await settle()
     }
@@ -595,8 +594,8 @@ describe('決着', () => {
     await settle()
     expect(screen.getByText('あなたの勝ち')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
-    // 過負荷を2回撃って、1ずつ血を払った
-    expect(mySeat().getByLabelText('体力 18 / 20')).toBeTruthy()
+    // 過負荷を3回撃って、1ずつ血を払った
+    expect(mySeat().getByLabelText('体力 17 / 20')).toBeTruthy()
     expect(confirmButton()).toBeNull()
     expect((button('パス') as HTMLButtonElement).disabled).toBe(true)
     await user.click(button('メニュー'))
@@ -622,15 +621,15 @@ describe('決着', () => {
     [6, 6, 6],
     [6, 6, 6],
   ]
-  /** 相手は毎ターン双炎 8 と、1個の過負荷 2 を撃つ。skip を満たすステップだけは何もしない */
+  /** 相手は毎ターン魔弾 4 と、1個の過負荷 2 を撃つ。skip を満たすステップだけは何もしない */
   const mirror =
     (skip: (s: GameState) => boolean = () => false): Opponent =>
     (s) =>
       skip(s)
         ? { kind: 'pass' }
-        : s.players[1].usedCards.includes('twin')
+        : s.players[1].usedCards.includes('bullet')
           ? { kind: 'overload', dice: [2, null, null] }
-          : { kind: 'twin', dice: [0, 1] }
+          : { kind: 'bullet', dice: [0, 1] }
 
   it('同時に0以下になり、体力の残りも同じなら引き分け', async () => {
     const user = await start({ rng: dice(both, both, both, both, both, both), opponent: mirror() })
@@ -639,13 +638,14 @@ describe('決着', () => {
   })
 
   it('同時に0以下になっても、体力の残りが多い方の勝ち。払った血も数える', async () => {
-    // 1ターン目の2ステップ目だけ相手が何もしないので、2ターン目の終わりに 0 対 −1 で同時に倒れる
+    // 1ターン目と2ターン目の2ステップ目だけ相手が何もしないので、4ターン目の1ステップ目に −1 対 −3 で同時に倒れる。
+    // 自分は過負荷の血を3回、相手は1回払っている
     const user = await start({
       rng: dice(both, both, both, both, both, both),
-      opponent: mirror((s) => s.turn === 1 && s.step === 2),
+      opponent: mirror((s) => s.turn <= 2 && s.step === 2),
     })
     await attackUntilEnd(user)
-    expect(screen.getByText('相打ち。0 対 −1 で、あなたの勝ち')).toBeTruthy()
+    expect(screen.getByText('相打ち。−1 対 −3 で、あなたの勝ち')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
   })
 })

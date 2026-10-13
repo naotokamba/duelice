@@ -98,10 +98,10 @@ describe('CPU', () => {
   })
   it('倒し切れるときは倒しに行く', () => {
     const t = new Thinker()
-    // 相手は残り3で、障壁はもう使った。双炎でも血弾でも過負荷でも倒せる
+    // 相手は残り3で、障壁はもう使った。火球でも魔弾でも過負荷でも倒せる
     const s = makeState({ roll: [1, 2, 3], hp: 3, usedDice: [0], usedCards: ['barrier'] }, { roll: [6, 6, 1] }, 2)
     const best = t.analyze(s, 1, 'hard').sort((a, b) => b.prob - a.prob)[0]
-    expect(['twin', 'bloodBullet', 'overload']).toContain(best.action.kind)
+    expect(['fireball', 'bullet', 'overload']).toContain(best.action.kind)
   })
   it('同じ乱数なら同じ手を選ぶ', () => {
     const s = makeState({ roll: [6, 5, 2] }, { roll: [3, 3, 6] })
@@ -158,10 +158,11 @@ describe('無意味なパス', () => {
   })
 
   it('二ステップ目に、相手が障壁を残していれば、血を払う攻撃を防がれうるのでパスも混ぜる', () => {
-    // 自分は障壁を使い、5 と 2 が残る。相手は 6 と 4 で障壁を張れる。撃って防がれると血だけ払うので、つよいもパスを混ぜる
+    // 自分は障壁も火球も使えず、5 と 2 で撃てるのは血を払う過負荷だけ。相手は残った 6 で障壁を張れる。
+    // 撃って防がれると血だけ払うので、つよいもパスを混ぜる。手が絞られた局面を、盤を直接作って確かめる
     const s = makeState(
-      { roll: [3, 5, 2], usedDice: [0], usedCards: ['barrier'] },
-      { roll: [6, 1, 4], usedDice: [1], usedCards: ['bloodBullet'] },
+      { roll: [3, 5, 2], usedDice: [0], usedCards: ['barrier', 'fireball'] },
+      { roll: [6, 1, 4], usedDice: [1, 2], usedCards: ['fireball'] },
       2,
     )
     const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
@@ -215,8 +216,8 @@ describe('無意味なパス', () => {
   }, 30_000)
 
   it('一ステップ目に、どの手にも支配されないパスは候補に残る', () => {
-    // 1,2,3 対 1,1,2 では、パスはほかの手に支配されない。つよいは選ばなくても候補に残し、ふつうは少し混ぜる
-    const s = makeState({ roll: [1, 2, 3] }, { roll: [1, 1, 2] })
+    // 1,1,6 対 1,1,3 では、パスはほかの手に支配されない。つよいは選ばなくても候補に残し、ふつうは少し混ぜる
+    const s = makeState({ roll: [1, 1, 6] }, { roll: [1, 1, 3] })
     const t = new Thinker()
     expect(t.analyze(s, 0, 'hard').some((o) => o.action.kind === 'pass')).toBe(true)
     expect(t.analyze(s, 0, 'normal').find((o) => o.action.kind === 'pass')?.prob).toBeGreaterThan(0)

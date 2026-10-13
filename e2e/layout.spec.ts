@@ -28,7 +28,7 @@ const SIZES: Size[] = [
 ]
 
 /**
- * 1ステップ目に雷槍を2で詠唱し、相手の6の血弾で崩される。2ステップ目に障壁へダイスを置いて、決定のボタンが出た状態にする。
+ * 1ステップ目に雷槍を2で詠唱し、相手の6の火球で崩される。2ステップ目に障壁へダイスを置いて、決定のボタンが出た状態にする。
  * 自分の席には一番長い「詠唱は崩れた」の札が出る
  */
 async function tallest(page: Page, narrow: boolean) {
@@ -39,7 +39,7 @@ async function tallest(page: Page, narrow: boolean) {
         [6, 3, 1],
       ],
     ],
-    opponent: [{ kind: 'bloodBullet', dice: [0, 1] }],
+    opponent: [{ kind: 'fireball', dice: [0, 1] }],
   })
   if (narrow) await mySeat(page).getByRole('button', { name: '雷槍', exact: true }).click()
   await tapPlace(page, 2, '雷槍のXの枠')

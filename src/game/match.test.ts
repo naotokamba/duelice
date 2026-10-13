@@ -10,7 +10,7 @@ import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
 
 const pass: Action = { kind: 'pass' }
-const fire: Action = { kind: 'bloodBullet', dice: [0, 1] }
+const fire: Action = { kind: 'fireball', dice: [0, 1] }
 
 /** 受け付けられた結果。受け付けられなければテストを落とす */
 function accepted(r: Submitted): Extract<Submitted, { ok: true }> {
@@ -45,8 +45,8 @@ describe('行動を出す', () => {
   it('両方そろうと解決し、出した行動はそのまま記録に残る', () => {
     const r = both(start, fire, pass)
     expect(r.resolved?.report.actions).toEqual([fire, pass])
-    // 6 を X の枠に置いた血弾は 6 を当て、もう一つの 4 の血を払う
-    expect(r.resolved?.report.damage).toEqual([4, 6])
+    // 6 を X の枠に置いた火球は 6 を当てる。もう一つの 4 は払うだけ
+    expect(r.resolved?.report.damage).toEqual([0, 6])
     expect(r.match.pending).toEqual([null, null])
   })
   it('出す順を入れ替えても、結果は同じ', () => {

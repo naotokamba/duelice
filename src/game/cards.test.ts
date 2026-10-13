@@ -19,30 +19,23 @@ interface Case {
 const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals })
 
 const SPEC: Case[] = [
-  // 双炎
-  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。双炎は同じ目を2個置き、目に2を足した威力
-  { name: '双炎はゾロ目の目に2を足す', a: s('twin', 4, 4), b: s('pass'), expect: [0, 6] },
-  { name: '1のゾロ目の双炎は3', a: s('twin', 1, 1), b: s('pass'), expect: [0, 3] },
-  { name: '6のゾロ目の双炎は8', a: s('twin', 6, 6), b: s('pass'), expect: [0, 8] },
-  { name: '双炎は障壁の目だけ減る', a: s('twin', 5, 5), b: s('barrier', 3), expect: [0, 4] },
-  { name: '双炎は障壁でゼロ未満にならない', a: s('twin', 1, 1), b: s('barrier', 6), expect: [0, 0] },
-  { name: '双炎どうしは相打ち', a: s('twin', 2, 2), b: s('twin', 6, 6), expect: [8, 4] },
-  { name: '双炎は詠唱中の相手に当たる', a: s('twin', 3, 3), b: s('spearChant', 6), expect: [0, 5] },
+  // 火球
+  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。火球は X の枠、つまり最初の置き場の目が威力
+  { name: '火球は X の枠の目を当てる', a: s('fireball', 6, 2), b: s('pass'), expect: [0, 6] },
+  { name: '火球は X の枠に小さい目を置けば、その目', a: s('fireball', 2, 6), b: s('pass'), expect: [0, 2] },
+  { name: '火球は障壁の目だけ減る', a: s('fireball', 5, 1), b: s('barrier', 3), expect: [0, 2] },
+  { name: '火球は障壁でゼロ未満にならない', a: s('fireball', 1, 6), b: s('barrier', 6), expect: [0, 0] },
+  { name: '火球どうしは相打ち', a: s('fireball', 6, 1), b: s('fireball', 3, 2), expect: [3, 6] },
+  { name: '火球は詠唱中の相手に当たる', a: s('fireball', 5, 3), b: s('spearChant', 6), expect: [0, 5] },
   // 障壁
   { name: '障壁だけでは何も起きない', a: s('barrier', 6), b: s('pass'), expect: [0, 0] },
   { name: '障壁どうし', a: s('barrier', 6), b: s('barrier', 1), expect: [0, 0] },
-  // 血弾
-  // X の枠、つまり最初の置き場の目が威力で、もう一つの置き場の目の分だけ自分が血を払う
-  { name: '血弾は X の枠の目を当て、もう一つの目の血を払う', a: s('bloodBullet', 6, 2), b: s('pass'), expect: [2, 6] },
-  { name: '血弾は X の枠に小さい目を置けば、その目', a: s('bloodBullet', 2, 6), b: s('pass'), expect: [6, 2] },
-  { name: '血弾は障壁の目だけ減る', a: s('bloodBullet', 5, 1), b: s('barrier', 3), expect: [1, 2] },
-  { name: '血弾の血は障壁で減らない', a: s('bloodBullet', 2, 4), b: s('barrier', 6), expect: [4, 0] },
-  {
-    name: '血弾どうしは、互いに当てて互いに血を払う',
-    a: s('bloodBullet', 6, 1),
-    b: s('bloodBullet', 3, 2),
-    expect: [4, 8],
-  },
+  // 魔弾
+  // 同じ目を2個置き、目に関係なく、障壁で減らない4の威力
+  { name: '魔弾はゾロ目で4', a: s('bullet', 6, 6), b: s('pass'), expect: [0, 4] },
+  { name: '1のゾロ目の魔弾も4', a: s('bullet', 1, 1), b: s('pass'), expect: [0, 4] },
+  { name: '魔弾は障壁をすり抜ける', a: s('bullet', 2, 2), b: s('barrier', 6), expect: [0, 4] },
+  { name: '魔弾と火球は相打ち', a: s('bullet', 3, 3), b: s('fireball', 6, 1), expect: [6, 4] },
   // 雷槍
   { name: '雷槍の発動は2個の合計', a: s('spearCast', 6, 5), b: s('pass'), expect: [0, 11] },
   { name: '雷槍の発動は障壁をすり抜ける', a: s('spearCast', 6, 5), b: s('barrier', 3), expect: [0, 11] },
@@ -73,7 +66,7 @@ describe('カードの仕様表', () => {
 
 describe('定義表の整合性', () => {
   it('カードは画面にこの順で並ぶ', () => {
-    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['双炎', '障壁', '血弾', '雷槍', '過負荷'])
+    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['火球', '障壁', '魔弾', '雷槍', '過負荷'])
   })
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('障壁')

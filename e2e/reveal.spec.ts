@@ -12,8 +12,8 @@ import { confirm, open, step, tapPlace } from './fixture'
 
 test.use({ viewport: { width: 1280, height: 900 } })
 
-/** 相手の手を決めて、血弾を X に x、Y の枠に残りの 6 か 5 で撃ち、公開の幕を出したままにする */
-async function bloodInto(page: Page, theirs: number[], answer: Action, x: 6 | 5 = 6) {
+/** 相手の手を決めて、6、5、2 の3個を全部置いた過負荷を撃ち、公開の幕を出したままにする */
+async function bloodInto(page: Page, theirs: number[], answer: Action) {
   await page.clock.install()
   await open(page, { turns: [[[6, 5, 2], theirs]], opponent: [answer] })
   await expect(async () => {
@@ -22,8 +22,9 @@ async function bloodInto(page: Page, theirs: number[], answer: Action, x: 6 | 5 
   }).toPass({ timeout: 60_000 })
   // 時計を止めているので、ターンの始まりの帯は時計を進めて消す
   await page.clock.runFor(BANNER_MS)
-  await tapPlace(page, x, '血弾のXの枠')
-  await tapPlace(page, x === 6 ? 5 : 6, '血弾のYの枠')
+  await tapPlace(page, 6, '過負荷の1つ目の枠')
+  await tapPlace(page, 5, '過負荷の2つ目の枠')
+  await tapPlace(page, 2, '過負荷の3つ目の枠')
   await confirm(page).click()
   const stage = page.locator('.clash .stage')
   await expect(stage).toBeVisible()
@@ -67,26 +68,26 @@ async function apart(a: Locator, b: Locator) {
 const opacity = (page: Page, selector: string) =>
   page.locator(selector).evaluate((el) => Number(getComputedStyle(el).opacity))
 
-test('障壁で止まった血弾。札は放った側の端に残り、通った分の星と払った血は舞台の内側', async ({ page }) => {
-  // 2の目の障壁は2を減らすので、6の血弾は4だけ通る。Y の枠の5は血として払う
+test('障壁で止まった過負荷。札は放った側の端に残り、通った分の星と払った血は舞台の内側', async ({ page }) => {
+  // 2の目の障壁は2を減らすので、3個置いた過負荷の6は4だけ通る。置いた3個の分、3の血を払う
   await bloodInto(page, [2, 3, 1], { kind: 'barrier', dice: [0] })
   // 自分は下の端から上へ撃つ。札は矢印の下半分、放った側にある
   const arrow = await box(page, '.clash .arrow.is-up')
   const pill = await box(page, '.clash .arrow.is-up .arrow-value')
   expect(pill.y + pill.height / 2).toBeGreaterThan(arrow.y + arrow.height / 2)
   expect(await opacity(page, '.clash .arrow.is-up .arrow-value')).toBe(1)
-  await expect(page.locator('.clash .burst-blood')).toHaveText('−5')
+  await expect(page.locator('.clash .burst-blood')).toHaveText('−3')
   await expectStarsInside(page)
   // 払った血のしずくは、自分の矢印の札と重ならない
   expect(await apart(page.locator('.clash .burst-blood'), page.locator('.clash .arrow.is-up .arrow-value'))).toBe(true)
 })
 
 test('撃ち合いで、自分の払った血のしずくは、飛んできた攻撃の星と重ならない', async ({ page }) => {
-  // 相手は3のゾロ目の双炎で5を撃つ。こちらは6の血弾を撃ち、5の血を払う
-  await bloodInto(page, [3, 3, 1], { kind: 'twin', dice: [0, 1] })
+  // 相手は3のゾロ目の魔弾で4を撃つ。こちらは3個置いた過負荷で6を撃ち、3の血を払う
+  await bloodInto(page, [3, 3, 1], { kind: 'bullet', dice: [0, 1] })
   await expect(page.locator('.clash .burst')).toHaveCount(3)
   await expectStarsInside(page)
-  // 下の自分の側には、相手の双炎の星と、自分の血のしずくが並ぶ
+  // 下の自分の側には、相手の魔弾の星と、自分の血のしずくが並ぶ
   const stage = await box(page, '.clash .stage')
   const mine = []
   for (const b of await page.locator('.clash .burst').all()) {

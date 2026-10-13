@@ -12,12 +12,13 @@ describe('カード面', () => {
   const flat = (parts: ReturnType<typeof effectParts>) =>
     parts.map((p) => [p.icon, p.value, p.text].filter(Boolean).join(':')).join(' ')
   it.each([
-    // 記号を含む式は、式ごと値になる。双炎の X+2 は、X が 3 なら 5
-    ['twin', [3, 3], 'damage:5'],
+    // 火球は X の枠の目が威力になる。もう一つの枠は払うだけ
+    ['fireball', [6, 2], 'damage:6'],
+    ['fireball', [2, 6], 'damage:2'],
     ['barrier', [3], 'guard:3'],
-    // 血弾は X の枠の目が威力に、Y の枠の目が払う血になる
-    ['bloodBullet', [6, 2], 'damage:6 blood:2'],
-    ['bloodBullet', [2, 6], 'damage:2 blood:6'],
+    // 魔弾は目に関係なく4
+    ['bullet', [3, 3], 'pierce:4'],
+    ['bullet', [6, 6], 'pierce:4'],
     ['spearChant', [5], 'chant:5'],
     ['spearCast', [6, 5], 'pierce:11'],
     // 過負荷は置いた数で決まる。威力は数の倍、払う血は数
@@ -28,8 +29,8 @@ describe('カード面', () => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
   it('目が決まるまでは記号のまま。記号の無い行動は、空けられない置き場だけを埋めた値を出す', () => {
-    expect(flat(effectParts('twin'))).toBe('damage:X+2')
-    expect(flat(effectParts('bloodBullet'))).toBe('damage:X blood:Y')
+    expect(flat(effectParts('fireball'))).toBe('damage:X')
+    expect(flat(effectParts('bullet'))).toBe('pierce:4')
     expect(flat(effectParts('spearChant'))).toBe('chant:X')
     expect(flat(effectParts('spearCast'))).toBe('pierce:Y')
     expect(flat(effectParts('barrier'))).toBe('guard:X')
@@ -47,7 +48,8 @@ describe('カード面', () => {
       { icon: 'blood', value: '3' },
     ])
     // 点線の枠の無い行動には添えない
-    expect(effectParts('twin', [6, 6])).toEqual([{ icon: 'damage', value: '8', text: undefined }])
+    expect(effectParts('fireball', [6, 1])).toEqual([{ icon: 'damage', value: '6', text: undefined }])
+    expect(effectParts('bullet', [6, 6])).toEqual([{ icon: 'pierce', value: '4' }])
   })
   it('記号の無い行動は、値を書かない印にだけ値を入れる。文や、値を書いた印はそのまま', () => {
     // 点線の枠を持ち、文と、値を書いた印も並べた仮のカード
@@ -59,22 +61,6 @@ describe('カード面', () => {
       { text: '追加' },
       { icon: 'pierce', value: '2', full: '6' },
       { icon: 'guard', value: '1' },
-    ])
-  })
-  it('血を払う置き場を持つ行動でも、記号を含まない値や、値の無い部品はそのまま描く', () => {
-    // 血を払う Y の枠を持ち、記号を含まない値の印と、値の無い文も並べた仮の血弾
-    const def = {
-      ...ACTION_DEFS.bloodBullet,
-      face: {
-        mark: 'X',
-        cost: 'Y',
-        effect: [{ icon: 'blood' as const, value: 'Y' }, { icon: 'guard' as const, value: '1' }, { text: '仮' }],
-      },
-    }
-    expect(faceParts(def, [5, 2])).toEqual([
-      { icon: 'blood', value: '2', text: undefined },
-      { icon: 'guard', value: '1', text: undefined },
-      { value: undefined, text: '仮' },
     ])
   })
   it('血を払わない行動の血の印には、効果の値を入れる', () => {
@@ -95,16 +81,22 @@ describe('カード面', () => {
     expect(faceParts(def)).toEqual([{ icon: 'blood' }, { text: '仮' }])
   })
   it('記号を使う行動でも、文や値の無い印はそのまま残す', () => {
-    // X の枠を持ち、値の無い印と文も並べた仮のカード
+    // X の枠を持ち、記号を含まない値の印、値の無い印、文も並べた仮のカード
     const def = {
-      ...ACTION_DEFS.bloodBullet,
+      ...ACTION_DEFS.fireball,
       face: {
         mark: 'X',
-        effect: [{ icon: 'damage' as const, value: 'X' }, { icon: 'guard' as const }, { text: 'X点' }],
+        effect: [
+          { icon: 'damage' as const, value: 'X' },
+          { icon: 'guard' as const, value: '1' },
+          { icon: 'guard' as const },
+          { text: 'X点' },
+        ],
       },
     }
     expect(faceParts(def, [5, 1])).toEqual([
       { icon: 'damage', value: '5', text: undefined },
+      { icon: 'guard', value: '1', text: undefined },
       { icon: 'guard', value: undefined, text: undefined },
       { value: undefined, text: '5点' },
     ])
@@ -154,25 +146,11 @@ describe('カード面', () => {
       expect(icons.has('chant'), kind).toBe(!!def.chant)
     }
   })
-  it('血を払う置き場の記号は、血を払う行動で、印の置き場の次の空けられない置き場にだけ書く', () => {
-    for (const kind of ACTION_KINDS) {
-      const def = ACTION_DEFS[kind]
-      if (def.face.cost === undefined) continue
-      expect(def.blood, kind).toBeDefined()
-      expect(def.face.mark, kind).toBeDefined()
-      expect(requiredSlots(def), kind).toBeGreaterThanOrEqual(2)
-      // 払う血は、その置き場の目。どの目を置いても、カード面の値が定義と揃う
-      for (const y of [1, 2, 3, 4, 5, 6]) {
-        const parts = effectParts(kind, [6, y])
-        expect(parts.find((p) => p.icon === 'blood')?.value, `${kind} ${y}`).toBe(String(y))
-      }
-    }
-  })
   it('置き場の記号は、どの行動でも効果に現れる', () => {
     for (const kind of ACTION_KINDS) {
       const { face } = ACTION_DEFS[kind]
       const written = face.effect.map((p) => `${p.value ?? ''}${p.text ?? ''}`).join(' ')
-      for (const sym of [face.mark, face.sum, face.cost]) if (sym) expect(written).toContain(sym)
+      for (const sym of [face.mark, face.sum]) if (sym) expect(written).toContain(sym)
     }
   })
 })

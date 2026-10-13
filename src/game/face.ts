@@ -12,8 +12,7 @@ const anyVals = (n: number) => Array<number>(n).fill(1)
 
 /**
  * カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。
- * 記号を含む値の欄は、記号ごと効果の値になる。双炎の X+2 は、X が 3 なら 5 になる。
- * 血を払う置き場の記号を含む値の欄は、払う血の値になる。
+ * 記号を含む値の欄は、記号ごと効果の値になる。X+2 なら、X が 3 なら 5 になる。記号を含まない値の欄はそのまま描く。
  * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす。
  * 記号を使わない行動は、値を書かない印に、置いた個数で決まる値を入れる。置く前は空けられない置き場だけを埋めた値にし、
  * 省いてもよい置き場まで埋めると値が増えるなら、その値も添える。血の印には払う血の値を、ほかの印には効果の値を入れる
@@ -33,10 +32,9 @@ export function faceParts(def: ActionDef, vals?: number[]): EffectPart[] {
   if (sym) {
     if (!vals) return [...def.face.effect]
     const value = String(effectValue(def, vals))
-    const { cost } = def.face
     return def.face.effect.map((p) => ({
       ...p,
-      value: cost && p.value?.includes(cost) ? partValue(def, p, vals) : p.value?.includes(sym) ? value : p.value,
+      value: p.value?.includes(sym) ? value : p.value,
       text: p.text?.replaceAll(sym, value),
     }))
   }

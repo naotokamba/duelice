@@ -14,10 +14,10 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-/** 1ステップ目に自分が血弾6、2ステップ目は両者パスの記録 */
+/** 1ステップ目に自分が火球6、2ステップ目は両者パスの記録 */
 function history(): StepReport[] {
   const s1 = resolveStep(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), [
-    { kind: 'bloodBullet', dice: [0, 1] },
+    { kind: 'fireball', dice: [0, 1] },
     { kind: 'pass' },
   ])
   return resolveStep(s1, [{ kind: 'pass' }, { kind: 'pass' }]).history

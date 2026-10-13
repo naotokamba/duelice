@@ -20,20 +20,20 @@ describe('席の様子', () => {
     const state = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const match = { state, pending: [null, null] as [null, null] }
     // X の枠に2、もう一つの枠に6を置く
-    const first = submit(match, 0, { kind: 'bloodBullet', dice: [1, 0] }, seeded(1))
+    const first = submit(match, 0, { kind: 'fireball', dice: [1, 0] }, seeded(1))
     if (!first.ok) throw new Error('受け付けなかった')
     const done = submit(first.match, 1, { kind: 'pass' }, seeded(1))
     if (!done.ok) throw new Error('受け付けなかった')
     const view = seatView(done.match.state, 0)
-    expect(view.kept).toEqual({ card: 'bloodBullet', kind: 'bloodBullet', slots: [1, 0] })
-    expect(usedUp(view, 'bloodBullet')).toBe(true)
+    expect(view.kept).toEqual({ card: 'fireball', kind: 'fireball', slots: [1, 0] })
+    expect(usedUp(view, 'fireball')).toBe(true)
     expect(usedUp(view, 'overload')).toBe(false)
   })
 
   it('公開した行動は、組み上がったダイスとしてカードに置く。パスは置かない', () => {
-    expect(revealed({ kind: 'bloodBullet', dice: [1, 0] })).toEqual({
-      card: 'bloodBullet',
-      kind: 'bloodBullet',
+    expect(revealed({ kind: 'fireball', dice: [1, 0] })).toEqual({
+      card: 'fireball',
+      kind: 'fireball',
       slots: [1, 0],
       complete: true,
     })
@@ -54,6 +54,6 @@ describe('狭い画面で大きく出すカード', () => {
     expect(currentCard({ revealing: false, shown: null, focus: null, usable })).toBe('barrier')
   })
   it('使えるカードが無ければ左端のカード', () => {
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set() })).toBe('twin')
+    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set() })).toBe('fireball')
   })
 })

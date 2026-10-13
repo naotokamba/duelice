@@ -13,17 +13,17 @@
   /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
   --die-kept: #c9ccd8;
   --pip: #1d2233;
-  --twin: #c8371e;
+  --fireball: #c8371e;
   --barrier: #2f7f86;
-  --bloodBullet: #9c1d45;
+  --bullet: #6a4bc4;
   --spear: #a87c00;
-  --overload: #6a4bc4;
+  --overload: #9c1d45;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
-  --twin-ink: #a22d18;
+  --fireball-ink: #a22d18;
   --barrier-ink: #246268;
-  --bloodBullet-ink: #8c1a3e;
+  --bullet-ink: #603fc0;
   --spear-ink: #725400;
-  --overload-ink: #603fc0;
+  --overload-ink: #8c1a3e;
   /* 血として払うダメージのしずく。受けるダメージの星の赤より深い赤 */
   --blood-drop: #a3123a;
   /* 色の付いた札やボタンに乗せる文字 */
@@ -60,16 +60,16 @@
     --go: #38a863;
     --hit: #e1301b;
     --on-accent: #141824;
-    --twin: #f06a4f;
+    --fireball: #f06a4f;
     --barrier: #5fb8bf;
-    --bloodBullet: #e46a8c;
+    --bullet: #a690f0;
     --spear: #e0b43a;
-    --overload: #a690f0;
-    --twin-ink: #f28069;
+    --overload: #e46a8c;
+    --fireball-ink: #f28069;
     --barrier-ink: #5fb8bf;
-    --bloodBullet-ink: #ec8aa5;
+    --bullet-ink: #ab97f1;
     --spear-ink: #e0b43a;
-    --overload-ink: #ab97f1;
+    --overload-ink: #ec8aa5;
     --blood-drop: #d93a63;
   }
 }
@@ -593,20 +593,20 @@ button.die {
     box-shadow 150ms ease,
     opacity 150ms ease;
 }
-.card-twin {
-  --spell: var(--twin);
-  --spell-ink: var(--twin-ink);
-  --card-ink: var(--twin-ink);
+.card-fireball {
+  --spell: var(--fireball);
+  --spell-ink: var(--fireball-ink);
+  --card-ink: var(--fireball-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
   --spell-ink: var(--barrier-ink);
   --card-ink: var(--barrier-ink);
 }
-.card-bloodBullet {
-  --spell: var(--bloodBullet);
-  --spell-ink: var(--bloodBullet-ink);
-  --card-ink: var(--bloodBullet-ink);
+.card-bullet {
+  --spell: var(--bullet);
+  --spell-ink: var(--bullet-ink);
+  --card-ink: var(--bullet-ink);
 }
 .card-spear {
   --spell: var(--spear);

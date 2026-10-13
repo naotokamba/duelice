@@ -37,18 +37,13 @@ export interface EffectPart {
 export interface Face {
   /**
    * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
-   * ほかの置き場に置いたダイスは、cost の記号を書いた置き場なら血を払うダイスに、そうでなければ払うだけのダイスになる。
-   * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。障壁の 2X など
+   * ほかの置き場に置いたダイスは、払うだけのダイスになる。
+   * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。X+2 など
    */
   mark?: string
-  /**
-   * 印の置き場の次の置き場に書く記号。この置き場に置いた目の分だけ、使うと自分が血を払う。
-   * 効果の値にこの記号を書くと、ダイスを置いたときに払う血の値に置き換わる
-   */
-  cost?: string
   /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
   extra?: string
-  /** 置き場の間に書く記号。= は同じ目を置く置き場で、どの置き場にも印の記号を書く */
+  /** 置き場の間に書く記号。= は同じ目を置く置き場で、印の記号を使う行動なら、どの置き場にもその記号を書く */
   join?: '+' | '='
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
   sum?: string
@@ -91,9 +86,9 @@ export interface ActionDef {
 /** カードの表。並びは画面に並べる順 */
 // Stryker disable next-line ObjectLiteral: 表を空にするとテストの読み込みが失敗し、見つけたと数えられない。並びと名前は cards.test.ts で確かめる
 const CARDS = {
-  twin: { name: '双炎' },
+  fireball: { name: '火球' },
   barrier: { name: '障壁' },
-  bloodBullet: { name: '血弾' },
+  bullet: { name: '魔弾' },
   spear: { name: '雷槍' },
   overload: { name: '過負荷' },
 } satisfies Record<string, CardDef>
@@ -108,14 +103,13 @@ export const CARD_ORDER = Object.keys(CARDS) as readonly CardId[]
 
 /** 行動の表。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
 const ACTIONS = {
-  twin: {
-    card: 'twin',
-    label: '双炎',
+  fireball: {
+    card: 'fireball',
+    label: '火球',
     dice: [2],
-    sameValues: true,
-    // 同じ目を2個置く。目に2を足した威力になる
-    power: (v) => v[0] + 2,
-    face: { mark: 'X', join: '=', effect: [{ icon: 'damage', value: 'X+2' }] },
+    // X の枠に置いた目が威力になる。もう一つの枠は払うだけのダイス
+    power: (v) => v[0],
+    face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
   },
   barrier: {
     card: 'barrier',
@@ -125,21 +119,16 @@ const ACTIONS = {
     done: '障壁を張った',
     face: { mark: 'X', effect: [{ icon: 'guard', value: 'X' }] },
   },
-  bloodBullet: {
-    card: 'bloodBullet',
-    label: '血弾',
+  bullet: {
+    card: 'bullet',
+    label: '魔弾',
     dice: [2],
-    // X の枠に置いた目が威力になる。もう一つの枠に置いた目の分だけ、自分が血を払う
-    power: (v) => v[0],
-    blood: (v) => v[1],
-    face: {
-      mark: 'X',
-      cost: 'Y',
-      effect: [
-        { icon: 'damage', value: 'X' },
-        { icon: 'blood', value: 'Y' },
-      ],
-    },
+    sameValues: true,
+    // 同じ目を2個置く。目に関係なく、障壁で減らない4の威力
+    power: () => 4,
+    piercing: true,
+    // 目は威力に関わらないので、置き場に記号は書かず、= で同じ目を置くことだけを示す
+    face: { join: '=', effect: [{ icon: 'pierce', value: '4' }] },
   },
   spearChant: {
     card: 'spear',
