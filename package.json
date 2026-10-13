@@ -21,7 +21,8 @@
     "test:e2e": "playwright test",
     "generate-routes": "tsr generate",
     "cf-typegen": "wrangler types",
-    "test:mutation": "stryker run"
+    "test:mutation": "stryker run",
+    "eval:pool": "node --import ./src/eval/register.mjs src/eval/pool.ts"
   },
   "dependencies": {
     "@tanstack/react-router": "1.170.42",

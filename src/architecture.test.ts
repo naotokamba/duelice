@@ -109,6 +109,15 @@ describe('オンライン対戦', () => {
     expect(found).toEqual([])
   })
 
+  it('評価 src/eval は対局の中身と node だけを読み、画面もサーバも読まない', () => {
+    const found = sources('eval').flatMap((file) =>
+      imports(file)
+        .filter(({ from }) => !from.startsWith('game/') && !from.startsWith('eval/') && !from.startsWith('node:'))
+        .map(({ sf, n, from }) => where(sf, n, `import ${from}`)),
+    )
+    expect(found).toEqual([])
+  })
+
   it('画面 src/components はサーバのコードも Cloudflare も読まない', () => {
     const found = sources('components').flatMap((file) =>
       imports(file)
@@ -124,7 +133,7 @@ describe('カードの知識', () => {
     const ids = new Set<string>([...POOL, ...ACTION_KINDS])
     const names = [...POOL.map((c) => CARD_DEFS[c].name), ...ACTION_KINDS.map((k) => ACTION_DEFS[k].label)]
     const found: string[] = []
-    for (const file of [...sources('game'), ...sources('components')]) {
+    for (const file of [...sources('game'), ...sources('components'), ...sources('eval')]) {
       if (file.endsWith(join('game', 'cards.ts'))) continue
       const sf = parse(file)
       for (const n of nodes(sf)) {

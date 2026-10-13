@@ -20,6 +20,9 @@ export default defineConfig({
         'src/routes/**',
         'src/server.ts',
         'src/server/*-object.ts',
+        // カードの強さの評価は、手で動かす重い道具。数え方の純粋な関数は eval/*.test.ts で確かめるが、
+        // 働き手を走らせる部分は pnpm eval:pool で動かして確かめる
+        'src/eval/**',
       ],
       // 下回ると pnpm test:coverage が失敗する。どれも今の値のすぐ下に置いて、テストの抜けにすぐ気づけるようにする
       thresholds: {

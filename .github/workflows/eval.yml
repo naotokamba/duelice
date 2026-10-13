@@ -1,0 +1,46 @@
+# カードの強さの評価。重いので push ごとには走らせず、手で起動したときだけ走らせる。
+# 前回の記録を cache から戻して、カードや CPU が変わった組だけを測り直す。結果の表を残す
+name: eval
+
+on:
+  workflow_dispatch:
+    inputs:
+      args:
+        description: pnpm eval:pool に渡す引数
+        required: false
+        default: '--games 24 --rr-games 8 --sample 120 --top 10 --meta-games 20 --rows-games 40 --estimate-games 40'
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/cache@v6
+        with:
+          path: reports/eval
+          key: eval-${{ github.run_id }}
+          restore-keys: eval-
+      # 引数は環境変数で渡し、式を直に書いて命令に混ぜない
+      - run: pnpm eval:pool $EVAL_ARGS
+        env:
+          EVAL_ARGS: ${{ inputs.args }}
+      - run: cat reports/eval/latest.md >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: eval-report
+          path: |
+            reports/eval/latest.md
+            reports/eval/latest.json
+            reports/eval/skip.json
+          retention-days: 30
