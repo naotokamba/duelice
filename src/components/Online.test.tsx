@@ -32,6 +32,13 @@ const remember = (key: string, value: unknown) =>
   localStorage.setItem(key, typeof value === 'string' ? value : JSON.stringify(value))
 const session = () => JSON.parse(localStorage.getItem('duelice.room') ?? 'null')
 
+/** 道に path を含む WebSocket が開かれるまで、画面の更新を進めながら待つ */
+async function waitForSocket(path: string) {
+  await act(async () => {
+    await vi.waitFor(() => socketTo(path))
+  })
+}
+
 /** 名前を覚えた状態で、オンライン対戦の入口を描いてロビーまで進める */
 async function toLobby(props: Partial<Parameters<typeof Online>[0]> = {}) {
   remember('duelice.name', 'あか')
@@ -120,6 +127,8 @@ describe('部屋を作る', () => {
     expect((dialog.getByRole('textbox', { name: '合言葉' }) as HTMLInputElement).value).toBe('1234')
     await user.click(dialog.getByRole('button', { name: '作る' }))
 
+    // 作った返事を受けてから部屋の WebSocket を開くまでに、画面の更新が挟まる。遅い CI でも開き終わるまで待つ
+    await waitForSocket('/api/rooms/room0001/ws?token=host')
     expect(fetch).toHaveBeenCalledWith('/api/rooms', expect.objectContaining({ method: 'POST' }))
     expect(JSON.parse(String(fetch.mock.calls[0][1]?.body))).toEqual({
       name: 'あか',
@@ -207,6 +216,8 @@ describe('合言葉で入る', () => {
     await tryCode('1234')
 
     expect(fetch).toHaveBeenLastCalledWith('/api/rooms/room0001/join', expect.anything())
+    // 入れた返事を受けてから部屋の WebSocket を開くまでに、画面の更新が挟まる。遅い CI でも開き終わるまで待つ
+    await waitForSocket('/api/rooms/room0001/ws?token=guest')
     expect(session()).toEqual({ id: 'room0001', token: 'guest' })
     expect(socketTo('/api/rooms/room0001/ws?token=guest')).toBeTruthy()
   })
