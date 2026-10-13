@@ -39,10 +39,10 @@ export interface Over {
   onRelevel: () => void
 }
 
-function Result({ winner, hp, onAgain, onRelevel }: Over) {
+function Result({ winner, onAgain, onRelevel }: Over) {
   return (
     <div className="result">
-      <p className="result-text">{resultText(winner, hp, 0)}</p>
+      <p className="result-text">{resultText(winner, 0)}</p>
       <div className="result-actions">
         <button type="button" className="btn btn-primary" onClick={onAgain}>
           もう一戦
@@ -88,7 +88,7 @@ export function Arena({ turn, step, history, revealing, lines, over, banner, onS
         </div>
         {/* 履歴の印とメニューを縦に並べる。メニューは下に揃えて、履歴が出ても動かさない */}
         <div className="arena-tools">
-          {(!revealing || over) && <HistoryButton history={history} />}
+          {(!revealing || over) && <HistoryButton history={history} over={over} />}
           <MatchMenu onSurrender={onSurrender} />
         </div>
       </div>

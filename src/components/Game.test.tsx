@@ -606,9 +606,9 @@ describe('決着', () => {
   it('相手の体力を0にすると勝ち、それからは進まず、降参もできない', async () => {
     const user = await start({ rng: dice(six, six, six, six), opponent: passOpponent })
     await attackUntilEnd(user)
-    expect(screen.getByText('あなたの勝ち')).toBeTruthy()
+    expect(screen.getByText('勝ち', { selector: '.result-text' })).toBeTruthy()
     await settle()
-    expect(screen.getByText('あなたの勝ち')).toBeTruthy()
+    expect(screen.getByText('勝ち', { selector: '.result-text' })).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
     // 魔弾も氷礫も自分は焼けない
     expect(mySeat().getByLabelText('体力 20 / 20')).toBeTruthy()
@@ -650,7 +650,7 @@ describe('決着', () => {
   it('同時に0以下になり、体力の残りも同じなら引き分け', async () => {
     const user = await start({ rng: dice(both, both, both, both, both, both), opponent: mirror() })
     await attackUntilEnd(user)
-    expect(screen.getByText('相打ち。引き分けです')).toBeTruthy()
+    expect(screen.getByText('引き分け', { selector: '.result-text' })).toBeTruthy()
   })
 
   it('同時に0以下になっても、体力の残りが多い方の勝ち', async () => {
@@ -660,7 +660,11 @@ describe('決着', () => {
       opponent: mirror((s) => s.turn === 1 && s.step === 2),
     })
     await attackUntilEnd(user)
-    expect(screen.getByText('相打ち。0 対 −2 で、あなたの勝ち')).toBeTruthy()
+    // 中央には勝ちとだけ出し、相打ちの体力の比べは戦闘履歴のいちばん上に出す
+    expect(screen.getByText('勝ち', { selector: '.result-text' })).toBeTruthy()
+    await user.click(button('戦闘履歴'))
+    const history = screen.getByRole('dialog', { name: '戦闘履歴' })
+    expect(within(history).getByText('相打ち。0 対 −2 で、あなたの勝ち')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 0 / 20')).toBeTruthy()
   })
 })
@@ -672,6 +676,6 @@ describe('本物のCPUとの通し', () => {
       await pass(user)
       await settle()
     }
-    expect(screen.getByText('相手の勝ち')).toBeTruthy()
+    expect(screen.getByText('負け', { selector: '.result-text' })).toBeTruthy()
   }, 30_000)
 })

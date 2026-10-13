@@ -34,14 +34,22 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
   }
 }
 
-/** 勝敗の文。同時に体力が0以下になって決着したときは、はみ出した体力を見ている側から並べて示す */
-export function resultText(winner: PlayerIndex | 'draw', hp: [number, number], viewer: PlayerIndex): string {
-  if (winner === 'draw') return '相打ち。引き分けです'
-  const who = winner === viewer ? 'あなたの勝ち' : '相手の勝ち'
+/** 決着した後に中央に大きく出す勝敗。見ている側から、勝ち、負け、引き分けのどれかだけを短く書き、どの幅でも1行に収める */
+export function resultText(winner: PlayerIndex | 'draw', viewer: PlayerIndex): string {
+  if (winner === 'draw') return '引き分け'
+  return winner === viewer ? '勝ち' : '負け'
+}
+
+/**
+ * 決着の詳しい文。戦闘履歴に出す。同時に体力が0以下になって決着したときは相打ちと書き、
+ * はみ出した体力を見ている側から並べて、残りの多い方の勝ちか、同じで引き分けかを示す
+ */
+export function endingText(winner: PlayerIndex | 'draw', hp: [number, number], viewer: PlayerIndex): string {
+  const result = winner === 'draw' ? '引き分け' : winner === viewer ? 'あなたの勝ち' : 'あなたの負け'
   const mine = hp[viewer]
   const theirs = hp[viewer === 0 ? 1 : 0]
-  if (mine > 0 || theirs > 0) return who
-  return `相打ち。${signed(mine)} 対 ${signed(theirs)} で、${who}`
+  if (mine > 0 || theirs > 0) return result
+  return `相打ち。${signed(mine)} 対 ${signed(theirs)} で、${result}`
 }
 
 /** 体力の数。マイナスは記号の − で書く */

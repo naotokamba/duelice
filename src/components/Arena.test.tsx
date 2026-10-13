@@ -73,7 +73,7 @@ describe('二人の間の段', () => {
     const onAgain = vi.fn()
     const onRelevel = vi.fn()
     draw({ revealing: true, over: { winner: 0, hp: [5, -2], onAgain, onRelevel }, onSurrender: undefined })
-    expect(screen.getByText('あなたの勝ち')).toBeTruthy()
+    expect(screen.getByText('勝ち')).toBeTruthy()
     expect(screen.getByRole('region', { name: '一つ前の結果' })).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'もう一戦' }))
     fireEvent.click(screen.getByRole('button', { name: '強さを選び直す' }))
@@ -85,13 +85,18 @@ describe('二人の間の段', () => {
   })
 
   it.each([
-    ['draw', [-2, -2], '相打ち。引き分けです'],
-    [1, [-2, 4], '相手の勝ち'],
-    [0, [0, -3], '相打ち。0 対 −3 で、あなたの勝ち'],
-    [1, [-3, -1], '相打ち。−3 対 −1 で、相手の勝ち'],
-  ] as const)('勝敗 %s を出す', (winner, hp, text) => {
+    ['draw', [-2, -2], '引き分け', '相打ち。−2 対 −2 で、引き分け'],
+    [1, [-2, 4], '負け', 'あなたの負け'],
+    [0, [0, -3], '勝ち', '相打ち。0 対 −3 で、あなたの勝ち'],
+    [1, [-3, -1], '負け', '相打ち。−3 対 −1 で、あなたの負け'],
+  ] as const)('勝敗 %s は、中央には短く、戦闘履歴のいちばん上には詳しく出す', (winner, hp, short, long) => {
     draw({ revealing: true, over: { winner, hp: [hp[0], hp[1]], onAgain: vi.fn(), onRelevel: vi.fn() } })
-    expect(screen.getByText(text)).toBeTruthy()
+    expect(screen.getByText(short, { selector: '.result-text' })).toBeTruthy()
+    // 相打ちの説明は中央には出さない
+    expect(screen.queryByText(long, { selector: '.result-text' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: '戦闘履歴' }))
+    const [first] = within(screen.getByRole('dialog', { name: '戦闘履歴' })).getAllByRole('listitem')
+    expect(first.textContent).toBe(`決着${long}`)
   })
 })
 

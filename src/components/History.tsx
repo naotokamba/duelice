@@ -10,7 +10,7 @@ import type { Action, PlayerIndex, StepReport } from '../game/types'
 import { Modal } from './Dialog'
 import { Die } from './Die'
 import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
-import { actionLabel, reportLines } from './text'
+import { actionLabel, endingText, reportLines } from './text'
 
 /** 一つ前の結果。今どのステップかは左端のステップの箱で分かるので、中央にはこれだけを出す */
 export function Recent({ history }: { history: StepReport[] }) {
@@ -25,8 +25,17 @@ export function Recent({ history }: { history: StepReport[] }) {
   )
 }
 
-/** 戦闘履歴を開く印と、全ての履歴のモーダル。履歴が無いうちは出さない */
-export function HistoryButton({ history }: { history: StepReport[] }) {
+/** 決着したときの勝敗と双方の体力。席の順 */
+interface Ending {
+  winner: PlayerIndex | 'draw'
+  hp: [number, number]
+}
+
+/**
+ * 戦闘履歴を開く印と、全ての履歴のモーダル。履歴が無いうちは出さない。
+ * 決着した後は、いちばん上に決着の行を足し、相打ちならはみ出した体力の比べまで書く
+ */
+export function HistoryButton({ history, over }: { history: StepReport[]; over?: Ending | null }) {
   const dialog = useRef<HTMLDialogElement>(null)
   if (history.length === 0) return null
   const items = [...history].reverse()
@@ -43,6 +52,12 @@ export function HistoryButton({ history }: { history: StepReport[] }) {
       </button>
       <Modal ref={dialog} title="戦闘履歴" className="modal-history">
         <ol className="history-list">
+          {over && (
+            <li className="history-entry history-end">
+              <span className="history-when">決着</span>
+              <span className="history-end-text">{endingText(over.winner, over.hp, 0)}</span>
+            </li>
+          )}
           {items.map((r) => (
             <Entry key={`${r.turn}-${r.step}`} report={r} detail />
           ))}

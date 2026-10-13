@@ -1596,6 +1596,10 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
+/* 決着の行。相打ちのときは体力の比べまで書く */
+.history-end-text {
+  font-weight: 800;
+}
 /* 履歴のモーダルの内訳。その行で起きたことを、カードの色の印で並べる */
 .history-detail {
   display: flex;
@@ -1683,6 +1687,8 @@ button.tab {
   font-weight: 800;
   font-size: 2rem;
   margin: 0;
+  /* 勝ち、負け、引き分けだけを短く書くので、どの幅でも1行に収める */
+  white-space: nowrap;
 }
 .result-actions {
   display: flex;

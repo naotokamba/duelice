@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { legalActions, resolveStep } from '../game/rules'
 import type { Action, PlayerIndex, StepReport } from '../game/types'
 import { makeState, stateArb } from '../test/helpers'
-import { actionLabel, CANNOT_USE, issueText, reportLines, resultText } from './text'
+import { actionLabel, CANNOT_USE, endingText, issueText, reportLines, resultText } from './text'
 
 const pass: Action = { kind: 'pass' }
 const bullet: Action = { kind: 'bullet', dice: [0, 1] }
@@ -112,18 +112,25 @@ describe('決定できない理由の文', () => {
   })
 })
 
-describe('勝敗の文', () => {
+describe('中央の勝敗の文', () => {
+  it('見ている側から、勝ち、負け、引き分けのどれかだけを書く', () => {
+    expect(resultText(0, 0)).toBe('勝ち')
+    expect(resultText(0, 1)).toBe('負け')
+    expect(resultText(1, 0)).toBe('負け')
+    expect(resultText('draw', 0)).toBe('引き分け')
+  })
+})
+
+describe('戦闘履歴の決着の文', () => {
   it('片方だけ倒れたら、勝ち負けだけを書く', () => {
-    expect(resultText(0, [3, -2], 0)).toBe('あなたの勝ち')
-    expect(resultText(0, [3, -2], 1)).toBe('相手の勝ち')
-    expect(resultText(1, [0, 7], 0)).toBe('相手の勝ち')
+    expect(endingText(0, [3, -2], 0)).toBe('あなたの勝ち')
+    expect(endingText(0, [3, -2], 1)).toBe('あなたの負け')
+    expect(endingText(1, [0, 7], 0)).toBe('あなたの負け')
   })
-  it('同時に0以下で決着したら、はみ出した体力を見ている側から並べる', () => {
-    expect(resultText(0, [-1, -3], 0)).toBe('相打ち。−1 対 −3 で、あなたの勝ち')
-    expect(resultText(0, [-1, -3], 1)).toBe('相打ち。−3 対 −1 で、相手の勝ち')
-    expect(resultText(1, [-4, 0], 0)).toBe('相打ち。−4 対 0 で、相手の勝ち')
-  })
-  it('引き分け', () => {
-    expect(resultText('draw', [-2, -2], 0)).toBe('相打ち。引き分けです')
+  it('同時に0以下で決着したら、相打ちと書き、はみ出した体力を見ている側から並べる', () => {
+    expect(endingText(0, [-1, -3], 0)).toBe('相打ち。−1 対 −3 で、あなたの勝ち')
+    expect(endingText(0, [-1, -3], 1)).toBe('相打ち。−3 対 −1 で、あなたの負け')
+    expect(endingText(1, [-4, 0], 0)).toBe('相打ち。−4 対 0 で、あなたの負け')
+    expect(endingText('draw', [-2, -2], 0)).toBe('相打ち。−2 対 −2 で、引き分け')
   })
 })

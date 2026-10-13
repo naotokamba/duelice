@@ -55,7 +55,7 @@ test('魔弾、氷礫、魔槍の詠唱と発動で相手を倒す', async ({ pa
   await tapPlace(page, 6, '魔弾の2つ目の枠')
   await confirm(page).click()
 
-  await expect(page.getByText('あなたの勝ち', { exact: true })).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText('勝ち', { exact: true })).toBeVisible({ timeout: 15_000 })
   await expect(hp(cpuSeat(page), 0)).toBeVisible()
   await expect(page.getByRole('button', { name: 'もう一戦' })).toBeVisible()
 })

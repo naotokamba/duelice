@@ -52,7 +52,7 @@ export const scriptedOpponent =
     acts.shift() ?? { kind: 'pass' }
 
 /** 決着の表示。ルール説明の「引き分け」と区別する */
-export const RESULT = /^(あなたの勝ち|相手の勝ち|相打ち。引き分けです|相打ち。\S+ 対 \S+ で、(あなた|相手)の勝ち)$/
+export const RESULT = /^(勝ち|負け|引き分け)$/
 
 /** 対局を描いて始める。level を渡せば強さを選んでから始める */
 export async function start(props: Parameters<typeof Game>[0], level?: string): Promise<User> {
