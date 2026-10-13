@@ -136,7 +136,8 @@ export class Thinker {
     let probs: number[]
     if (level === 'hard') probs = sol.row
     else {
-      const tau = level === 'normal' ? 1.5 : 4
+      // 期待得点の差が大きいほど最善手に寄る。読み合いが重い今の5枚で、ふつうがつよいに4割弱勝つように合わせた値
+      const tau = level === 'normal' ? 3 : 4
       const best = Math.max(...ev)
       const soft = ev.map((v) => Math.exp((v - best) / tau))
       const sum = soft.reduce((a, b) => a + b, 0)
