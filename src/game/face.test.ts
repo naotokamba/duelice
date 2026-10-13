@@ -41,6 +41,10 @@ describe('カード面', () => {
     ['wildfire', [3], 'ignite'],
     ['overload', [3], 'extra:2 endBurn:2'],
     ['twinDragon', [1, 1, 2, 2], 'damage:20'],
+    // 錬成と二重詠唱は決まった数を書き、残響は数を持たない
+    ['transmute', [4], 'forge:3'],
+    ['doubleCast', [4], 'multi:2'],
+    ['echo', [4], 'repeat'],
   ] as const)('%s に %j を置いた効果', (kind, vals, want) => {
     expect(flat(effectParts(kind, [...vals]))).toBe(want)
   })
@@ -225,7 +229,7 @@ describe('カード面', () => {
     }
   })
   it('数を持たない印は、記号の無い攻撃のカード面に並べても、置いた個数から値を入れない', () => {
-    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'ignite'])
+    expect(BARE_ICONS).toEqual(['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'ignite', 'repeat'])
     // 記号を持たず、置いた個数で威力が決まる仮のカード
     const def = { ...ACTION_DEFS.allOut, face: { effect: BARE_ICONS.map((icon) => ({ icon })) } }
     expect(faceParts(def, [1, 1])).toEqual(BARE_ICONS.map((icon) => ({ icon })))

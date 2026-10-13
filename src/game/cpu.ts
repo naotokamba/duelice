@@ -14,7 +14,7 @@ import type { Action, GameState, PlayerIndex, Rng } from './types'
 /**
  * CPU の考え方の版。考え方を変えたら上げる。強さの評価の記録は、この版ごとに分けて取り直す
  */
-export const CPU_VERSION = 2
+export const CPU_VERSION = 3
 
 /** 次のターンに持ち越すものを、体力に換算した見積もり */
 export interface Estimates {
@@ -124,6 +124,8 @@ function stateKey(s: GameState): string {
       p.frozen,
       p.burned,
       p.carry,
+      p.last,
+      [...p.acted].sort(),
     ]),
   ])
 }
@@ -188,7 +190,7 @@ export class Thinker {
 
   /** 双方の行動を解決した得点。ダイスを振り足す行動があれば、出方の確率で重みを付けた平均 */
   private expected(s: GameState, acts: [Action, Action], score: (next: GameState) => number): number {
-    const [n0, n1] = acts.map(extraDiceOf)
+    const [n0, n1] = [extraDiceOf(s, 0, acts[0]), extraDiceOf(s, 1, acts[1])]
     if (n0 === 0 && n1 === 0) return score(resolveStep(s, acts))
     let sum = 0
     for (const e0 of rollOutcomes(n0))

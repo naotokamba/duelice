@@ -7,17 +7,41 @@ export type { ActionKind, CardId }
 export type PlayerIndex = 0 | 1
 
 /**
+ * カード1枚の行動。
  * dice はカードの行の置き場ごとに、置いたダイスの番号を書く。空けた置き場は null。
  * 長さはその行の置き場の数。ダイスの番号はそのターンに振ったダイスの位置で、値は roll から引く。
  * 盤の上と同じく、どの置き場に何を置いたかだけを記録し、置いた順は持たない
  */
-export type Action = { kind: 'pass' } | { kind: ActionKind; dice: (number | null)[] }
+export interface Play {
+  kind: ActionKind
+  dice: (number | null)[]
+  /** 好きな目のダイスを置いた置き場ごとの、選んだ目。ほかの置き場は null。好きな目のダイスを置かなければ持たない */
+  set?: (number | null)[]
+  /** 同じステップに一緒に使うカードの行動。行動の回数を増やすカードの行動だけが持ち、置いた順に並べる */
+  with?: Play[]
+}
+
+/** 一つのステップに出す行動。何もしないか、カードの行動 */
+export type Action = { kind: 'pass' } | Play
+
+/** 好きな目のダイス。roll にこの値で入り、置くときに目を選ぶ */
+export const WILD = 0
+
+/**
+ * 行動が起こす効果。行動の種類と、置き場の順に並べた目。
+ * もう一度出す行動は、直前のステップの効果をダイスを置かずに出すので、echoed を付ける
+ */
+export interface Move {
+  kind: ActionKind
+  vals: number[]
+  echoed?: true
+}
 
 export type ChantState = 'none' | 'charged' | 'broken'
 
 export interface PlayerState {
   hp: number
-  /** このターンのダイスの目。振り足したり持ち越したりすると、3個より多くなる */
+  /** このターンのダイスの目。振り足したり持ち越したりすると、3個より多くなる。好きな目のダイスは WILD */
   roll: number[]
   usedDice: number[]
   usedCards: CardId[]
@@ -30,6 +54,13 @@ export interface PlayerState {
   burned: number
   /** 次のターンへ持ち越すダイスの目。持ち越さなければ null */
   carry: number | null
+  /**
+   * 直前のステップに起こした効果。もう一度出す行動は、これを繰り返す。ターンをまたいで残る。
+   * 行動の回数を増やすカードの効果は含まず、もう一度出した効果は、出した効果として含む
+   */
+  last: Move[]
+  /** このターンに起きた効果の種類。もう一度出した効果も数える。ターンの終わりに起きることは、ここから決まる */
+  acted: ActionKind[]
 }
 
 export interface Config {
@@ -79,8 +110,10 @@ export interface StepReport {
   turn: number
   step: 1 | 2
   actions: [Action, Action]
-  /** 双方がダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす */
+  /** 双方がダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす。一緒に使った行動の目も続けて並べる */
   values: [number[], number[]]
+  /** 双方が起こそうとした効果。もう一度出した効果も含む。倒れて起きなかった効果も含む */
+  moves: [Move[], Move[]]
   /** 放たれた攻撃と、その行方。守りが返したダメージも含む */
   strikes: Strike[]
   /** 双方が炎で自分も焼けて受けたダメージ。自分も焼ける行動をしなかった側は0 */

@@ -4,7 +4,7 @@
 import { ACTION_DEFS, type ActionKind, STARTER } from '../game/cards'
 import { forfeit, type Match, newMatch, type Resolution, resign, submit, viewFor } from '../game/match'
 import { STARTER_DECKS } from '../game/rules'
-import type { Action, Config, GameState, PlayerIndex, PlayerState, Rng, StepReport, Strike } from '../game/types'
+import type { Action, Config, GameState, Move, PlayerIndex, PlayerState, Rng, StepReport, Strike } from '../game/types'
 import { DEFAULT_CONFIG } from '../game/types'
 import {
   EMPTY_GRACE_MS,
@@ -88,15 +88,42 @@ export function createRoom({
 /** 古い形で保存されていたかもしれない値。後から足した欄は無いことがある */
 type Saved<T, K extends keyof T> = Omit<T, K> & Partial<Pick<T, K>>
 
-/** 保存されていた席。カードを選べるようになる前の盤には、持ち込んだ5枚やターンをまたぐ効果の欄が無い */
-function restorePlayer(p: Saved<PlayerState, 'deck' | 'frozen' | 'burned' | 'carry'>): PlayerState {
-  return { ...p, deck: p.deck ?? [...STARTER], frozen: p.frozen ?? null, burned: p.burned ?? 0, carry: p.carry ?? null }
+/**
+ * 保存されていた席。カードを選べるようになる前の盤には、持ち込んだ5枚やターンをまたぐ効果の欄が無い。
+ * 直前の効果とこのターンに起きた効果は、そろえた記録から作る。直前の効果は一番新しい記録の効果で、
+ * このターンに起きた効果は、このターンの記録の効果。どちらも倒れて起きなかった記録は数えない
+ */
+function restorePlayer(
+  p: Saved<PlayerState, 'deck' | 'frozen' | 'burned' | 'carry' | 'last' | 'acted'>,
+  who: PlayerIndex,
+  turn: number,
+  history: StepReport[],
+): PlayerState {
+  const happened = (r: StepReport) => (r.cancelled[who] ? [] : r.moves[who])
+  const latest = history.at(-1)
+  return {
+    ...p,
+    deck: p.deck ?? [...STARTER],
+    frozen: p.frozen ?? null,
+    burned: p.burned ?? 0,
+    carry: p.carry ?? null,
+    last: p.last ?? (latest ? happened(latest) : []),
+    acted: p.acted ?? history.filter((r) => r.turn === turn).flatMap((r) => happened(r).map((m) => m.kind)),
+  }
 }
 
-/** 保存されていた記録。先に当たる攻撃やターンの終わりの欄が無ければ、何も起きなかった値を入れる */
-function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded' | 'extra'>): StepReport {
+/**
+ * 保存されていた記録。先に当たる攻撃やターンの終わりの欄が無ければ、何も起きなかった値を入れる。
+ * 効果の欄が無ければ、カードの行動を一つずつ出した記録なので、行動と置いた目から作る
+ */
+function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded' | 'extra' | 'moves'>): StepReport {
+  const moveOf = (i: 0 | 1): Move[] => {
+    const a = r.actions[i]
+    return a.kind === 'pass' ? [] : [{ kind: a.kind, vals: r.values[i] }]
+  }
   return {
     ...r,
+    moves: r.moves ?? [moveOf(0), moveOf(1)],
     strikes: r.strikes.map((x: Saved<Strike, 'phase'>) => ({ ...x, phase: x.phase ?? 'main' })),
     endBurn: r.endBurn ?? [0, 0],
     cancelled: r.cancelled ?? [false, false],
@@ -106,10 +133,11 @@ function restoreReport(r: Saved<StepReport, 'endBurn' | 'cancelled' | 'refunded'
 }
 
 function restoreGame(g: GameState): GameState {
+  const history = g.history.map(restoreReport)
   return {
     ...g,
-    players: [restorePlayer(g.players[0]), restorePlayer(g.players[1])],
-    history: g.history.map(restoreReport),
+    players: [restorePlayer(g.players[0], 0, g.turn, history), restorePlayer(g.players[1], 1, g.turn, history)],
+    history,
   }
 }
 

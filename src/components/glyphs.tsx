@@ -344,6 +344,37 @@ export function CarryGlyph({ value }: { value?: string }) {
   )
 }
 
+/** 好きな目のダイスを得る。ダイスの角から光が出る。中に数を書く */
+export function ForgeGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-forge" value={value}>
+      <rect x={-34} y={-30} width={64} height={64} rx={14} />
+      <path d="M38-46V-30M30-38H46" />
+    </Mark>
+  )
+}
+
+/** さらにカードを使える。重ねたカード。中に数を書く */
+export function MultiGlyph({ value }: { value?: string }) {
+  return (
+    <Mark className="glyph-multi" value={value}>
+      <rect x={-22} y={-44} width={60} height={76} rx={8} />
+      <rect x={-38} y={-32} width={60} height={76} rx={8} />
+    </Mark>
+  )
+}
+
+/** 直前のステップの効果をもう一度出す。広がる波 */
+export function RepeatGlyph() {
+  return (
+    <Mark className="glyph-repeat">
+      <path className="mark-fill" d="M-40-10H-24V10H-40Z" />
+      <path d="M-10-24A30 30 0 0 1-10 24" />
+      <path d="M8-38A50 50 0 0 1 8 38" />
+    </Mark>
+  )
+}
+
 /** 効果の印の一行の説明と形。印の種類を足すと、ここに書くまで型が通らない */
 function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; glyph: ReactNode } {
   switch (icon) {
@@ -383,6 +414,15 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `ダイスを${v}個振り足す。次のステップで使える`, glyph: <ExtraGlyph value={v} /> }
     case 'carry':
       return { label: `${v}の目のダイスを次のターンへ持ち越す`, glyph: <CarryGlyph value={v} /> }
+    case 'forge':
+      return {
+        label: `残りのダイスを捨て、次のステップに好きな目のダイスを${v}個使う`,
+        glyph: <ForgeGlyph value={v} />,
+      }
+    case 'multi':
+      return { label: `このステップに、さらに${v}枚までカードを使える`, glyph: <MultiGlyph value={v} /> }
+    case 'repeat':
+      return { label: '直前のステップに自分が出した効果を、同じ目でもう一度出す', glyph: <RepeatGlyph /> }
   }
 }
 

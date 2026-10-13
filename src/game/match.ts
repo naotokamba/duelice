@@ -54,7 +54,10 @@ export function submit(match: Match, who: PlayerIndex, action: Action, rng: Rng)
   both[who] = action
   const [a0, a1] = both
   if (a0 === null || a1 === null) return { ok: true, match: { state, pending: both }, resolved: null }
-  const extra: [number[], number[]] = [rollDice(extraDiceOf(a0), rng), rollDice(extraDiceOf(a1), rng)]
+  const extra: [number[], number[]] = [
+    rollDice(extraDiceOf(state, 0, a0), rng),
+    rollDice(extraDiceOf(state, 1, a1), rng),
+  ]
   const after = resolveStep(state, [a0, a1], extra)
   const report = after.history[after.history.length - 1]
   const next = after.winner === null && turnOver(after) ? nextTurn(after, rng) : after

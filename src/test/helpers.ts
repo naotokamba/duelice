@@ -5,8 +5,8 @@ import { ACTION_DEFS, type ActionKind, type CardId, DECK_SIZE, kindsOfCard, POOL
 import { type Match, newMatch, submit } from '../game/match'
 import { type Decks, extraDiceOf, legalActions, STARTER_DECKS } from '../game/rules'
 import { slotsOf } from '../game/slots'
-import type { Action, ChantState, GameState, PlayerState, Rng } from '../game/types'
-import { DEFAULT_CONFIG } from '../game/types'
+import type { Action, ChantState, GameState, Move, PlayerState, Rng } from '../game/types'
+import { DEFAULT_CONFIG, WILD } from '../game/types'
 
 /** 再現できる乱数 */
 export function seeded(seed: number): Rng {
@@ -30,6 +30,9 @@ export interface SeatSetup {
   frozen?: number | null
   burned?: number
   carry?: number | null
+  last?: Move[]
+  /** 省くと、使ったカードの行動の種類 */
+  acted?: PlayerState['acted']
 }
 
 /** 任意の局面を作る */
@@ -44,8 +47,19 @@ export function makeState(a: SeatSetup, b: SeatSetup, step: 1 | 2 = 1): GameStat
     frozen: s.frozen ?? null,
     burned: s.burned ?? 0,
     carry: s.carry ?? null,
+    last: s.last ?? [],
+    acted: s.acted ?? (s.usedCards ?? []).flatMap(kindsOfCard),
   })
   return { config: DEFAULT_CONFIG, turn: 1, step, players: [seat(a), seat(b)], history: [], winner: null }
+}
+
+/** カードの行動を一つずつ出したときの効果。置いた目をそのまま効果の目にする。もう一度出す行動の置き換えはしない */
+export function movesFor(
+  vals: readonly [readonly number[], readonly number[]],
+  acts: readonly [Action, Action],
+): [Move[], Move[]] {
+  const one = (a: Action, v: readonly number[]): Move[] => (a.kind === 'pass' ? [] : [{ kind: a.kind, vals: [...v] }])
+  return [one(acts[0], vals[0]), one(acts[1], vals[1])]
 }
 
 /** 値だけで行動を作る。ダイス 0 から順に n 個を、前の置き場から詰めて置く */
@@ -65,40 +79,65 @@ export const deckArb: fc.Arbitrary<CardId[]> = fc.shuffledSubarray([...POOL], {
   maxLength: DECK_SIZE,
 })
 
+/** 置ける個数の目。同じ目やゾロ目の二組が要る行動には、それを満たす目を作る */
+const valsArb = (kind: ActionKind): fc.Arbitrary<number[]> => {
+  const def = ACTION_DEFS[kind]
+  return fc.constantFrom(...def.dice).chain((n) => {
+    if (def.twoPairs) return fc.tuple(dieArb, dieArb).map(([a, b]) => [a, a, b, b])
+    if (def.sameValues) return dieArb.map((v) => Array<number>(n).fill(v))
+    return fc.array(dieArb, { minLength: n, maxLength: n })
+  })
+}
+
+/** 直前のステップの効果になりうるもの。デッキのカードの効果を0から2個。行動の回数を増やす効果と、もう一度出す行動そのものは入らない */
+const lastArb = (deck: readonly CardId[]): fc.Arbitrary<Move[]> => {
+  const kinds = deck.flatMap(kindsOfCard).filter((k) => !ACTION_DEFS[k].multi && !ACTION_DEFS[k].echo)
+  if (kinds.length === 0) return fc.constant([])
+  return fc.array(
+    fc.constantFrom(...kinds).chain((kind) => valsArb(kind).map((vals): Move => ({ kind, vals }))),
+    { maxLength: 2 },
+  )
+}
+
 /** 詠唱する行動を持つカード */
 const chants = (card: CardId) => kindsOfCard(card).some((k) => ACTION_DEFS[k].chant)
 
 /** 一人の席。振り足しや持ち越しでダイスが3個より多いこともある */
 const seatArb = (step2: boolean, pool: boolean) =>
-  fc
-    .record({
-      deck: pool ? deckArb : fc.constant([...STARTER]),
-      roll: pool ? fc.array(dieArb, { minLength: 3, maxLength: 6 }) : rollArb,
-      hp: fc.integer({ min: 1, max: 20 }),
-      used: fc.integer({ min: 0, max: 2 }),
-      pick: fc.nat(),
-      chant: fc.constantFrom<ChantState>('none', 'charged', 'broken'),
-      frozen: pool ? fc.option(dieArb) : fc.constant(null),
-      burned: pool ? fc.integer({ min: 0, max: 12 }) : fc.constant(0),
-      carry: pool ? fc.option(dieArb) : fc.constant(null),
-    })
-    .map((r): SeatSetup => {
-      if (!step2) return { roll: r.roll, hp: r.hp, deck: r.deck, frozen: r.frozen, carry: r.carry }
-      // 一ステップ目に使ったカードは1枚で、使ったダイスは前から数える。詠唱の状態は詠唱できるカードを使ったときだけ
-      const card = r.deck[r.pick % r.deck.length]
-      const used = Math.min(r.used, r.roll.length - 1)
-      return {
-        roll: r.roll,
-        hp: r.hp,
-        deck: r.deck,
-        usedDice: [...Array(used).keys()],
-        usedCards: used > 0 ? [card] : [],
-        chant: chants(card) && used === 1 ? r.chant : 'none',
-        frozen: r.frozen,
-        burned: r.burned,
-        carry: r.carry,
-      }
-    })
+  (pool ? deckArb : fc.constant([...STARTER])).chain((deck) =>
+    fc
+      .record({
+        roll: pool ? fc.array(dieArb, { minLength: 3, maxLength: 6 }) : rollArb,
+        hp: fc.integer({ min: 1, max: 20 }),
+        used: fc.integer({ min: 0, max: 2 }),
+        pick: fc.nat(),
+        chant: fc.constantFrom<ChantState>('none', 'charged', 'broken'),
+        frozen: pool ? fc.option(dieArb) : fc.constant(null),
+        burned: pool ? fc.integer({ min: 0, max: 12 }) : fc.constant(0),
+        carry: pool ? fc.option(dieArb) : fc.constant(null),
+        last: pool ? lastArb(deck) : fc.constant<Move[]>([]),
+        wild: pool && step2 ? fc.integer({ min: 0, max: 3 }) : fc.constant(0),
+      })
+      .map((r): SeatSetup => {
+        if (!step2) return { roll: r.roll, hp: r.hp, deck, frozen: r.frozen, carry: r.carry, last: r.last }
+        // 一ステップ目に使ったカードは1枚で、使ったダイスは前から数える。詠唱の状態は詠唱できるカードを使ったときだけ
+        // 好きな目のダイスを得たなら、振ったダイスは全て使い終わり、後ろに好きな目のダイスが加わる
+        const card = deck[r.pick % deck.length]
+        const used = r.wild > 0 ? r.roll.length : Math.min(r.used, r.roll.length - 1)
+        return {
+          roll: [...r.roll, ...Array<number>(r.wild).fill(WILD)],
+          hp: r.hp,
+          deck,
+          usedDice: [...Array(used).keys()],
+          usedCards: used > 0 ? [card] : [],
+          chant: chants(card) && used === 1 ? r.chant : 'none',
+          frozen: r.frozen,
+          burned: r.burned,
+          carry: r.carry,
+          last: r.last,
+        }
+      }),
+  )
 
 /** 局面。pool なら選べるカードから選んだ5枚で、そうでなければ二人ともスターター */
 const gameArb = (pool: boolean): fc.Arbitrary<GameState> =>
@@ -123,14 +162,17 @@ export interface Play {
 
 /** base の局面から、双方の合法手を一つずつ選び、振り足す行動にはその数だけダイスの目を添える */
 export function playArb(base: fc.Arbitrary<GameState>): fc.Arbitrary<Play> {
-  const extraArb = (a: Action) => fc.array(dieArb, { minLength: extraDiceOf(a), maxLength: extraDiceOf(a) })
-  return base.chain((s) =>
-    fc
+  return base.chain((s) => {
+    const extraArb = (who: 0 | 1, a: Action) => {
+      const n = extraDiceOf(s, who, a)
+      return fc.array(dieArb, { minLength: n, maxLength: n })
+    }
+    return fc
       .tuple(fc.constantFrom(...legalActions(s, 0)), fc.constantFrom(...legalActions(s, 1)))
       .chain(([a0, a1]) =>
-        fc.tuple(extraArb(a0), extraArb(a1)).map(([e0, e1]): Play => ({ s, acts: [a0, a1], extra: [e0, e1] })),
-      ),
-  )
+        fc.tuple(extraArb(0, a0), extraArb(1, a1)).map(([e0, e1]): Play => ({ s, acts: [a0, a1], extra: [e0, e1] })),
+      )
+  })
 }
 
 /**

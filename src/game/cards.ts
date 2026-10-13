@@ -17,7 +17,8 @@ export interface CardDef {
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない。
  * wound は失った体力で威力が増えること、frost は相手が次のステップに置けない目、refund は防ぎきったらダイスが戻ること、
  * reflect は受けた攻撃を返すこと、fast は相手より先に当たること、ignite はターンの終わりに焼けた分を与えること、
- * extra は振り足すダイスの数、carry は次のターンへ持ち越す目
+ * extra は振り足すダイスの数、carry は次のターンへ持ち越す目、forge は得る好きな目のダイスの数、
+ * multi はさらに使えるカードの枚数、repeat は直前のステップの効果をもう一度出すこと
  */
 export type EffectIcon =
   | 'damage'
@@ -36,9 +37,21 @@ export type EffectIcon =
   | 'ignite'
   | 'extra'
   | 'carry'
+  | 'forge'
+  | 'multi'
+  | 'repeat'
 
 /** 数を持たない印。置いた目や個数から値を入れない */
-export const BARE_ICONS: readonly EffectIcon[] = ['chant', 'disrupt', 'wound', 'refund', 'reflect', 'fast', 'ignite']
+export const BARE_ICONS: readonly EffectIcon[] = [
+  'chant',
+  'disrupt',
+  'wound',
+  'refund',
+  'reflect',
+  'fast',
+  'ignite',
+  'repeat',
+]
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -130,7 +143,10 @@ export interface ActionDef {
   reflects?: boolean
   /** 同じステップに相手が詠唱していたら、その詠唱を崩す */
   disrupts?: boolean
-  /** 相手の次のステップに、印の置き場の目と同じ目のダイスを置けなくする。二ステップ目に使えば、次のターンの一ステップ目 */
+  /**
+   * 相手の次のステップに、印の置き場の目と同じ目のダイスを置けなくする。二ステップ目に使えば、次のターンの一ステップ目。
+   * 一つのステップに凍らせる効果が重なっても、置けなくするのは一つの目で、大きい目
+   */
   freezes?: boolean
   /** 使うと炎で自分も焼けて受けるダメージ。障壁では減らない。vals は power と同じ */
   burn?: (vals: number[]) => number
@@ -140,8 +156,27 @@ export interface ActionDef {
   extraDice?: number
   /** 使ったターンの終わりに、炎で自分も焼けて受けるダメージ */
   endBurn?: number
-  /** 印の置き場に置いたダイスを、目ごと次のターンへ持ち越す。次のターンは振ったダイスにこの1個が加わる */
+  /**
+   * 印の置き場に置いたダイスを、目ごと次のターンへ持ち越す。次のターンは振ったダイスにこの1個が加わる。
+   * 一つのステップに持ち越す効果が重なっても、持ち越すのは1個で、大きい目
+   */
   carries?: boolean
+  /**
+   * 一ステップ目に使うと、そのステップの後に残ったダイスを全て捨て、好きな目のダイスをこの数だけ得る。
+   * 好きな目のダイスは二ステップ目に、置くときに目を選ぶ。凍らされた目は選べない。二ステップ目に起きても何もしない
+   */
+  transmute?: number
+  /**
+   * このステップに、さらにこの数までカードを使える。一緒に使う行動は全て同時に解決する。
+   * カードは今までどおり1ターンに1回で、一緒に使う行動の中に、行動の回数を増やすカードは入らない
+   */
+  multi?: number
+  /**
+   * 直前のステップに自分が起こした効果を、同じ目でもう一度出す。一ステップ目なら、前のターンの二ステップ目が直前。
+   * もう一度出す効果は、使えるステップ、詠唱の条件、1ターンに1回の決まりを受けず、ダイスも要らない。
+   * 威力はそのときの体力で決め直し、ターンの終わりに起きることも出した分だけ起きる。繰り返すものが無ければ使えない
+   */
+  echo?: boolean
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
   done?: string
   /** カード面の描き方 */
@@ -170,6 +205,9 @@ const CARDS = {
   overload: { name: '過負荷' },
   twinDragon: { name: '双竜' },
   meditate: { name: '瞑想' },
+  transmute: { name: '錬成' },
+  doubleCast: { name: '二重詠唱' },
+  echo: { name: '残響' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -376,6 +414,34 @@ const ACTIONS = {
     carries: true,
     done: '瞑想した',
     face: { mark: 'X', effect: [{ icon: 'carry', value: 'X' }] },
+  },
+  transmute: {
+    card: 'transmute',
+    label: '錬成',
+    dice: [1],
+    step: 1,
+    // 残りのダイスを捨て、二ステップ目に好きな目のダイスを3個使う。置いた目は効果に関わらない
+    transmute: 3,
+    done: '錬成した',
+    face: { effect: [{ icon: 'forge', value: '3' }] },
+  },
+  doubleCast: {
+    card: 'doubleCast',
+    label: '二重詠唱',
+    dice: [1],
+    // このステップに、さらに2枚までカードを使える。置いた目は効果に関わらない
+    multi: 2,
+    done: '二重詠唱した',
+    face: { effect: [{ icon: 'multi', value: '2' }] },
+  },
+  echo: {
+    card: 'echo',
+    label: '残響',
+    dice: [1],
+    // 直前のステップに起こした効果を、同じ目でもう一度出す。置いた目は効果に関わらない
+    echo: true,
+    done: '残響を響かせた',
+    face: { effect: [{ icon: 'repeat' }] },
   },
 } satisfies Record<string, ActionDef>
 

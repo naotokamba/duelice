@@ -1,7 +1,7 @@
 // ターンの進行に関する例示テスト。カード同士のダメージは cards.test.ts の仕様表で扱う。
 
 import { describe, expect, it } from 'vitest'
-import { makeState, seeded } from '../test/helpers'
+import { makeState, movesFor, seeded } from '../test/helpers'
 import { ACTION_DEFS, type CardId, STARTER } from './cards'
 import {
   breaksChant,
@@ -253,6 +253,8 @@ describe('ターンの進行', () => {
         frozen: null,
         burned: 0,
         carry: null,
+        last: [],
+        acted: [],
       })
     }
   })
@@ -305,24 +307,25 @@ describe('攻撃の行方', () => {
       [{ outcome: 'pierced', to: 1, dealt: 11 }],
     ],
   ] as const)('%s', (_, mine, a, theirs, b, want) => {
-    const list = strikes([[...mine], [...theirs]], [a as Action, b as Action])
+    const list = strikes(movesFor([mine, theirs], [a as Action, b as Action]))
     expect(list).toHaveLength(want.length)
     list.forEach((x, i) => {
       expect(x).toMatchObject(i === 0 ? { from: 0, ...want[0] } : want[i])
     })
   })
   it('撃ち合いは二つの攻撃になり、攻撃しない側からは何も飛ばない', () => {
-    expect(strikes([[6, 2], [5]], [fire, interrupt]).map((x) => [x.from, x.to])).toEqual([
+    expect(strikes(movesFor([[6, 2], [5]], [fire, interrupt])).map((x) => [x.from, x.to])).toEqual([
       [0, 1],
       [1, 0],
     ])
-    expect(strikes([[4], [3]], [wall, { kind: 'spearChant', dice: [0] }])).toEqual([])
+    expect(strikes(movesFor([[4], [3]], [wall, { kind: 'spearChant', dice: [0] }]))).toEqual([])
   })
   it('詠唱を崩すのは、詠唱を崩す性質を持つ行動だけ', () => {
-    expect(breaksChant(interrupt)).toBe(true)
-    expect(breaksChant(fire)).toBe(false)
-    expect(breaksChant(wall)).toBe(false)
-    expect(breaksChant(pass)).toBe(false)
+    const by = (a: Action, vals: number[]) => movesFor([vals, []], [a, pass])[0]
+    expect(breaksChant(by(interrupt, [3]))).toBe(true)
+    expect(breaksChant(by(fire, [6, 2]))).toBe(false)
+    expect(breaksChant(by(wall, [4]))).toBe(false)
+    expect(breaksChant(by(pass, []))).toBe(false)
   })
 })
 
@@ -341,11 +344,13 @@ describe('返す', () => {
     ACTION_DEFS.barrier = { ...saved, thorns: undefined }
     try {
       const list = strikes(
-        [[6], [2]],
-        [
-          { kind: 'interrupt', dice: [0] },
-          { kind: 'barrier', dice: [0] },
-        ],
+        movesFor(
+          [[6], [2]],
+          [
+            { kind: 'interrupt', dice: [0] },
+            { kind: 'barrier', dice: [0] },
+          ],
+        ),
       )
       expect(list.map((x) => x.outcome)).toEqual(['guarded'])
     } finally {
@@ -365,9 +370,9 @@ describe('返す', () => {
 describe('自分も焼ける', () => {
   const burn: Action = { kind: 'flameStrike', dice: [0, 1] }
   it('炎撃はもう一つの置き場の目だけ払い、ほかの行動は払わない', () => {
-    expect(burnOf([[6, 2], []], [burn, pass])).toEqual([2, 0])
-    expect(burnOf([[1, 5], [4]], [burn, { kind: 'barrier', dice: [0] }])).toEqual([5, 0])
-    expect(burnOf([[6], [6, 6]], [interrupt, { kind: 'bullet', dice: [0, 1] }])).toEqual([0, 0])
+    expect(burnOf(movesFor([[6, 2], []], [burn, pass]))).toEqual([2, 0])
+    expect(burnOf(movesFor([[1, 5], [4]], [burn, { kind: 'barrier', dice: [0] }]))).toEqual([5, 0])
+    expect(burnOf(movesFor([[6], [6, 6]], [interrupt, { kind: 'bullet', dice: [0, 1] }]))).toEqual([0, 0])
   })
   it('焼けた分は記録に別に残り、受けたダメージにも体力にも入る。風壁では減らない', () => {
     // 炎撃は 6 に2を足して8、風壁の 3 の倍の6に削られて2が通る。自分も2焼け、風壁から3を返される
@@ -377,7 +382,7 @@ describe('自分も焼ける', () => {
     expect(s.players.map((p) => p.hp)).toEqual([15, 18])
   })
   it('受けるダメージの計算にも、焼けた分が入る', () => {
-    expect(stepDamage([[1, 1], []], [burn, pass])).toEqual([1, 3])
+    expect(stepDamage(movesFor([[1, 1], []], [burn, pass]))).toEqual([1, 3])
   })
   it('自分も焼けて0以下になれば、相打ちの決まりで勝敗が決まる', () => {
     // 自分は 2 から 6 の自分も焼けて −4、相手は 6 から 6 を受けて 0

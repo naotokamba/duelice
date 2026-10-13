@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest'
 import { deckArb, makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS, UNHURT } from './cards'
 import { forfeit, type Match, newMatch, resign, type Submitted, submit, viewFor } from './match'
-import { isLegal, keptRow, legalActions, turnOver } from './rules'
+import { extraDiceOf, isLegal, keptRow, legalActions, turnOver } from './rules'
 import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
 import { DEFAULT_CONFIG } from './types'
@@ -259,9 +259,15 @@ describe('対局全体の性質', () => {
           if (!res) throw new Error('解決しなかった')
           for (const who of [0, 1] as const) {
             const a = pair[who]
-            const n = a.kind === 'pass' || res.report.cancelled[who] ? 0 : (ACTION_DEFS[a.kind].extraDice ?? 0)
-            expect(res.report.extra[who]).toHaveLength(a.kind === 'pass' ? 0 : (ACTION_DEFS[a.kind].extraDice ?? 0))
-            expect(res.state.players[who].roll).toHaveLength(before.players[who].roll.length + n)
+            const happened = a.kind !== 'pass' && !res.report.cancelled[who]
+            const n = happened ? extraDiceOf(before, who, a) : 0
+            expect(res.report.extra[who]).toHaveLength(extraDiceOf(before, who, a))
+            // 一ステップ目に好きな目のダイスを得たら、その数だけ後ろに加わる
+            const forged =
+              before.step === 1 && happened ? res.report.moves[who].map((m) => ACTION_DEFS[m.kind].transmute ?? 0) : []
+            expect(res.state.players[who].roll).toHaveLength(
+              before.players[who].roll.length + n + Math.max(0, ...forged),
+            )
           }
           m = ab.match
         }

@@ -169,6 +169,9 @@ describe('拡張のカード', () => {
     ['overload', ['ダイスを2個振り足す。次のステップで使える', 'ターンの終わりに、自分も2ダメージを受ける']],
     ['twinDragon', ['20ダメージを与える']],
     ['meditate', ['Xの目のダイスを次のターンへ持ち越す']],
+    ['transmute', ['残りのダイスを捨て、次のステップに好きな目のダイスを3個使う']],
+    ['doubleCast', ['このステップに、さらに2枚までカードを使える']],
+    ['echo', ['直前のステップに自分が出した効果を、同じ目でもう一度出す']],
   ] as const)('%s の印は、押すと一行の説明が読める', (card, labels) => {
     const face = draw({ card })
     for (const name of labels) expect(face.getByRole('button', { name })).toBeTruthy()

@@ -2,7 +2,7 @@
 // カードを足したら、ここに行を足す。行の無い行動があるとメタテストが落ちる。
 
 import { describe, expect, it } from 'vitest'
-import { actionOf } from '../test/helpers'
+import { actionOf, movesFor } from '../test/helpers'
 import type { ActionKind, CardId, PowerCtx } from './cards'
 import {
   ACTION_DEFS,
@@ -164,6 +164,11 @@ const SPEC: Case[] = [
   },
   { name: '双竜は闇壁の目の倍だけ減る', a: s('twinDragon', 1, 1, 6, 6), b: s('darkWall', 5), expect: [0, 10] },
   { name: '双竜も風陣に返される', a: s('twinDragon', 1, 1, 6, 6), b: s('galeWard', 5, 5), expect: [20, 0] },
+  // 錬成、二重詠唱、残響。それ自身はダメージを出さない。効果はターンをまたぐ決まりなので expansion.test.ts で確かめる
+  { name: '錬成はダメージを出さない', a: s('transmute', 6), b: s('pass'), expect: [0, 0] },
+  { name: '錬成しても、同じステップの攻撃は受ける', a: s('transmute', 6), b: s('interrupt', 3), expect: [2, 0] },
+  { name: '二重詠唱そのものはダメージを出さない', a: s('doubleCast', 6), b: s('pass'), expect: [0, 0] },
+  { name: '残響そのものはダメージを出さない', a: s('echo', 6), b: s('flameStrike', 5, 1), expect: [7, 1] },
 ]
 
 /** ステップの前の様子。体力を書かなければ満タン */
@@ -171,8 +176,7 @@ const ctxOf = (side: Side): PowerCtx => ({ hp: side.hp ?? 20, maxHp: 20 })
 
 function run(c: Case): [number, number] {
   return stepDamage(
-    [c.a.vals, c.b.vals],
-    [actionOf(c.a.kind, c.a.vals.length), actionOf(c.b.kind, c.b.vals.length)],
+    movesFor([c.a.vals, c.b.vals], [actionOf(c.a.kind, c.a.vals.length), actionOf(c.b.kind, c.b.vals.length)]),
     [ctxOf(c.a), ctxOf(c.b)],
   )
 }
@@ -212,6 +216,9 @@ describe('定義表の整合性', () => {
       '過負荷',
       '双竜',
       '瞑想',
+      '錬成',
+      '二重詠唱',
+      '残響',
     ])
   })
   it('持ち込めるのは、表にある互いに違うカードを5枚', () => {

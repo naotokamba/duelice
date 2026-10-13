@@ -382,9 +382,9 @@ describe('保存されていた部屋', () => {
     const game = (g: GameState) =>
       ({
         ...g,
-        players: g.players.map((p) => strip(p, ['deck', 'frozen', 'burned', 'carry'])),
+        players: g.players.map((p) => strip(p, ['deck', 'frozen', 'burned', 'carry', 'last', 'acted'])),
         history: g.history.map((r) => ({
-          ...strip(r, ['endBurn', 'cancelled', 'refunded', 'extra']),
+          ...strip(r, ['endBurn', 'cancelled', 'refunded', 'extra', 'moves']),
           strikes: r.strikes.map((x) => strip(x, ['phase'])),
         })),
       }) as unknown as GameState
@@ -406,6 +406,18 @@ describe('保存されていた部屋', () => {
     expect(restored).toEqual(s)
     // 今の形の部屋はそのまま
     expect(restoreRoom(s)).toEqual(s)
+  })
+  it('後で足した欄の無い部屋は、ターンをまたいでも、直前の効果とこのターンに起きた効果を記録から作る', () => {
+    let s = fixed(playing())
+    const step = (a0: Action, a1: Action, t: number) => {
+      s = ok(act(s, 0, a0, seeded(1), T0 + t)).state
+      s = ok(act(s, 1, a1, seeded(1), T0 + t + 1)).state
+    }
+    step({ kind: 'interrupt', dice: [0] }, { kind: 'pass' }, 10)
+    step({ kind: 'pass' }, { kind: 'barrier', dice: [1] }, 20)
+    step({ kind: 'barrier', dice: [0] }, { kind: 'pass' }, 30)
+    expect(s.match?.state.turn).toBe(2)
+    expect(restoreRoom(legacy(s))).toEqual(s)
   })
   it('対局の無い部屋もそのまま', () => {
     const s = created()

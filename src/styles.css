@@ -33,6 +33,9 @@
   --overload: var(--flameStrike);
   --twinDragon: var(--neutral);
   --meditate: var(--neutral);
+  --transmute: var(--neutral);
+  --doubleCast: var(--neutral);
+  --echo: var(--neutral);
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --flameStrike-ink: #a22d18;
   --barrier-ink: #1f6b3c;
@@ -50,6 +53,9 @@
   --overload-ink: var(--flameStrike-ink);
   --twinDragon-ink: var(--neutral-ink);
   --meditate-ink: var(--neutral-ink);
+  --transmute-ink: var(--neutral-ink);
+  --doubleCast-ink: var(--neutral-ink);
+  --echo-ink: var(--neutral-ink);
   /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
   --burn: #c2410c;
   /* 風の守りが吹き返すダメージの渦。白い数との差は 5.3:1 */
@@ -106,6 +112,9 @@
     --overload: var(--flameStrike);
     --twinDragon: var(--neutral);
     --meditate: var(--neutral);
+    --transmute: var(--neutral);
+    --doubleCast: var(--neutral);
+    --echo: var(--neutral);
     --flameStrike-ink: #f28069;
     --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
@@ -122,6 +131,9 @@
     --overload-ink: var(--flameStrike-ink);
     --twinDragon-ink: var(--neutral-ink);
     --meditate-ink: var(--neutral-ink);
+    --transmute-ink: var(--neutral-ink);
+    --doubleCast-ink: var(--neutral-ink);
+    --echo-ink: var(--neutral-ink);
     --burn: #e8692a;
     --gust: #2f9e63;
   }
@@ -963,6 +975,21 @@ button.die {
   --spell: var(--meditate);
   --spell-ink: var(--meditate-ink);
   --card-ink: var(--meditate-ink);
+}
+.card-transmute {
+  --spell: var(--transmute);
+  --spell-ink: var(--transmute-ink);
+  --card-ink: var(--transmute-ink);
+}
+.card-doubleCast {
+  --spell: var(--doubleCast);
+  --spell-ink: var(--doubleCast-ink);
+  --card-ink: var(--doubleCast-ink);
+}
+.card-echo {
+  --spell: var(--echo);
+  --spell-ink: var(--echo-ink);
+  --card-ink: var(--echo-ink);
 }
 .card-head {
   display: flex;

@@ -1,6 +1,7 @@
 // 一つのステップの解決。盤の状態と双方の行動を受け取って、次の状態と記録を返す純粋関数だけで書く。
 // 乱数は外から渡すので、同じ入力なら必ず同じ結果になる。対局の進め方は match.ts にある。
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
+// 行動は、カードの行動を一つか、行動の回数を増やすカードで複数持つ。解決は、行動が起こす効果の並びで行う。
 
 import { ACTION_DEFS, type ActionDef, type ActionKind, type CardId, kindsOfCard, type PowerCtx, STARTER } from './cards'
 import { filled, fillsRequired, type PlacedRow, readsMark, rowOf, slotsOf } from './slots'
@@ -9,15 +10,17 @@ import type {
   ChantResult,
   Config,
   GameState,
+  Move,
   Outcome,
   Phase,
+  Play,
   PlayerIndex,
   PlayerState,
   Rng,
   StepReport,
   Strike,
 } from './types'
-import { DEFAULT_CONFIG } from './types'
+import { DEFAULT_CONFIG, WILD } from './types'
 
 export function rollDice(n: number, rng: Rng): number[] {
   return Array.from({ length: n }, () => 1 + Math.floor(rng() * 6))
@@ -40,25 +43,52 @@ export function newGame(rng: Rng, config: Config = DEFAULT_CONFIG, decks: Decks 
     frozen: null,
     burned: 0,
     carry: null,
+    last: [],
+    acted: [],
   })
   return { config, turn: 1, step: 1, players: [fresh(decks[0]), fresh(decks[1])], history: [], winner: null }
 }
 
-/** 行動が使うダイスの番号。空けた置き場を飛ばし、置き場の順に並べる */
-export function actionDice(a: Action): number[] {
-  return a.kind === 'pass' ? [] : filled(a.dice)
+/** 行動に含まれるカードの行動。行動の回数を増やすカードなら、それ自身の後に、一緒に使う行動を置いた順に並べる */
+export function partsOf(a: Action): Play[] {
+  return a.kind === 'pass' ? [] : [a, ...(a.with ?? [])]
 }
 
-/** 行動が使う目。空けた置き場を飛ばし、置き場の順に並べる。効果の計算はこの目から行う */
+/** 行動が使うダイスの番号。空けた置き場を飛ばし、置き場の順に並べる。一緒に使う行動のダイスも続けて並べる */
+export function actionDice(a: Action): number[] {
+  return partsOf(a).flatMap((x) => filled(x.dice))
+}
+
+/** カードの行動一つが使う目。空けた置き場を飛ばし、置き場の順に並べる。好きな目のダイスは選んだ目 */
+function playValues(p: PlayerState, x: Play): number[] {
+  const out: number[] = []
+  x.dice.forEach((d, k) => {
+    if (d === null) return
+    out.push(p.roll[d] === WILD ? (x.set?.[k] ?? WILD) : p.roll[d])
+  })
+  return out
+}
+
+/** 行動が使う目。空けた置き場を飛ばし、置き場の順に並べる。一緒に使う行動の目も続けて並べる。効果の計算は movesOf の目から行う */
 export function diceValues(p: PlayerState, a: Action): number[] {
-  return actionDice(a).map((i) => p.roll[i])
+  return partsOf(a).flatMap((x) => playValues(p, x))
+}
+
+/**
+ * 行動が起こす効果を、置いた順に並べる。もう一度出す行動は、直前のステップの効果に置き換わる。
+ * 行動の回数を増やすカードの行動も、何も起こさない効果として並べる
+ */
+export function movesOf(p: PlayerState, a: Action): Move[] {
+  return partsOf(a).flatMap((x): Move[] =>
+    ACTION_DEFS[x.kind].echo ? p.last.map((m) => ({ ...m, echoed: true })) : [{ kind: x.kind, vals: playValues(p, x) }],
+  )
 }
 
 export function freeDice(p: PlayerState): number[] {
   return p.roll.map((_, i) => i).filter((i) => !p.usedDice.includes(i))
 }
 
-/** まだ使っていないダイスのうち、今のステップに置けるもの。凍らされた目は置けない */
+/** まだ使っていないダイスのうち、今のステップに置けるもの。凍らされた目は置けない。好きな目のダイスは置ける */
 export function placeableDice(p: PlayerState): number[] {
   return freeDice(p).filter((i) => p.roll[i] !== p.frozen)
 }
@@ -69,24 +99,64 @@ export function isTwoPairs(vals: number[]): boolean {
   return vals.length === 4 && a === b && c === d
 }
 
-/** 行動がこのステップで合法か */
-export function isLegal(state: GameState, who: PlayerIndex, a: Action): boolean {
-  if (a.kind === 'pass') return true
-  const def = ACTION_DEFS[a.kind]
+/** 効果の定義 */
+const defOf = (m: Move): ActionDef => ACTION_DEFS[m.kind]
+
+/** 好きな目のダイスに選べる目か。1から6で、凍らされた目でない */
+const choosable = (p: PlayerState, v: number | null): boolean =>
+  Number.isInteger(v) && (v as number) >= 1 && (v as number) <= 6 && v !== p.frozen
+
+/** 選んだ目が、好きな目のダイスを置いた置き場にだけあり、選べる目か */
+function setOk(p: PlayerState, x: Play): boolean {
+  const wild = x.dice.map((d) => d !== null && p.roll[d] === WILD)
+  if (x.set === undefined) return !wild.includes(true)
+  if (!Array.isArray(x.set) || x.set.length !== x.dice.length) return false
+  return x.set.every((v, k) => (wild[k] ? choosable(p, v) : v === null))
+}
+
+/** カードの行動一つが、このステップで合法か。ほかの行動とダイスやカードが重ならないかは見ない */
+function playLegal(state: GameState, who: PlayerIndex, x: Play): boolean {
+  if (!Object.hasOwn(ACTION_DEFS, x.kind) || !Array.isArray(x.dice)) return false
+  const def = ACTION_DEFS[x.kind]
   const p = state.players[who]
   if (!p.deck.includes(def.card)) return false
   const free = placeableDice(p)
-  const dice = actionDice(a)
-  if (a.dice.length !== slotsOf(def)) return false
-  if (!fillsRequired(def, a.dice)) return false
+  const dice = filled(x.dice)
+  if (x.dice.length !== slotsOf(def)) return false
+  if (!fillsRequired(def, x.dice)) return false
   if (!def.dice.includes(dice.length)) return false
   if (new Set(dice).size !== dice.length) return false
   if (!dice.every((i) => free.includes(i))) return false
+  if (!setOk(p, x)) return false
   if (def.step !== undefined && def.step !== state.step) return false
+  if (def.echo && p.last.length === 0) return false
   if (def.needsCharge) return p.chant === 'charged'
   if (p.usedCards.includes(def.card)) return false
-  if (def.twoPairs && !isTwoPairs(diceValues(p, a))) return false
-  return !def.sameValues || new Set(diceValues(p, a)).size === 1
+  const vals = playValues(p, x)
+  if (def.twoPairs && !isTwoPairs(vals)) return false
+  return !def.sameValues || new Set(vals).size === 1
+}
+
+/**
+ * 行動がこのステップで合法か。行動の回数を増やすカードは、一緒に使う行動を1つから決まった数まで持つ。
+ * 一緒に使う行動は、それぞれが合法で、ダイスもカードも重ならない
+ */
+export function isLegal(state: GameState, who: PlayerIndex, a: Action): boolean {
+  if (a.kind === 'pass') return true
+  if (!Object.hasOwn(ACTION_DEFS, a.kind)) return false
+  const top = ACTION_DEFS[a.kind]
+  const more = a.with
+  if (top.multi) {
+    if (!Array.isArray(more) || more.length === 0 || more.length > top.multi) return false
+  } else if (more !== undefined) return false
+  const parts = partsOf(a)
+  if (!parts.every((x) => playLegal(state, who, x))) return false
+  // 一緒に使う行動は、行動の回数を増やせず、さらに一緒に使う行動も持たない
+  if (parts.slice(1).some((x) => x.with !== undefined || ACTION_DEFS[x.kind].multi)) return false
+  const dice = actionDice(a)
+  if (new Set(dice).size !== dice.length) return false
+  const cards = parts.map((x) => ACTION_DEFS[x.kind].card)
+  return new Set(cards).size === cards.length
 }
 
 function combinations(items: number[], k: number): number[][] {
@@ -110,49 +180,131 @@ function placements(def: ActionDef, dice: number[]): (number | null)[][] {
   return dice.map((d) => fill([d, ...dice.filter((x) => x !== d)]))
 }
 
-/**
- * 同じ手かどうかを見分ける鍵。どの置き場に置いたかは問わず、目の組が同じなら同じ手とみなす。
- * 印の置き場の目を値にする行動は、印の置き場の目も同じときだけ同じ手になる。
- * 合法な手なら印の置き場は埋まっていて、置き場の順に並べた目の最初がその目になる
- */
-export function actionKey(p: PlayerState, a: Action): string {
-  if (a.kind === 'pass') return a.kind
-  const vals = diceValues(p, a)
-  // Stryker disable next-line StringLiteral: 目は一桁なので、区切りが無くても組を取り違えない
-  const set = [...vals].sort((x, y) => x - y).join(',')
-  return `${a.kind}:${readsMark(ACTION_DEFS[a.kind]) ? `${vals[0]}|${set}` : set}`
+/** 好きな目のダイスを置いた置き場に、選べる目を割り当てる全ての組。好きな目のダイスが無ければ、選ぶものの無い一つ */
+function choices(p: PlayerState, dice: (number | null)[]): ((number | null)[] | undefined)[] {
+  const wild = dice.map((d) => d !== null && p.roll[d] === WILD)
+  if (!wild.includes(true)) return [undefined]
+  const values = [1, 2, 3, 4, 5, 6].filter((v) => v !== p.frozen)
+  let out: (number | null)[][] = [[]]
+  for (const w of wild) out = out.flatMap((rest) => (w ? values.map((v) => [...rest, v]) : [[...rest, null]]))
+  return out
 }
 
 /**
- * このステップで選べる行動を全て列挙する。効果の同じ手は一つにまとめる。
- * 同じ値のダイスの入れ替えや、効果の変わらない置き場の違いは、前から詰めた置き方だけを残す
+ * 効果の署名。目から決まる効果を、性質の関数を呼んで全て並べる。威力は失った体力でも変わりうるので、全ての体力で求める。
+ * 署名が同じ目の組は、もう一度出すときも含めて、どの局面でも同じ効果になる
  */
-export function legalActions(state: GameState, who: PlayerIndex): Action[] {
+function signature(def: ActionDef, vals: number[], maxHp: number): string {
+  const power = def.power
+  const powers = power ? Array.from({ length: maxHp }, (_, i) => power(vals, { hp: i + 1, maxHp })) : []
+  const mark = def.freezes || def.carries ? vals[0] : null
+  return JSON.stringify([vals.length, powers, def.guard?.(vals), def.burn?.(vals), mark])
+}
+
+/** 行動の後に残るダイスの目の組。どのダイスを使ったかではなく、残った目の組だけが次のステップに効く */
+function restOf(p: PlayerState, used: number[]): number[] {
+  return freeDice(p)
+    .filter((d) => !used.includes(d))
+    .map((d) => p.roll[d])
+    .sort((a, b) => a - b)
+}
+
+/** カードの行動一つを見分ける鍵。種類と、効果の署名と、残るダイスの目の組が同じなら、同じ置き方とみなす */
+function playKey(p: PlayerState, x: Play, maxHp: number): string {
+  return JSON.stringify([x.kind, signature(ACTION_DEFS[x.kind], playValues(p, x), maxHp), restOf(p, filled(x.dice))])
+}
+
+/**
+ * 同じ手かどうかを見分ける鍵。行動の後の盤が、相手がどう動いても同じになる手を、同じ手とみなす。
+ * 鍵は、使うカードの行動の種類と、起こす効果の署名と、残るダイスの目の組で、どれも並びは問わない。
+ * 一緒に使う行動の効果は同時に起き、守りが減らす量も合計で効くので、置いた順が違っても結果は同じになる。
+ * 二ステップ目の後はダイスを振り直し、残りのダイスを捨てる効果の後はダイスが残らないので、残るダイスは数えない
+ */
+export function actionKey(state: GameState, who: PlayerIndex, a: Action): string {
+  if (a.kind === 'pass') return a.kind
   const p = state.players[who]
-  const free = placeableDice(p)
-  const out: Action[] = [{ kind: 'pass' }]
+  const { maxHp } = state.config
+  const moves = movesOf(p, a)
+  const kinds = partsOf(a)
+    .map((x) => x.kind)
+    .sort()
+  const effects = moves.map((m) => m.kind + signature(defOf(m), m.vals, maxHp)).sort()
+  const gone = state.step === 2 || moves.some((m) => defOf(m).transmute)
+  return JSON.stringify([kinds, effects, gone ? null : restOf(p, actionDice(a))])
+}
+
+/**
+ * dice のダイスで出せる、カードの行動一つを全て列挙する。効果の同じ手は一つにまとめる。
+ * kinds の順に並べ、行動の回数を増やすカードの行動は、一緒に使う行動を持たない形で出す
+ */
+function playsWith(state: GameState, who: PlayerIndex, kinds: ActionKind[], dice: number[]): Play[] {
+  const p = state.players[who]
+  const out: Play[] = []
   const seen = new Set<string>()
-  for (const kind of p.deck.flatMap(kindsOfCard)) {
+  for (const kind of kinds) {
     const def = ACTION_DEFS[kind]
     for (const k of def.dice) {
-      for (const dice of combinations(free, k).flatMap((c) => placements(def, c))) {
-        const a: Action = { kind, dice }
-        if (!isLegal(state, who, a)) continue
-        const key = actionKey(p, a)
-        if (seen.has(key)) continue
-        seen.add(key)
-        out.push(a)
+      for (const placed of combinations(dice, k).flatMap((c) => placements(def, c))) {
+        for (const set of choices(p, placed)) {
+          const x: Play = set ? { kind, dice: placed, set } : { kind, dice: placed }
+          if (!playLegal(state, who, x)) continue
+          const key = playKey(p, x, state.config.maxHp)
+          if (seen.has(key)) continue
+          seen.add(key)
+          out.push(x)
+        }
       }
     }
   }
   return out
 }
 
-/** 行動の定義。パスは null */
-// Stryker disable next-line ConditionalExpression,StringLiteral: パスを表で引いても undefined になり、null と同じく性質を持たない行動として扱われる
-const defOf = (a: Action): ActionDef | null => (a.kind === 'pass' ? null : ACTION_DEFS[a.kind])
+/** 行動の回数を増やす行動 top に、残りのダイスで一緒に使う行動を、limit 個まで足した全ての手 */
+function withMore(state: GameState, who: PlayerIndex, kinds: ActionKind[], top: Play, limit: number): Action[] {
+  const free = placeableDice(state.players[who])
+  const out: Action[] = []
+  const grow = (more: Play[]) => {
+    if (more.length === limit) return
+    const parts = [top, ...more]
+    const taken = new Set(parts.flatMap((x) => filled(x.dice)))
+    const cards = new Set(parts.map((x) => ACTION_DEFS[x.kind].card))
+    const rest = kinds.filter((k) => !ACTION_DEFS[k].multi && !cards.has(ACTION_DEFS[k].card))
+    for (const x of playsWith(
+      state,
+      who,
+      rest,
+      free.filter((d) => !taken.has(d)),
+    )) {
+      const next = [...more, x]
+      out.push({ ...top, with: next })
+      grow(next)
+    }
+  }
+  grow([])
+  return out
+}
 
-const PASS: Action = { kind: 'pass' }
+/**
+ * このステップで選べる行動を全て列挙する。効果の同じ手は一つにまとめる。
+ * 同じ値のダイスの入れ替えや、効果の変わらない置き場の違いは、前から詰めた置き方だけを残す。
+ * 持ち込んだ5枚の並びの順に並べ、行動の回数を増やすカードは、一緒に使う行動との組を全て並べる
+ */
+export function legalActions(state: GameState, who: PlayerIndex): Action[] {
+  const p = state.players[who]
+  const kinds = p.deck.flatMap(kindsOfCard)
+  const out: Action[] = [{ kind: 'pass' }]
+  const seen = new Set<string>()
+  for (const x of playsWith(state, who, kinds, placeableDice(p))) {
+    const limit = ACTION_DEFS[x.kind].multi
+    for (const a of limit ? withMore(state, who, kinds, x, limit) : [x]) {
+      const key = actionKey(state, who, a)
+      if (seen.has(key)) continue
+      seen.add(key)
+      out.push(a)
+    }
+  }
+  return out
+}
 
 /** 体力の減っていない様子。双方の様子を渡さずに攻撃を求めるときに使う */
 export const FRESH: readonly [PowerCtx, PowerCtx] = [
@@ -165,43 +317,64 @@ export function ctxOf(state: GameState, who: PlayerIndex): PowerCtx {
   return { hp: state.players[who].hp, maxHp: state.config.maxHp }
 }
 
+const otherOf = (i: PlayerIndex): PlayerIndex => (i === 0 ? 1 : 0)
+
+/** 守りの減らす量の合計 */
+const guardOf = (moves: readonly Move[]) => moves.reduce((sum, m) => sum + (defOf(m).guard?.(m.vals) ?? 0), 0)
+
+/**
+ * 一つのステップの、ぶつかり合いの途中。守りの残りの量と、守りが返したかを、先に当たる攻撃から続けて持つ
+ */
+interface Field {
+  /** 双方の守りが、まだ減らせる量 */
+  pool: [number, number]
+  /** 双方の守りが、減らせる攻撃を受けて、もう返したか */
+  returned: [boolean, boolean]
+}
+
 /**
  * phase の時に放たれた攻撃を全て、その行方とともに返す。fast は先に当たる攻撃、main はほかの攻撃。
  * 受けた側が攻撃を返す構えなら、障壁で減る攻撃は攻撃した側にそのまま当たる。
- * 守りで減った攻撃があり、その守りが返す性質を持つなら、攻撃した側へ返すダメージも攻撃として並べる。
- * 攻撃した側は守っていないので、返すダメージは減らない
+ * 受けた側が守っていれば、障壁で減る攻撃を、置いた順に守りの量の残りから減らす。
+ * 減らせる攻撃を受けた守りのうち、返す性質を持つものは、守りのカードごとにステップに1回、攻撃した側へ返す。
+ * 攻撃した側への返しは、攻撃した側の守りでは減らない
  */
-function attacks(
-  vals: readonly [number[], number[]],
-  acts: readonly [Action, Action],
-  ctx: readonly [PowerCtx, PowerCtx],
-  phase: Phase,
-): Strike[] {
+function attacks(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx], phase: Phase, f: Field) {
   const out: Strike[] = []
+  const hit: [boolean, boolean] = [false, false]
   for (const from of [0, 1] as const) {
-    const a = acts[from]
-    if (a.kind === 'pass') continue
-    const def = ACTION_DEFS[a.kind]
-    if (!def.power || !!def.fast !== (phase === 'fast')) continue
-    const power = def.power(vals[from], ctx[from])
-    const other: PlayerIndex = from === 0 ? 1 : 0
-    const answer = defOf(acts[other])
-    if (answer?.reflects && !def.piercing) {
-      out.push({ from, kind: a.kind, power, outcome: 'reflected', to: from, dealt: power, phase })
-      continue
+    const to = otherOf(from)
+    const answer = moves[to]
+    const reflects = answer.some((m) => defOf(m).reflects)
+    const guards = answer.some((m) => defOf(m).guard)
+    for (const m of moves[from]) {
+      const def = defOf(m)
+      if (!def.power || !!def.fast !== (phase === 'fast')) continue
+      const power = def.power(m.vals, ctx[from])
+      if (reflects && !def.piercing) {
+        out.push({ from, kind: m.kind, power, outcome: 'reflected', to: from, dealt: power, phase })
+        continue
+      }
+      if (guards && !def.piercing) {
+        const dealt = Math.max(0, power - f.pool[to])
+        f.pool[to] = Math.max(0, f.pool[to] - power)
+        hit[to] = true
+        out.push({ from, kind: m.kind, power, outcome: 'guarded', to, dealt, phase })
+        continue
+      }
+      const outcome: Outcome = guards || reflects ? 'pierced' : 'hit'
+      out.push({ from, kind: m.kind, power, outcome, to, dealt: power, phase })
     }
-    const guardOf = answer?.guard
-    const guard = guardOf && !def.piercing ? guardOf(vals[other]) : 0
-    const stance = !!guardOf || !!answer?.reflects
-    const outcome: Outcome = stance ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
-    out.push({ from, kind: a.kind, power, outcome, to: other, dealt: Math.max(0, power - guard), phase })
   }
-  for (const s of [...out]) {
-    const b = acts[s.to]
-    // Stryker disable next-line ConditionalExpression,StringLiteral: 守りで減った攻撃なら、守った側の行動はパスではない。型を絞るための条件で、結果は変わらない
-    if (s.outcome !== 'guarded' || b.kind === 'pass') continue
-    const back = ACTION_DEFS[b.kind].thorns
-    if (back) out.push({ from: s.to, kind: b.kind, power: back, outcome: 'returned', to: s.from, dealt: back, phase })
+  // 返しは、返した先の席の順に並べる
+  for (const to of [0, 1] as const) {
+    const by = otherOf(to)
+    if (!hit[by] || f.returned[by]) continue
+    f.returned[by] = true
+    for (const m of moves[by]) {
+      const back = defOf(m).thorns
+      if (back) out.push({ from: by, kind: m.kind, power: back, outcome: 'returned', to, dealt: back, phase })
+    }
   }
   return out
 }
@@ -212,92 +385,92 @@ export interface Clash {
   strikes: Strike[]
   /** 双方が炎で自分も焼けて受けるダメージ */
   burn: [number, number]
-  /** 先に当たる攻撃で倒れて、行動が起きなかった側 */
+  /** 先に当たる攻撃で倒れて、先に当たる攻撃のほかの効果が起きなかった側。何もしなかった側も倒れれば入る */
   cancelled: [boolean, boolean]
   /** 双方が受けるダメージ。攻撃で受けた分と、自分が焼けた分を足す */
   damage: [number, number]
+  /** 双方の、起きた効果 */
+  live: [Move[], Move[]]
+  /** 守った側が、障壁で減る攻撃を一つ以上受け、全て防ぎきったか */
+  blocked: [boolean, boolean]
 }
 
 /**
- * 双方の行動のぶつかり合い。先に当たる攻撃を解決し、それで倒れた側の行動は起きなかったことにして、残りを同時に解決する。
- * 先に当たる攻撃を放った側は、もう行動を終えているので、倒れても行動は起きている。
- * ctx は双方の、ステップを解決する前の様子
+ * 双方の効果のぶつかり合い。先に当たる攻撃を解決し、それで倒れた側の、先に当たる攻撃のほかの効果は起きなかったことにして、
+ * 残りを同時に解決する。先に当たる攻撃は、もう起きているので、放った側が倒れても起きている。
+ * 守りの量は、先に当たる攻撃から続けて減っていく。ctx は双方の、ステップを解決する前の様子
  */
-export function clash(
-  vals: readonly [number[], number[]],
-  acts: readonly [Action, Action],
-  ctx: readonly [PowerCtx, PowerCtx] = FRESH,
-): Clash {
-  const first = attacks(vals, acts, ctx, 'fast')
+export function clash(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx] = FRESH): Clash {
+  const f: Field = { pool: [guardOf(moves[0]), guardOf(moves[1])], returned: [false, false] }
+  const first = attacks(moves, ctx, 'fast', f)
   const hp = [ctx[0].hp, ctx[1].hp]
   for (const s of first) hp[s.to] -= s.dealt
-  const down = (i: PlayerIndex) => hp[i] <= 0 && !defOf(acts[i])?.fast
+  const down = (i: PlayerIndex) => hp[i] <= 0 && !(moves[i].length > 0 && moves[i].every((m) => defOf(m).fast))
   const cancelled: [boolean, boolean] = [down(0), down(1)]
-  const live = liveActs(acts, cancelled)
-  const list = [...first, ...attacks(vals, live, ctx, 'main')]
-  const burn = burnOf(vals, live)
+  const live: [Move[], Move[]] = [0, 1].map((i) =>
+    cancelled[i] ? moves[i].filter((m) => defOf(m).fast) : moves[i],
+  ) as [Move[], Move[]]
+  const list = [...first, ...attacks(live, ctx, 'main', f)]
+  const burn = burnOf(live)
   const damage: [number, number] = [...burn]
   for (const s of list) damage[s.to] += s.dealt
-  return { strikes: list, burn, cancelled, damage }
-}
-
-/** 起きた行動。倒れて行動が起きなかった側はパスにする */
-function liveActs(acts: readonly [Action, Action], cancelled: readonly [boolean, boolean]): [Action, Action] {
-  return [cancelled[0] ? PASS : acts[0], cancelled[1] ? PASS : acts[1]]
+  const blocked = ([0, 1] as const).map((i) => {
+    const guarded = list.filter((s) => s.to === i && s.outcome === 'guarded')
+    return guarded.length > 0 && guarded.every((s) => s.dealt === 0)
+  }) as [boolean, boolean]
+  return { strikes: list, burn, cancelled, damage, live, blocked }
 }
 
 /** 一つのステップで放たれた攻撃を全て、その行方とともに返す。ターンの終わりの攻撃は含まない */
-export function strikes(
-  vals: readonly [number[], number[]],
-  acts: readonly [Action, Action],
-  ctx: readonly [PowerCtx, PowerCtx] = FRESH,
-): Strike[] {
-  return clash(vals, acts, ctx).strikes
+export function strikes(moves: readonly [Move[], Move[]], ctx: readonly [PowerCtx, PowerCtx] = FRESH): Strike[] {
+  return clash(moves, ctx).strikes
 }
 
 /** 双方が炎で自分も焼けて受けるダメージ [0が受ける, 1が受ける]。障壁では減らない */
-export function burnOf(vals: readonly [number[], number[]], acts: readonly [Action, Action]): [number, number] {
-  const pay = (who: PlayerIndex) => defOf(acts[who])?.burn?.(vals[who]) ?? 0
-  return [pay(0), pay(1)]
+export function burnOf(moves: readonly [Move[], Move[]]): [number, number] {
+  const pay = (list: Move[]) => list.reduce((sum, m) => sum + (defOf(m).burn?.(m.vals) ?? 0), 0)
+  return [pay(moves[0]), pay(moves[1])]
 }
 
 /** 一つのステップで双方が受けるダメージ [0が受ける, 1が受ける]。ターンの終わりの分は含まない */
 export function stepDamage(
-  vals: readonly [number[], number[]],
-  acts: readonly [Action, Action],
+  moves: readonly [Move[], Move[]],
   ctx: readonly [PowerCtx, PowerCtx] = FRESH,
 ): [number, number] {
-  return clash(vals, acts, ctx).damage
+  return clash(moves, ctx).damage
 }
 
-/** 詠唱は、同じステップに相手が詠唱を崩す行動をしたときだけ崩れる。攻撃のダメージでは崩れない */
-export function breaksChant(by: Action): boolean {
-  return !!defOf(by)?.disrupts
-}
-
-/** 行動で振り足すダイスの数 */
-export function extraDiceOf(a: Action): number {
-  return defOf(a)?.extraDice ?? 0
-}
-
-/** このターンに使ったカードの行動の種類。ターンの終わりに起きることは、使ったカードから決まる */
-function usedKinds(p: PlayerState): ActionKind[] {
-  return p.usedCards.flatMap(kindsOfCard)
+/** 詠唱は、同じステップに相手が詠唱を崩す効果を起こしたときだけ崩れる。攻撃のダメージでは崩れない */
+export function breaksChant(by: readonly Move[]): boolean {
+  return by.some((m) => defOf(m).disrupts)
 }
 
 /**
- * ターンの終わりに起きること。使ったカードの、ターンの終わりに自分も焼ける分を払い、
- * それを足したこのターンに焼けた分を、延焼の性質を持つカードを使った側が相手に与える。障壁では減らない
+ * 行動で振り足すダイスの数。振り足したダイスは次のステップに使うので、二ステップ目には振らない。
+ * 好きな目のダイスを得る効果と一緒なら、振り足したダイスも捨てるので振らない
+ */
+export function extraDiceOf(state: GameState, who: PlayerIndex, a: Action): number {
+  if (state.step === 2) return 0
+  const moves = movesOf(state.players[who], a)
+  if (moves.some((m) => defOf(m).transmute)) return 0
+  return moves.reduce((sum, m) => sum + (defOf(m).extraDice ?? 0), 0)
+}
+
+/** 目の中で一番大きいもの。無ければ null */
+const largest = (vals: number[]): number | null => (vals.length === 0 ? null : Math.max(...vals))
+
+/**
+ * ターンの終わりに起きること。このターンに起きた効果の、ターンの終わりに自分も焼ける分を払い、
+ * それを足したこのターンに焼けた分を、延焼の性質を持つ効果を起こした回数だけ、相手に与える。障壁では減らない
  */
 function turnEnd(players: readonly [PlayerState, PlayerState]): { endBurn: [number, number]; strikes: Strike[] } {
-  const pay = (p: PlayerState) => usedKinds(p).reduce((sum, k) => sum + (ACTION_DEFS[k].endBurn ?? 0), 0)
+  const pay = (p: PlayerState) => p.acted.reduce((sum, k) => sum + (ACTION_DEFS[k].endBurn ?? 0), 0)
   const endBurn: [number, number] = [pay(players[0]), pay(players[1])]
   const list: Strike[] = []
   for (const from of [0, 1] as const) {
-    const kind = usedKinds(players[from]).find((k) => ACTION_DEFS[k].ignite)
-    if (!kind) continue
     const power = players[from].burned + endBurn[from]
-    list.push({ from, kind, power, outcome: 'hit', to: from === 0 ? 1 : 0, dealt: power, phase: 'end' })
+    for (const kind of players[from].acted.filter((k) => ACTION_DEFS[k].ignite))
+      list.push({ from, kind, power, outcome: 'hit', to: otherOf(from), dealt: power, phase: 'end' })
   }
   return { endBurn, strikes: list }
 }
@@ -316,44 +489,57 @@ export function resolveStep(
   if (state.winner !== null) throw new Error('ゲームは終了している')
   acts.forEach((a, i) => {
     if (!isLegal(state, i as PlayerIndex, a)) throw new Error(`不正な行動: ${JSON.stringify(a)}`)
-    if (extra[i].length !== extraDiceOf(a)) throw new Error(`振り足すダイスの数が違う: ${JSON.stringify(extra[i])}`)
+    if (extra[i].length !== extraDiceOf(state, i as PlayerIndex, a))
+      throw new Error(`振り足すダイスの数が違う: ${JSON.stringify(extra[i])}`)
   })
   const vals: [number[], number[]] = [diceValues(state.players[0], acts[0]), diceValues(state.players[1], acts[1])]
-  const c = clash(vals, acts, [ctxOf(state, 0), ctxOf(state, 1)])
-  const live = liveActs(acts, c.cancelled)
+  const moves: [Move[], Move[]] = [movesOf(state.players[0], acts[0]), movesOf(state.players[1], acts[1])]
+  const c = clash(moves, [ctxOf(state, 0), ctxOf(state, 1)])
   const chants: [ChantResult, ChantResult] = [null, null]
   const refunded: [boolean, boolean] = [false, false]
 
   const update = (p: PlayerState, i: PlayerIndex): PlayerState => {
-    const other: PlayerIndex = i === 0 ? 1 : 0
+    const theirs = c.live[otherOf(i)]
     // 相手が凍らせた目は、次のステップに置けない。凍らされていなければ、前の凍結はこのステップで解ける
-    const by = defOf(live[other])
     const base = {
       ...p,
       hp: p.hp - c.damage[i],
       burned: p.burned + c.burn[i],
-      frozen: by?.freezes ? vals[other][0] : null,
+      frozen: largest(theirs.filter((m) => defOf(m).freezes).map((m) => m.vals[0])),
+      last: [],
     }
-    const a = live[i]
-    if (a.kind === 'pass') return base
-    const def = ACTION_DEFS[a.kind]
+    const a = acts[i]
+    if (a.kind === 'pass' || c.cancelled[i]) return base
+    const mine = c.live[i]
+    const parts = partsOf(a)
     let chant = p.chant
-    if (def.chant) {
-      const broken = breaksChant(live[other])
+    if (mine.some((m) => defOf(m).chant)) {
+      const broken = breaksChant(theirs)
       chant = broken ? 'broken' : 'charged'
       chants[i] = broken ? 'broken' : 'kept'
     }
-    if (def.needsCharge) chant = 'none'
-    // 障壁で減る攻撃を防ぎきったら、置いたダイスが戻る
-    // Stryker disable next-line ConditionalExpression,LogicalOperator: 守る側は攻撃しないので、ステップの攻撃は全て自分に向いた攻撃で、0 しか通らないのは守りで減ったときだけ。読む人のために条件を書いている
-    refunded[i] = !!def.refund && c.strikes.some((s) => s.to === i && s.outcome === 'guarded' && s.dealt === 0)
+    if (parts.some((x) => ACTION_DEFS[x.kind].needsCharge)) chant = 'none'
+    // 障壁で減る攻撃を全て防ぎきったら、防ぎきると戻る守りに置いたダイスが戻る
+    const back = new Set(parts.filter((x) => ACTION_DEFS[x.kind].refund && c.blocked[i]).flatMap((x) => filled(x.dice)))
+    refunded[i] = back.size > 0
+    let roll = [...p.roll, ...extra[i]]
+    let usedDice = [...p.usedDice, ...actionDice(a).filter((d) => !back.has(d))]
+    const forged = largest(mine.map((m) => defOf(m).transmute ?? 0).filter((n) => n > 0))
+    if (state.step === 1 && forged !== null) {
+      // 残ったダイスを全て捨て、好きな目のダイスを得る
+      usedDice = roll.map((_, k) => k)
+      roll = [...roll, ...Array<number>(forged).fill(WILD)]
+    }
+    const cards = parts.map((x) => ACTION_DEFS[x.kind].card).filter((card) => !p.usedCards.includes(card))
     return {
       ...base,
-      roll: [...p.roll, ...extra[i]],
-      usedDice: refunded[i] ? p.usedDice : [...p.usedDice, ...actionDice(a)],
-      usedCards: p.usedCards.includes(def.card) ? p.usedCards : [...p.usedCards, def.card],
+      roll,
+      usedDice,
+      usedCards: [...p.usedCards, ...cards],
       chant,
-      carry: def.carries ? vals[i][0] : p.carry,
+      carry: largest(mine.filter((m) => defOf(m).carries).map((m) => m.vals[0])) ?? p.carry,
+      last: mine.filter((m) => !defOf(m).multi).map((m) => ({ kind: m.kind, vals: m.vals })),
+      acted: [...p.acted, ...mine.map((m) => m.kind)],
     }
   }
   let players: [PlayerState, PlayerState] = [update(state.players[0], 0), update(state.players[1], 1)]
@@ -378,6 +564,7 @@ export function resolveStep(
     step: state.step,
     actions: acts,
     values: vals,
+    moves,
     strikes: [...c.strikes, ...late],
     burn: c.burn,
     endBurn,
@@ -410,7 +597,7 @@ export function turnOver(state: GameState): boolean {
 
 /**
  * 次のターンへ。ダイスを振り直し、使用済みの記録を消す。持ち越したダイスは、振ったダイスの後ろに目ごと加える。
- * 二ステップ目に凍らされた目は、次のターンの一ステップ目まで置けない
+ * 二ステップ目に凍らされた目は、次のターンの一ステップ目まで置けない。直前のステップの効果は、もう一度出せるように残す
  */
 export function nextTurn(state: GameState, rng: Rng): GameState {
   const reset = (p: PlayerState): PlayerState => ({
@@ -421,6 +608,7 @@ export function nextTurn(state: GameState, rng: Rng): GameState {
     chant: 'none',
     burned: 0,
     carry: null,
+    acted: [],
   })
   return { ...state, turn: state.turn + 1, step: 1, players: [reset(state.players[0]), reset(state.players[1])] }
 }

@@ -5,8 +5,20 @@
 import { describe, expect, it } from 'vitest'
 import { makeState, type SeatSetup, seeded } from '../test/helpers'
 import type { ActionKind, CardId } from './cards'
-import { isLegal, isTwoPairs, keptRow, legalActions, nextTurn, placeableDice, resolveStep, turnOver } from './rules'
-import type { Action, GameState } from './types'
+import {
+  diceValues,
+  extraDiceOf,
+  isLegal,
+  isTwoPairs,
+  keptRow,
+  legalActions,
+  nextTurn,
+  placeableDice,
+  resolveStep,
+  turnOver,
+} from './rules'
+import type { Action, GameState, Play } from './types'
+import { WILD } from './types'
 
 const pass: Action = { kind: 'pass' }
 /** ダイスを置き場の順に置いた行動 */
@@ -15,6 +27,13 @@ const act = (kind: ActionKind, ...dice: (number | null)[]): Action => ({ kind, d
 const FIRST: CardId[] = ['meteor', 'allOut', 'lastStand', 'freeze', 'darkWall']
 const SECOND: CardId[] = ['galeWard', 'thunder', 'wildfire', 'overload', 'twinDragon']
 const THIRD: CardId[] = ['meditate', 'flameStrike', 'barrier', 'bullet', 'interrupt']
+
+/** 好きな目のダイスを置いた行動。set は置き場ごとに選んだ目 */
+const chosen = (kind: ActionKind, dice: (number | null)[], set: (number | null)[]): Play => ({ kind, dice, set })
+/** 行動の回数を増やす行動に、一緒に使う行動を足したもの */
+const along = (top: Play, ...more: Play[]): Action => ({ ...top, with: more })
+/** カードの行動一つ */
+const play = (kind: ActionKind, ...dice: (number | null)[]): Play => ({ kind, dice })
 
 /** 5枚を持ち込んだ席 */
 const seat = (deck: CardId[], setup: SeatSetup): SeatSetup => ({ ...setup, deck })
@@ -351,5 +370,307 @@ describe('背水', () => {
     // 16 失って 4 増える
     expect(s.history[0].strikes[0]).toMatchObject({ kind: 'lastStand', power: 7 })
     expect(s.players.map((p) => p.hp)).toEqual([0, 13])
+  })
+})
+
+describe('錬成', () => {
+  const deck: CardId[] = ['transmute', 'flameStrike', 'meditate', 'bullet', 'allOut']
+  const start = () => makeState(seat(deck, { roll: [6, 2, 2] }), { roll: [1, 2, 3] })
+  it('一ステップ目だけに使え、残りのダイスを捨て、二ステップ目に好きな目のダイスを3個使う', () => {
+    const s = resolveStep(start(), [act('transmute', 1), pass])
+    expect(s.players[0].roll).toEqual([6, 2, 2, WILD, WILD, WILD])
+    expect(s.players[0].usedDice).toEqual([0, 1, 2])
+    expect(placeableDice(s.players[0])).toEqual([3, 4, 5])
+    expect(isLegal(s, 0, act('transmute', 3))).toBe(false)
+    const fire = chosen('flameStrike', [3, 4], [6, 1])
+    expect(isLegal(s, 0, fire)).toBe(true)
+    const done = resolveStep(s, [fire, pass])
+    expect(done.history[1].values[0]).toEqual([6, 1])
+    expect(done.history[1].damage).toEqual([1, 8])
+  })
+  it('好きな目のダイスは、目を選ばなければ置けず、選べるのは1から6で、置いた置き場だけに選ぶ', () => {
+    const s = resolveStep(start(), [act('transmute', 1), pass])
+    expect(isLegal(s, 0, act('flameStrike', 3, 4))).toBe(false)
+    expect(isLegal(s, 0, chosen('flameStrike', [3, 4], [7, 1]))).toBe(false)
+    expect(isLegal(s, 0, chosen('flameStrike', [3, 4], [0, 1]))).toBe(false)
+    expect(isLegal(s, 0, chosen('flameStrike', [3, 4], [6]))).toBe(false)
+    expect(isLegal(s, 0, chosen('allOut', [3, null, null, null], [6, 1, null, null]))).toBe(false)
+    expect(isLegal(s, 0, chosen('allOut', [3, null, null, null], [6, null, null, null]))).toBe(true)
+    // 振ったダイスの置き場には目を選べない
+    const later = makeState(seat(deck, { roll: [5, 2, WILD], usedDice: [1] }), { roll: [1, 2, 3] }, 2)
+    expect(isLegal(later, 0, chosen('flameStrike', [0, 2], [null, 1]))).toBe(true)
+    expect(isLegal(later, 0, chosen('flameStrike', [0, 2], [5, 1]))).toBe(false)
+  })
+  it('目を選ばずに置いた好きな目のダイスは、目の決まらないダイスのまま読む', () => {
+    const s = resolveStep(start(), [act('transmute', 1), pass])
+    expect(diceValues(s.players[0], act('flameStrike', 3, 4))).toEqual([WILD, WILD])
+  })
+  it('凍らされた目は選べない', () => {
+    const s = makeState(
+      seat(deck, { roll: [6, 2, WILD, WILD, WILD], usedDice: [0, 1], frozen: 6 }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    expect(isLegal(s, 0, chosen('flameStrike', [2, 3], [6, 1]))).toBe(false)
+    expect(isLegal(s, 0, chosen('flameStrike', [2, 3], [5, 1]))).toBe(true)
+    expect(legalActions(s, 0).every((a) => a.kind === 'pass' || !(a.set ?? []).includes(6))).toBe(true)
+  })
+  it('合法手は、効果の同じ選び方を一つにまとめる', () => {
+    const s = resolveStep(start(), [act('transmute', 1), pass])
+    const count = (kind: ActionKind) => legalActions(s, 0).filter((a) => a.kind === kind).length
+    // 魔弾は目に関わらず4なので一つ、全開は個数ごとに一つ、炎撃は威力と焼ける量の組ごと、瞑想は持ち越す目ごと
+    expect(count('bullet')).toBe(1)
+    expect(count('allOut')).toBe(3)
+    expect(count('flameStrike')).toBe(36)
+    expect(count('meditate')).toBe(6)
+  })
+  it('瞑想で持ち越すなら、選んだ目を持ち越す', () => {
+    const s = resolveStep(start(), [act('transmute', 1), pass])
+    const done = resolveStep(s, [chosen('meditate', [4], [6]), pass])
+    expect(done.players[0].carry).toBe(6)
+    expect(nextTurn(done, () => 0).players[0].roll).toEqual([1, 1, 1, 6])
+  })
+  it('振り足す行動と一緒なら振り足さず、そのステップの後に残ったダイスを全て捨てる', () => {
+    const both: CardId[] = ['doubleCast', 'overload', 'transmute', 'darkWall', 'flameStrike']
+    const s = makeState(seat(both, { roll: [1, 2, 3, 4] }), { roll: [1, 2, 3] })
+    const a = along(play('doubleCast', 0), play('overload', 1), play('transmute', 2))
+    expect(extraDiceOf(s, 0, a)).toBe(0)
+    const done = resolveStep(s, [a, pass])
+    expect(done.players[0].roll).toEqual([1, 2, 3, 4, WILD, WILD, WILD])
+    expect(done.players[0].usedDice).toEqual([0, 1, 2, 3])
+  })
+})
+
+describe('二重詠唱', () => {
+  const deck: CardId[] = ['doubleCast', 'interrupt', 'barrier', 'flameStrike', 'darkWall']
+  const start = (mine: number[] = [3, 4, 5]) => makeState(seat(deck, { roll: mine }), { roll: [6, 1, 2] })
+  it('一緒に使うカードは1枚から2枚で、同じカードや同じダイスは重ねられない', () => {
+    const s = start([3, 4, 5, 6])
+    // 表に無い行動や、置き場の形をしていない行動は合法でない。通信で届いた形が壊れていても解決しない
+    const broken = (x: unknown) => isLegal(s, 0, x as Action)
+    expect(broken({ kind: 'nothing', dice: [0] })).toBe(false)
+    expect(broken(along(play('doubleCast', 0), { kind: 'nothing', dice: [1] } as unknown as Play))).toBe(false)
+    expect(broken(along(play('doubleCast', 0), { kind: 'interrupt', dice: 1 } as unknown as Play))).toBe(false)
+    expect(broken({ ...play('doubleCast', 0), with: 'interrupt' })).toBe(false)
+    expect(broken({ ...play('interrupt', 0), set: 'x' })).toBe(false)
+    expect(isLegal(s, 0, act('doubleCast', 0))).toBe(false)
+    expect(isLegal(s, 0, along(play('doubleCast', 0)))).toBe(false)
+    expect(isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 1)))).toBe(true)
+    expect(isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2)))).toBe(true)
+    expect(isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 1), play('interrupt', 2)))).toBe(false)
+    expect(isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 0)))).toBe(false)
+    expect(isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 1)))).toBe(false)
+    expect(
+      isLegal(s, 0, along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2), play('darkWall', 3))),
+    ).toBe(false)
+    // 一緒に使う行動は、さらに一緒に使う行動を持てない。行動の回数を増やさないカードは一緒に使う行動を持てない
+    expect(isLegal(s, 0, along(play('doubleCast', 0), { ...play('interrupt', 1), with: [] }))).toBe(false)
+    expect(isLegal(s, 0, along(play('interrupt', 0), play('barrier', 1)))).toBe(false)
+    // 合法手に、それ自身だけの手は無く、一緒に使う手は並ぶ
+    const listed = legalActions(s, 0).filter((a) => a.kind === 'doubleCast')
+    expect(listed.length).toBeGreaterThan(0)
+    expect(listed.every((a) => a.kind !== 'pass' && (a.with?.length ?? 0) >= 1)).toBe(true)
+  })
+  it('一緒に使った行動は同時に起き、カードもダイスも全て使ったことになる', () => {
+    const s = resolveStep(start(), [
+      along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2)),
+      act('flameStrike', 0, 1),
+    ])
+    // 炎撃 8 は風壁 10 に防ぎきられ、3を返される。氷礫は2当たる。相手は自分も1焼ける
+    expect(s.history[0].damage).toEqual([0, 6])
+    expect(s.players[0].usedCards).toEqual(['doubleCast', 'interrupt', 'barrier'])
+    expect(s.players[0].usedDice).toEqual([0, 1, 2])
+  })
+  it('二つの攻撃は、守りの量の残りから置いた順に減らされ、守りは一度だけ返す', () => {
+    const s = resolveStep(makeState(seat(deck, { roll: [1, 6, 1, 2] }), { roll: [3, 1, 2] }), [
+      along(play('doubleCast', 0), play('flameStrike', 1, 2), play('interrupt', 3)),
+      act('barrier', 0),
+    ])
+    expect(s.history[0].strikes).toEqual([
+      { from: 0, kind: 'flameStrike', power: 8, outcome: 'guarded', to: 1, dealt: 2, phase: 'main' },
+      { from: 0, kind: 'interrupt', power: 2, outcome: 'guarded', to: 1, dealt: 2, phase: 'main' },
+      { from: 1, kind: 'barrier', power: 3, outcome: 'returned', to: 0, dealt: 3, phase: 'main' },
+    ])
+    expect(s.history[0].damage).toEqual([4, 4])
+  })
+  it('守りを重ねると合計で減らし、戻る守りは全て防ぎきったときに、そのダイスだけ戻る', () => {
+    const s = resolveStep(makeState({ roll: [6, 1, 2] }, seat(deck, { roll: [5, 2, 3] })), [
+      act('flameStrike', 0, 1),
+      along(play('doubleCast', 0), play('barrier', 1), play('darkWall', 2)),
+    ])
+    // 炎撃 8 を風壁 4 と闇壁 6 の合計 10 で防ぎきる
+    expect(s.history[0].strikes.map((x) => [x.outcome, x.dealt])).toEqual([
+      ['guarded', 0],
+      ['returned', 3],
+    ])
+    expect(s.history[0].refunded).toEqual([false, true])
+    expect(s.players[1].usedDice).toEqual([0, 1])
+  })
+  it('先に当たる攻撃で倒れたら、ほかの効果は起きない。先に当たる攻撃と一緒なら、倒した後に残りが当たる', () => {
+    const fast: CardId[] = ['doubleCast', 'thunder', 'flameStrike', 'interrupt', 'barrier']
+    const down = resolveStep(makeState(seat(fast, { roll: [1, 6, 1, 2], hp: 2 }), seat(fast, { roll: [5, 1, 3] })), [
+      along(play('doubleCast', 0), play('flameStrike', 1, 2), play('interrupt', 3)),
+      act('thunder', 0, 1),
+    ])
+    expect(down.history[0].cancelled).toEqual([true, false])
+    expect(down.history[0].damage).toEqual([5, 0])
+    const win = resolveStep(makeState(seat(fast, { roll: [1, 5, 1, 6, 1] }), seat(fast, { roll: [6, 1, 2], hp: 3 })), [
+      along(play('doubleCast', 0), play('thunder', 1, 2), play('flameStrike', 3, 4)),
+      act('flameStrike', 0, 1),
+    ])
+    expect(win.history[0].cancelled).toEqual([false, true])
+    expect(win.history[0].strikes.map((x) => [x.kind, x.phase, x.dealt])).toEqual([
+      ['thunder', 'fast', 5],
+      ['flameStrike', 'main', 8],
+    ])
+    expect(win.players[0].hp).toBe(19)
+  })
+})
+
+describe('残響', () => {
+  const deck: CardId[] = ['echo', 'flameStrike', 'doubleCast', 'interrupt', 'barrier']
+  it('直前のステップに起こした効果を、同じ目でもう一度出す。払うのは残響のダイス1個だけ', () => {
+    let s = makeState(seat(deck, { roll: [6, 2, 4] }), { roll: [1, 2, 3] })
+    expect(isLegal(s, 0, act('echo', 2))).toBe(false)
+    s = resolveStep(s, [act('flameStrike', 0, 1), pass])
+    expect(s.players[0].last).toEqual([{ kind: 'flameStrike', vals: [6, 2] }])
+    s = resolveStep(s, [act('echo', 2), pass])
+    const r = s.history[1]
+    expect(r.moves[0]).toEqual([{ kind: 'flameStrike', vals: [6, 2], echoed: true }])
+    expect(r.damage).toEqual([2, 8])
+    expect(s.players[0].usedCards).toEqual(['flameStrike', 'echo'])
+    expect(s.players[0].usedDice).toEqual([0, 1, 2])
+    // もう一度出した効果も、直前の効果として残る
+    expect(s.players[0].last).toEqual([{ kind: 'flameStrike', vals: [6, 2] }])
+  })
+  it('一ステップ目なら前のターンの二ステップ目が直前で、使えるステップや詠唱の条件を受けない', () => {
+    const cast = makeState(seat(deck, { roll: [1, 2, 3], last: [{ kind: 'spearCast', vals: [6, 5] }] }), {
+      roll: [1, 2, 3],
+    })
+    const s = resolveStep(cast, [act('echo', 0), act('barrier', 2)])
+    expect(s.history[0].strikes).toEqual([
+      { from: 0, kind: 'spearCast', power: 11, outcome: 'pierced', to: 1, dealt: 11, phase: 'main' },
+    ])
+    const meteor = makeState(
+      seat(deck, {
+        roll: [1, 2, 3],
+        usedDice: [0],
+        usedCards: ['interrupt'],
+        last: [{ kind: 'meteor', vals: [6, 6, 5] }],
+      }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    expect(resolveStep(meteor, [act('echo', 1), pass]).history[0].damage).toEqual([0, 17])
+  })
+  it('何もしなかったステップの後は、繰り返すものが無いので使えない', () => {
+    let s = makeState(seat(deck, { roll: [1, 2, 3], last: [{ kind: 'interrupt', vals: [2] }] }), { roll: [1, 2, 3] })
+    expect(isLegal(s, 0, act('echo', 0))).toBe(true)
+    s = resolveStep(s, [pass, pass])
+    expect(s.players[0].last).toEqual([])
+    expect(isLegal(s, 0, act('echo', 0))).toBe(false)
+    expect(kinds(s, 0).has('echo')).toBe(false)
+  })
+  it('二重詠唱で一緒に使った効果を全て繰り返し、二重詠唱そのものは繰り返さない', () => {
+    let s = makeState(seat(deck, { roll: [1, 2, 3, 4] }), { roll: [6, 1, 2] })
+    s = resolveStep(s, [along(play('doubleCast', 0), play('interrupt', 1), play('barrier', 2)), pass])
+    expect(s.players[0].last).toEqual([
+      { kind: 'interrupt', vals: [2] },
+      { kind: 'barrier', vals: [3] },
+    ])
+    s = resolveStep(s, [act('echo', 3), act('flameStrike', 0, 1)])
+    // 氷礫の2が当たり、風壁 6 が炎撃 8 を 2 まで減らして3を返す
+    expect(s.history[1].damage).toEqual([2, 2 + 1 + 3])
+  })
+  it('威力は今の体力で決め直し、ターンの終わりに起きることも出した分だけ起きる', () => {
+    const hurt = makeState(
+      seat(['echo', 'lastStand', 'wildfire', 'overload', 'transmute'], {
+        roll: [1, 2, 3],
+        hp: 8,
+        last: [{ kind: 'lastStand', vals: [5, 1] }],
+      }),
+      { roll: [1, 2, 3] },
+    )
+    // 12 失って3増える
+    expect(resolveStep(hurt, [act('echo', 0), pass]).history[0].strikes[0]).toMatchObject({ power: 8 })
+    const end = makeState(
+      seat(['echo', 'lastStand', 'wildfire', 'overload', 'transmute'], {
+        roll: [1, 2, 3, 4, 5],
+        usedDice: [0],
+        usedCards: ['overload'],
+        burned: 1,
+        last: [
+          { kind: 'overload', vals: [1] },
+          { kind: 'wildfire', vals: [4] },
+        ],
+      }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    // 二ステップ目に振り足しても次のステップが無いので振らない
+    expect(extraDiceOf(end, 0, act('echo', 1))).toBe(0)
+    const s = resolveStep(end, [act('echo', 1), pass])
+    const r = s.history[0]
+    // 過負荷は使った分ともう一度出した分で2回焼け、延焼はこのターンに焼けた分を与える
+    expect(r.endBurn).toEqual([4, 0])
+    expect(r.strikes.filter((x) => x.phase === 'end')).toEqual([
+      { from: 0, kind: 'wildfire', power: 5, outcome: 'hit', to: 1, dealt: 5, phase: 'end' },
+    ])
+    const twice = makeState(
+      seat(['echo', 'lastStand', 'wildfire', 'overload', 'transmute'], {
+        roll: [1, 2, 3],
+        usedDice: [0],
+        usedCards: ['wildfire'],
+        burned: 3,
+        last: [{ kind: 'wildfire', vals: [1] }],
+      }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    const t = resolveStep(twice, [act('echo', 1), pass])
+    expect(t.history[0].strikes.filter((x) => x.phase === 'end').map((x) => x.dealt)).toEqual([3, 3])
+    expect(t.players[1].hp).toBe(14)
+  })
+  it('二ステップ目に錬成をもう一度出しても、次のステップが無いので何も起きない', () => {
+    const s = makeState(
+      seat(['echo', 'transmute', 'flameStrike', 'barrier', 'interrupt'], {
+        roll: [1, 2, 3],
+        usedDice: [0],
+        usedCards: ['transmute'],
+        last: [{ kind: 'transmute', vals: [1] }],
+      }),
+      { roll: [1, 2, 3] },
+      2,
+    )
+    const done = resolveStep(s, [act('echo', 1), pass])
+    expect(done.players[0].roll).toEqual([1, 2, 3])
+    expect(done.players[0].usedDice).toEqual([0, 1])
+  })
+  it('詠唱をもう一度出せば詠唱が保たれ、凍結や持ち越しが重なれば大きい目になる', () => {
+    const chant = makeState(seat(deck, { roll: [1, 2, 3], last: [{ kind: 'spearChant', vals: [1] }] }), {
+      roll: [1, 2, 3],
+    })
+    const spear: CardId[] = ['echo', 'spear', 'freeze', 'doubleCast', 'meditate']
+    const c = resolveStep({ ...chant, players: [{ ...chant.players[0], deck: spear }, chant.players[1]] }, [
+      act('echo', 0),
+      pass,
+    ])
+    expect(c.players[0].chant).toBe('charged')
+    expect(isLegal(c, 0, act('spearCast', 1, 2))).toBe(true)
+    const both = makeState(
+      seat(spear, {
+        roll: [1, 2, 3, 4],
+        last: [
+          { kind: 'freeze', vals: [5] },
+          { kind: 'meditate', vals: [6] },
+        ],
+      }),
+      { roll: [1, 2, 3] },
+    )
+    const s = resolveStep(both, [along(play('doubleCast', 0), play('echo', 1), play('freeze', 2)), pass])
+    expect(s.players[1].frozen).toBe(5)
+    expect(s.players[0].carry).toBe(6)
+    const low = resolveStep(both, [along(play('doubleCast', 0), play('echo', 1), play('meditate', 3)), pass])
+    expect(low.players[0].carry).toBe(6)
   })
 })

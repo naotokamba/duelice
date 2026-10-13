@@ -34,6 +34,7 @@ export function flipReport(r: StepReport): StepReport {
     ...r,
     actions: swap(r.actions),
     values: swap(r.values),
+    moves: swap(r.moves),
     strikes: ordered,
     burn: swap(r.burn),
     endBurn: swap(r.endBurn),
