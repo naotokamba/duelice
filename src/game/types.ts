@@ -33,18 +33,22 @@ export const DEFAULT_CONFIG: Config = {
   diceCount: 3,
 }
 
-/** 攻撃が相手の構えに当たってどうなったか。当たった、障壁に削られた、障壁をすり抜けた */
-export type Outcome = 'hit' | 'guarded' | 'pierced'
+/**
+ * 攻撃が相手の構えに当たってどうなったか。当たった、守りに削られた、守りをすり抜けた。
+ * returned は、守りが攻撃を受けて、攻撃した側へ返したダメージ
+ */
+export type Outcome = 'hit' | 'guarded' | 'pierced' | 'returned'
 
 /** 一つの攻撃の行方。画面はこれを矢印に描き、ダメージもこれから数える */
 export interface Strike {
   from: PlayerIndex
+  /** 放った行動。守りが返したダメージなら、その守りの行動 */
   kind: ActionKind
   power: number
   outcome: Outcome
   /** ダメージを受けた側 */
   to: PlayerIndex
-  /** to が受けたダメージ。障壁に削られたら、削られた後の値 */
+  /** to が受けたダメージ。守りに削られたら、削られた後の値 */
   dealt: number
 }
 
@@ -61,7 +65,7 @@ export interface StepReport {
   actions: [Action, Action]
   /** 双方がダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす */
   values: [number[], number[]]
-  /** 放たれた攻撃と、その行方 */
+  /** 放たれた攻撃と、その行方。守りが返したダメージも含む */
   strikes: Strike[]
   /** 双方が血として払い、自分で受けたダメージ。血を払う行動をしなかった側は0 */
   blood: [number, number]

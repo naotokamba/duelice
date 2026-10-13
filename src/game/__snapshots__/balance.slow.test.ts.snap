@@ -3,15 +3,15 @@
 exports[`バランス > HP満タンの一ステップ目で、つよいCPUが各行動を選ぶ頻度と、読み合いが起きない局面の割合 1`] = `
 "{
   "firstStepFrequency": {
-    "fireball": 0.483,
-    "barrier": 0.193,
-    "bullet": 0.133,
-    "spearChant": 0.167,
+    "bloodBullet": 0.181,
+    "barrier": 0.173,
+    "bullet": 0.077,
+    "spearChant": 0.261,
     "spearCast": 0,
-    "overload": 0.022,
+    "interrupt": 0.307,
     "pass": 0.001
   },
-  "pureStrategyRate": 0.155,
+  "pureStrategyRate": 0,
   "seatAdvantage": 0
 }"
 `;

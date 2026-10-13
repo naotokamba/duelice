@@ -14,11 +14,13 @@ const MARK_TEXT: Record<EffectIcon, { value?: string; text: string }> = {
   damage: { value: 'X', text: 'X ダメージを与える' },
   pierce: { value: 'X', text: `${GUARD_LABEL}で減らない X ダメージを与える` },
   guard: { value: 'X', text: 'このステップに受けるダメージを X 減らす' },
-  blood: { value: 'X', text: `血を払う。使うと自分が X ダメージを受ける。${GUARD_LABEL}では減らない` },
-  chant: {
+  thorns: {
     value: 'X',
-    text: '詠唱。このステップに X 以上のダメージを受けると崩れる。崩れなければ、次のステップで下の段を使える',
+    text: `このステップに${GUARD_LABEL}で減る攻撃を受けたら、防ぎきっても超えられても、攻撃した相手に X ダメージを返す`,
   },
+  blood: { value: 'X', text: `血を払う。使うと自分が X ダメージを受ける。${GUARD_LABEL}では減らない` },
+  chant: { text: '詠唱。崩されなければ、次のステップで下の段を使える' },
+  disrupt: { text: '相手がこのステップに詠唱していたら、その詠唱を崩す' },
 }
 
 const MARKS = Object.entries(MARK_TEXT).map(([icon, { value, text }]): [EffectPart, string] => [
@@ -58,8 +60,8 @@ export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement 
         </li>
         <li>ダイスは置き場を選んで置く。X や Y と書いた置き場に置いた目が、その記号の値になる</li>
         <li>= でつないだ置き場には、同じ目を置く。3個振ると、同じ目は案外よく出る</li>
-        <li>点線の枠は置かなくてもよい。置くと、枠の中に書いた分だけ増える。血を払うカードは、払う血も増える</li>
         <li>ダイスはマナ、体力は血。血を払うカードを使うと、自分の体力も減る</li>
+        <li>詠唱は、攻撃を受けても崩れない。崩れるのは、同じステップに相手が詠唱を崩すカードを使ったときだけ</li>
         <li>体力が先に0になった方の負け。同時に0以下になったら、体力の残りが多い方の勝ち。同じなら引き分け</li>
       </ul>
       <h3 className="rules-cards-title">印</h3>

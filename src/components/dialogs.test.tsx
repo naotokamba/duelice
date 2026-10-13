@@ -91,7 +91,7 @@ describe('モーダル', () => {
   it('狭い画面の相手のカードの窓も、外を押すと閉じる', async () => {
     narrowScreen()
     const user = await start(props())
-    await user.click(cpuSeat().getByRole('button', { name: '火球' }))
+    await user.click(cpuSeat().getByRole('button', { name: '血弾' }))
     const dialog = screen.getByRole('dialog', { name: '相手のカード' }) as HTMLDialogElement
     expect(dialog.open).toBe(true)
     clickBackdrop(dialog)

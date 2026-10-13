@@ -28,7 +28,7 @@ describe('手元のダイス', () => {
     render(
       <Tray
         seat={seat()}
-        shown={{ card: 'fireball', kind: 'fireball', slots: [1, null], complete: false }}
+        shown={{ card: 'bloodBullet', kind: 'bloodBullet', slots: [1, null], complete: false }}
         rolling={false}
         play={play}
       />,

@@ -9,7 +9,8 @@ import { actionLabel, CANNOT_USE, issueText, reportLines, resultText } from './t
 
 const pass: Action = { kind: 'pass' }
 const bullet: Action = { kind: 'bullet', dice: [0, 1] }
-const fire: Action = { kind: 'fireball', dice: [0, 1] }
+const fire: Action = { kind: 'bloodBullet', dice: [0, 1] }
+const interrupt: Action = { kind: 'interrupt', dice: [0] }
 
 /** 双方が r0 と r1 を振って a0 と a1 を出したステップの記録 */
 const report = (r0: number[], r1: number[], a0: Action, a1: Action): StepReport =>
@@ -22,49 +23,55 @@ describe('公開の文', () => {
   it('攻撃と何もしない', () => {
     expect(lines([6, 6, 1], [1, 2, 3], bullet, pass)).toEqual(['あなたの魔弾 4点', '相手は何もしなかった'])
   })
-  it('火球は X の枠に置いた目で書く。払うだけのダイスは書かない', () => {
-    expect(lines([2, 6, 1], [1, 2, 3], fire, pass)).toEqual(['あなたの火球 2点', '相手は何もしなかった'])
+  it('血弾は X の枠に置いた目に2を足して書き、払った血を添える', () => {
+    expect(lines([2, 6, 1], [1, 2, 3], fire, pass)).toEqual([
+      'あなたの血弾 4点',
+      '相手は何もしなかった',
+      'あなたは血弾で 6点の血を払った',
+    ])
   })
-  it('障壁に削られた攻撃は、削った目と通った点を示す', () => {
+  it('炎壁に削られた攻撃は、削った目と通った点を示し、炎壁は返した点を示す', () => {
     expect(lines([5, 1, 1], [1, 2, 1], fire, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの火球 5点、障壁 1 に削られて 4点',
-      '相手は 1 で障壁を張った',
+      'あなたの血弾 7点、炎壁 1 に削られて 5点',
+      '相手は 1 で炎壁を張った。3点を返した',
+      'あなたは血弾で 1点の血を払った',
     ])
   })
-  it('魔弾は障壁をすり抜ける', () => {
+  it('魔弾は炎壁をすり抜け、炎壁は返さない', () => {
     expect(lines([3, 3, 1], [6, 2, 1], bullet, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの魔弾 4点、障壁をすり抜けた',
-      '相手は 6 で障壁を張った',
+      'あなたの魔弾 4点、炎壁をすり抜けた',
+      '相手は 6 で炎壁を張った',
     ])
   })
-  it('障壁をすり抜けた攻撃', () => {
+  it('炎壁をすり抜けた攻撃', () => {
     const charged = makeState({ roll: [1, 2, 3], chant: 'charged' }, { roll: [6, 2, 1] }, 2)
     const r = resolveStep(charged, [
       { kind: 'spearCast', dice: [0, 1] },
       { kind: 'barrier', dice: [0] },
     ]).history[0]
-    expect(reportLines(r, 0)).toEqual(['あなたの雷槍の発動 3点、障壁をすり抜けた', '相手は 6 で障壁を張った'])
+    expect(reportLines(r, 0)).toEqual(['あなたの雷槍の発動 3点、炎壁をすり抜けた', '相手は 6 で炎壁を張った'])
   })
   it('相手が払った血も、相手の行として添える', () => {
-    expect(lines([1, 2, 3], [1, 1, 1], pass, { kind: 'overload', dice: [0, 1, 2] })).toEqual([
+    expect(lines([1, 2, 3], [6, 3, 1], pass, fire)).toEqual([
       'あなたは何もしなかった',
-      '相手の過負荷 6点',
-      '相手は過負荷で 3点の血を払った',
+      '相手の血弾 8点',
+      '相手は血弾で 3点の血を払った',
     ])
   })
-  it('詠唱が崩れたときと保たれたとき', () => {
-    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, fire)).toEqual([
+  it('詠唱は攻撃では崩れず、妨害で崩れる', () => {
+    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, interrupt)).toEqual([
       'あなたは 2 で雷槍を詠唱',
-      '相手の火球 6点',
-      'あなたの詠唱は 6点を受けて崩れた',
+      '相手の妨害 2点',
+      'あなたの詠唱は妨害で崩れた',
     ])
+    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, fire)).toContain('あなたの詠唱は保たれた')
     expect(lines([2, 1, 1], [1, 1, 1], { kind: 'spearChant', dice: [0] }, pass)).toContain('あなたの詠唱は保たれた')
   })
   it('相手の席から見ると、相手の行動をあなたとして先に書く', () => {
-    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, fire, 1)).toEqual([
-      'あなたの火球 6点',
+    expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, interrupt, 1)).toEqual([
+      'あなたの妨害 2点',
       '相手は 2 で雷槍を詠唱',
-      '相手の詠唱は 6点を受けて崩れた',
+      '相手の詠唱は妨害で崩れた',
     ])
   })
   it('どの局面でも、双方について一行ずつ、あなたと相手の順に並ぶ', () => {

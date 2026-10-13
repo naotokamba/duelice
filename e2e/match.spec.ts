@@ -6,7 +6,7 @@ import { confirm, cpuSeat, hp, mouseDrag, myCard, mySeat, slot, start, step, tap
 
 test.use({ viewport: { width: 1920, height: 940 } })
 
-test('魔弾、過負荷、雷槍の詠唱と発動で相手を倒す', async ({ page }) => {
+test('魔弾、妨害、雷槍の詠唱と発動で相手を倒す', async ({ page }) => {
   // 相手は何もしない。毎ターン 6 を3個振る
   const sixes: [number[], number[]] = [
     [6, 6, 6],
@@ -28,18 +28,18 @@ test('魔弾、過負荷、雷槍の詠唱と発動で相手を倒す', async ({
   await expect(bullet.getByRole('button', { name: /の目/ })).toHaveCount(0)
   await expect(mySeat(page).getByRole('group', { name: 'ダイス' }).getByRole('button')).toHaveCount(1)
 
-  // 2ステップ目。過負荷に1個置いて2点。自分は1の血を払う
-  await tapPlace(page, 6, '過負荷の1つ目の枠')
+  // 2ステップ目。妨害に1個置いて2点。妨害は血を払わない
+  await tapPlace(page, 6, '妨害の1つ目の枠')
   await confirm(page).click()
   await expect(step(page, 2, 1)).toBeAttached({ timeout: 15_000 })
   await expect(hp(cpuSeat(page), 14)).toBeVisible()
-  await expect(hp(mySeat(page), 19)).toBeVisible()
+  await expect(hp(mySeat(page), 20)).toBeVisible()
 
   // 新しいターンは振り直して、盤が片付く
   await expect(bullet.getByRole('img', { name: /の目/ })).toHaveCount(0)
 
   // 2ターン目。雷槍を詠唱し、詠唱のダイスは1段目に残ったまま、2段目で発動する
-  await tapPlace(page, 6, '雷槍のXの枠')
+  await tapPlace(page, 6, '雷槍の1つ目の枠')
   await confirm(page).click()
   await expect(step(page, 2, 2)).toBeAttached({ timeout: 15_000 })
   await expect(page.getByText('詠唱中')).toBeVisible()

@@ -1,6 +1,6 @@
 // カード面と公開の舞台で共有する印。同じ意味は同じ形で描く。
-// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、障壁は盾、
-// 血として払って自分が受けるダメージは血のしずく、詠唱は魔法陣。
+// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、守りは盾、守りが攻撃した相手に返すダメージは炎、
+// 血として払って自分が受けるダメージは血のしずく、詠唱は魔法陣、詠唱を崩す効果はばつを重ねた魔法陣。
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
 import { type ReactNode, useId } from 'react'
@@ -102,6 +102,24 @@ export function ShieldGlyph({ value }: { value?: string | number }) {
   )
 }
 
+/** 炎の形。下の丸い部分の中心は (0, 12) で、左上に小さな火の舌が分かれる */
+const FLAME =
+  'M0 -50C10 -32 34 -22 34 10C34 32 18 46 0 46C-18 46 -34 32 -34 10C-34 -8 -22 -20 -16 -34C-12 -22 -8 -18 -3 -15C-1 -27 -3 -39 0 -50Z'
+
+/** 守りが攻撃を受けたときに、攻撃した相手に返すダメージ。炎の、丸い部分に数を描く */
+export function ThornsGlyph({ value }: { value?: string }) {
+  return (
+    <svg className="glyph-thorns" viewBox="-50 -50 100 100" aria-hidden="true">
+      <path d={FLAME} />
+      {value && (
+        <Value cx={0} cy={12} size={dropText(value)}>
+          {value}
+        </Value>
+      )}
+    </svg>
+  )
+}
+
 /** 血のしずくの形。下の丸い部分の中心は (0, 14) で、半径は 34 */
 const DROP = 'M0 -48C12 -30 34 -8 34 14A34 34 0 0 1 -34 14C-34 -8 -12 -30 0 -48Z'
 
@@ -194,6 +212,16 @@ export function ChantGlyph({ value, broken, className }: ChantProps) {
   )
 }
 
+/** 詠唱を崩す効果。魔法陣に、ばつを重ねる */
+export function DisruptGlyph() {
+  return (
+    <svg className="glyph-chant glyph-disrupt" viewBox="-50 -50 100 100" aria-hidden="true">
+      <ChantShape />
+      <path className="disrupt-cross" d="M-30 -30 30 30M30 -30 -30 30" />
+    </svg>
+  )
+}
+
 /** 効果の印の一行の説明と形。印の種類を足すと、ここに書くまで型が通らない */
 function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; glyph: ReactNode } {
   switch (icon) {
@@ -203,10 +231,14 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `${GUARD_LABEL}で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
+    case 'thorns':
+      return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを返す`, glyph: <ThornsGlyph value={v} /> }
     case 'blood':
       return { label: `血を払う。自分が${v}ダメージを受ける`, glyph: <BloodGlyph value={v} /> }
     case 'chant':
-      return { label: `詠唱。${v}以上のダメージを受けると崩れる`, glyph: <ChantGlyph value={v} /> }
+      return { label: '詠唱。崩されなければ、次のステップで下の段を使える', glyph: <ChantGlyph /> }
+    case 'disrupt':
+      return { label: '相手が詠唱していたら崩す', glyph: <DisruptGlyph /> }
   }
 }
 

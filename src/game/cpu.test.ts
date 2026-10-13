@@ -98,10 +98,10 @@ describe('CPU', () => {
   })
   it('倒し切れるときは倒しに行く', () => {
     const t = new Thinker()
-    // 相手は残り3で、障壁はもう使った。火球でも魔弾でも過負荷でも倒せる
+    // 相手は残り3で、炎壁はもう使った。血弾でも魔弾でも倒せる。2点の妨害では倒せない
     const s = makeState({ roll: [1, 2, 3], hp: 3, usedDice: [0], usedCards: ['barrier'] }, { roll: [6, 6, 1] }, 2)
     const best = t.analyze(s, 1, 'hard').sort((a, b) => b.prob - a.prob)[0]
-    expect(['fireball', 'bullet', 'overload']).toContain(best.action.kind)
+    expect(['bloodBullet', 'bullet']).toContain(best.action.kind)
   })
   it('同じ乱数なら同じ手を選ぶ', () => {
     const s = makeState({ roll: [6, 5, 2] }, { roll: [3, 3, 6] })
@@ -157,20 +157,20 @@ describe('無意味なパス', () => {
     )
   })
 
-  it('二ステップ目に、相手が障壁を残していれば、血を払う攻撃を防がれうるのでパスも混ぜる', () => {
-    // 自分は障壁も火球も使えず、5 と 2 で撃てるのは血を払う過負荷だけ。相手は残った 6 で障壁を張れる。
-    // 撃って防がれると血だけ払うので、つよいもパスを混ぜる。手が絞られた局面を、盤を直接作って確かめる
+  it('二ステップ目に、相手が炎壁を残していれば、血を払う攻撃を防がれうるのでパスも混ぜる', () => {
+    // 自分は炎壁も妨害も使えず、5 と 2 で撃てるのは血を払う血弾だけ。相手は残った 6 で炎壁を張れる。
+    // 撃って防がれると血を払ったうえに3を返されるので、つよいもパスを混ぜる。手が絞られた局面を、盤を直接作って確かめる
     const s = makeState(
-      { roll: [3, 5, 2], usedDice: [0], usedCards: ['barrier', 'fireball'] },
-      { roll: [6, 1, 4], usedDice: [1, 2], usedCards: ['fireball'] },
+      { roll: [3, 5, 2], usedDice: [0], usedCards: ['barrier', 'interrupt'] },
+      { roll: [6, 1, 4], usedDice: [1, 2], usedCards: ['bloodBullet'] },
       2,
     )
     const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
     expect(pass?.prob).toBeGreaterThan(0)
   })
 
-  it('相手が障壁を使い切っていれば、過負荷が通る二ステップ目のパスは選ばない', () => {
-    // 相手は障壁を使い切っている。1個の過負荷は2点当てて1の血を払うので、どの手に対してもパスより上
+  it('相手が炎壁を使い切っていれば、妨害が通る二ステップ目のパスは選ばない', () => {
+    // 相手は炎壁を使い切っている。1個の妨害は代償なしに2点当てるので、どの手に対してもパスより上
     const s = makeState(
       { roll: [6, 6, 3], usedDice: [0], usedCards: ['barrier'] },
       { roll: [6, 6, 3], usedDice: [0], usedCards: ['barrier'] },

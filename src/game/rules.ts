@@ -2,7 +2,7 @@
 // 乱数は外から渡すので、同じ入力なら必ず同じ結果になる。対局の進め方は match.ts にある。
 // カード固有の知識は持たず、cards.ts の定義表に書かれた性質だけを見て処理する。
 
-import { ACTION_DEFS, ACTION_KINDS, type ActionDef, effectValue } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, type ActionDef } from './cards'
 import { filled, fillsRequired, type PlacedRow, readsMark, rowOf, slotsOf } from './slots'
 import type {
   Action,
@@ -128,7 +128,11 @@ export function legalActions(state: GameState, who: PlayerIndex): Action[] {
 // Stryker disable next-line ConditionalExpression,StringLiteral: パスを表で引いても undefined になり、null と同じく性質を持たない行動として扱われる
 const defOf = (a: Action): ActionDef | null => (a.kind === 'pass' ? null : ACTION_DEFS[a.kind])
 
-/** 一つのステップで放たれた攻撃を全て、その行方とともに返す */
+/**
+ * 一つのステップで放たれた攻撃を全て、その行方とともに返す。
+ * 守りで減った攻撃があり、その守りが返す性質を持つなら、攻撃した側へ返すダメージも攻撃として並べる。
+ * 攻撃した側は守っていないので、返すダメージは減らない
+ */
 export function strikes(vals: [number[], number[]], acts: [Action, Action]): Strike[] {
   const out: Strike[] = []
   for (const from of [0, 1] as const) {
@@ -142,6 +146,13 @@ export function strikes(vals: [number[], number[]], acts: [Action, Action]): Str
     const guard = guardOf && !def.piercing ? guardOf(vals[other]) : 0
     const outcome: Outcome = guardOf ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
     out.push({ from, kind: a.kind, power, outcome, to: other, dealt: Math.max(0, power - guard) })
+  }
+  for (const s of [...out]) {
+    const b = acts[s.to]
+    // Stryker disable next-line ConditionalExpression,StringLiteral: 守りで減った攻撃なら、守った側の行動はパスではない。型を絞るための条件で、結果は変わらない
+    if (s.outcome !== 'guarded' || b.kind === 'pass') continue
+    const back = ACTION_DEFS[b.kind].thorns
+    if (back) out.push({ from: s.to, kind: b.kind, power: back, outcome: 'returned', to: s.from, dealt: back })
   }
   return out
 }
@@ -164,9 +175,9 @@ export function stepDamage(vals: [number[], number[]], acts: [Action, Action]): 
   return damageOf(strikes(vals, acts), bloodOf(vals, acts))
 }
 
-/** 詠唱に置いた目以上のダメージを受けると、詠唱は崩れる。詠唱の目は、詠唱の効果の値 */
-export function breaksChant(def: ActionDef, vals: number[], taken: number): boolean {
-  return taken >= effectValue(def, vals)
+/** 詠唱は、同じステップに相手が詠唱を崩す行動をしたときだけ崩れる。攻撃のダメージでは崩れない */
+export function breaksChant(by: Action): boolean {
+  return !!defOf(by)?.disrupts
 }
 
 /**
@@ -190,7 +201,7 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     const def = ACTION_DEFS[a.kind]
     let chant = p.chant
     if (def.chant) {
-      const broken = breaksChant(def, vals[i], dmg[i])
+      const broken = breaksChant(acts[i === 0 ? 1 : 0])
       chant = broken ? 'broken' : 'charged'
       chants[i] = broken ? 'broken' : 'kept'
     }

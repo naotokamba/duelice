@@ -122,12 +122,13 @@ function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
   // 効果の値は置き場の順に並べた目から決める。X の枠の目が威力になる
   const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
   /**
-   * 置き場の中に書く記号。最初の置き場には印、省いてもよい置き場には置くと増える量。
+   * 置き場の中に書く記号。最初の置き場には印、その次には血を払う記号、省いてもよい置き場には置くと増える量。
    * 同じ目を置く置き場には、どれにも印の記号を書く
    */
   const markOf = (k: number) => {
     if (k >= needed) return face.extra
-    return k === MARK_SLOT || face.join === '=' ? face.mark : undefined
+    if (k === MARK_SLOT || face.join === '=') return face.mark
+    return k === MARK_SLOT + 1 ? face.cost : undefined
   }
   const marks = Array.from({ length: slotsOf(def) }, (_, k) => markOf(k))
   /** 置き場の呼び名。記号がその行で一つだけならその記号で、ほかは何番目かで呼ぶ */

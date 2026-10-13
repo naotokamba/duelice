@@ -13,17 +13,17 @@
   /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
   --die-kept: #c9ccd8;
   --pip: #1d2233;
-  --fireball: #c8371e;
-  --barrier: #2f7f86;
+  --bloodBullet: #9c1d45;
+  --barrier: #c8371e;
   --bullet: #6a4bc4;
   --spear: #a87c00;
-  --overload: #9c1d45;
+  --interrupt: #2f7f86;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
-  --fireball-ink: #a22d18;
-  --barrier-ink: #246268;
+  --bloodBullet-ink: #8c1a3e;
+  --barrier-ink: #a22d18;
   --bullet-ink: #603fc0;
   --spear-ink: #725400;
-  --overload-ink: #8c1a3e;
+  --interrupt-ink: #246268;
   /* 血として払うダメージのしずく。受けるダメージの星の赤より深い赤 */
   --blood-drop: #a3123a;
   /* 色の付いた札やボタンに乗せる文字 */
@@ -60,16 +60,16 @@
     --go: #38a863;
     --hit: #e1301b;
     --on-accent: #141824;
-    --fireball: #f06a4f;
-    --barrier: #5fb8bf;
+    --bloodBullet: #e46a8c;
+    --barrier: #f06a4f;
     --bullet: #a690f0;
     --spear: #e0b43a;
-    --overload: #e46a8c;
-    --fireball-ink: #f28069;
-    --barrier-ink: #5fb8bf;
+    --interrupt: #5fb8bf;
+    --bloodBullet-ink: #ec8aa5;
+    --barrier-ink: #f28069;
     --bullet-ink: #ab97f1;
     --spear-ink: #e0b43a;
-    --overload-ink: #ec8aa5;
+    --interrupt-ink: #5fb8bf;
     --blood-drop: #d93a63;
   }
 }
@@ -593,10 +593,10 @@ button.die {
     box-shadow 150ms ease,
     opacity 150ms ease;
 }
-.card-fireball {
-  --spell: var(--fireball);
-  --spell-ink: var(--fireball-ink);
-  --card-ink: var(--fireball-ink);
+.card-bloodBullet {
+  --spell: var(--bloodBullet);
+  --spell-ink: var(--bloodBullet-ink);
+  --card-ink: var(--bloodBullet-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
@@ -613,10 +613,10 @@ button.die {
   --spell-ink: var(--spear-ink);
   --card-ink: var(--spear-ink);
 }
-.card-overload {
-  --spell: var(--overload);
-  --spell-ink: var(--overload-ink);
-  --card-ink: var(--overload-ink);
+.card-interrupt {
+  --spell: var(--interrupt);
+  --spell-ink: var(--interrupt-ink);
+  --card-ink: var(--interrupt-ink);
 }
 .card-head {
   display: flex;
@@ -933,6 +933,20 @@ button.fx[aria-describedby] {
 /* 貫通の矢印は星の枠の外まで出す */
 .glyph-pierce {
   overflow: visible;
+}
+/* 守りが攻撃した相手に返すダメージ。炎壁の色の炎に白い数を書く */
+.glyph-thorns path {
+  fill: var(--barrier);
+}
+.glyph-thorns .glyph-value {
+  fill: #fff;
+}
+/* 詠唱を崩す効果。魔法陣の上に、受けるダメージの星と同じ赤でばつを重ねる */
+.disrupt-cross {
+  fill: none;
+  stroke: var(--hit);
+  stroke-width: 9;
+  stroke-linecap: round;
 }
 /* 血として払って自分で受けるダメージ。受けるダメージの星と見分けるため、深い赤のしずくに白い数を書く */
 .glyph-blood path {

@@ -180,7 +180,7 @@ export function draftAction(state: GameState, who: PlayerIndex, hand: Hand): Act
 
 /**
  * 置ける個数 counts のどれかになるまでに、あと何個置けばよいか。置いた個数で足りているか、もう足しても届かなければ null。
- * 過負荷のように個数を選べる行動もあるので、置いた個数より多い中で一番少ない個数を目指す
+ * 点線の置き場があって個数を選べる行動もあるので、置いた個数より多い中で一番少ない個数を目指す
  */
 export function missingDice(counts: readonly number[], placed: number): number | null {
   if (counts.includes(placed)) return null

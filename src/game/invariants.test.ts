@@ -221,16 +221,21 @@ describe('ダメージ', () => {
       }),
     )
   })
-  it('攻撃しない側は、相手にダメージを与えない。相手が自分で払う血は除く', () => {
+  it('攻撃しない側が相手に与えるダメージは、守りが返した分だけ。相手が自分で払う血は除く', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
         const dmg = stepDamage(vals, acts)
         const blood = bloodOf(vals, acts)
+        const list = strikes(vals, acts)
         for (const i of [0, 1] as const) {
           const a = acts[i]
           const def = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind]
-          if (!def?.power) expect(dmg[1 - i] - blood[1 - i]).toBe(0)
+          if (def?.power) continue
+          const returned = list.filter((x) => x.from === i).reduce((sum, x) => sum + x.dealt, 0)
+          expect(dmg[1 - i] - blood[1 - i]).toBe(returned)
+          // 返すのは返す性質を持つ守りだけ
+          if (!def?.thorns) expect(returned).toBe(0)
         }
       }),
     )
@@ -254,12 +259,23 @@ describe('ダメージ', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
-        const list = strikes(vals, acts)
+        const all = strikes(vals, acts)
+        const list = all.filter((x) => x.outcome !== 'returned')
         const attackers = ([0, 1] as const).filter((i) => {
           const a = acts[i]
           return a.kind !== 'pass' && !!ACTION_DEFS[a.kind].power
         })
         expect(list.map((x) => x.from)).toEqual(attackers)
+        // 守りが返すのは、守りで減った攻撃を受け、守りが返す性質を持つときだけ。攻撃した側へ、返す量をそのまま与える
+        const returns = all.filter((x) => x.outcome === 'returned')
+        const want = list.flatMap((x) => {
+          const b = acts[x.to]
+          const back = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind].thorns
+          return x.outcome === 'guarded' && back
+            ? [{ from: x.to, kind: b.kind, power: back, outcome: 'returned', to: x.from, dealt: back }]
+            : []
+        })
+        expect(returns).toEqual(want)
         for (const x of list) {
           const def = ACTION_DEFS[x.kind]
           const other = x.from === 0 ? 1 : 0
@@ -333,6 +349,20 @@ describe('状態の更新', () => {
         const b = resolveStep(swapSeats(s), [acts[1], acts[0]])
         expect(swapSeats(b).players).toEqual(a.players)
         expect(swapSeats(b).winner).toEqual(a.winner)
+      }),
+    )
+  })
+  it('詠唱は、相手が詠唱を崩す行動をしたときだけ崩れる', () => {
+    fc.assert(
+      fc.property(stateWithActsArb, ({ s, acts }) => {
+        const next = resolveStep(s, acts)
+        for (const i of [0, 1] as const) {
+          const a = acts[i]
+          if (a.kind === 'pass' || !ACTION_DEFS[a.kind].chant) continue
+          const b = acts[i === 0 ? 1 : 0]
+          const disrupted = b.kind !== 'pass' && !!ACTION_DEFS[b.kind].disrupts
+          expect(next.players[i].chant).toBe(disrupted ? 'broken' : 'charged')
+        }
       }),
     )
   })

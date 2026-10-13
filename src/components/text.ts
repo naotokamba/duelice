@@ -18,13 +18,17 @@ function sentence(report: StepReport, who: PlayerIndex, name: string): string {
   const b = report.actions[other]
   const answer = b.kind === 'pass' ? '' : ACTION_DEFS[b.kind].label
   const s = report.strikes.find((x) => x.from === who)
-  if (!s) return `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
+  const done = `${name}は ${report.values[who].join('と')} で${def.done ?? def.label}`
+  if (!s) return done
   const head = `${name}の${def.label} ${s.power}点`
   switch (s.outcome) {
     case 'pierced':
       return `${head}、${answer}をすり抜けた`
     case 'guarded':
       return `${head}、${answer} ${report.values[other].join('と')} に削られて ${s.dealt}点`
+    case 'returned':
+      // 守りが攻撃を受けて返した。守った目も添える
+      return `${done}。${s.dealt}点を返した`
     default:
       return head
   }
@@ -45,7 +49,7 @@ const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
 
 /**
  * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
- * 詠唱したならその結果を、血を払ったならその量を、後に添える
+ * 守りがダメージを返したならそれを、詠唱したならその結果を、血を払ったならその量を、後に添える
  */
 export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   const order: [PlayerIndex, string][] = [
@@ -55,7 +59,9 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   const lines = order.map(([who, name]) => sentence(report, who, name))
   for (const [who, name] of order) {
     const chant = report.chants[who]
-    if (chant === 'broken') lines.push(`${name}の詠唱は ${report.damage[who]}点を受けて崩れた`)
+    // 詠唱は、相手の詠唱を崩す行動でだけ崩れる
+    const by = actionLabel(report.actions[who === 0 ? 1 : 0])
+    if (chant === 'broken') lines.push(`${name}の詠唱は${by}で崩れた`)
     if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
   }
   for (const [who, name] of order) {

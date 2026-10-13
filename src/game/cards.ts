@@ -11,11 +11,15 @@ export interface CardDef {
 /**
  * 効果を描く印。数を添える印は、印の中に数を描く。
  * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
+ * thorns は守っているときに攻撃を受けると、攻撃した相手に返すダメージ、
  * blood は使うと自分が受けるダメージ。ダイスはマナで、体力は血。血を払う効果に使う。
- * chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
+ * chant は詠唱、disrupt は相手の詠唱を崩す。この二つは数を持たない。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'blood' | 'chant'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'thorns' | 'blood' | 'chant' | 'disrupt'
+
+/** 数を持たない印。置いた目や個数から値を入れない */
+export const BARE_ICONS: readonly EffectIcon[] = ['chant', 'disrupt']
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -37,10 +41,15 @@ export interface EffectPart {
 export interface Face {
   /**
    * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
-   * ほかの置き場に置いたダイスは、払うだけのダイスになる。
-   * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。X+2 など
+   * ほかの置き場に置いたダイスは、cost の記号を書いた置き場なら血を払うダイスに、そうでなければ払うだけのダイスになる。
+   * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。X+2 や 2X など
    */
   mark?: string
+  /**
+   * 印の置き場の次の置き場に書く記号。この置き場に置いた目の分だけ、使うと自分が血を払う。
+   * 効果の値にこの記号を書くと、ダイスを置いたときに払う血の値に置き換わる
+   */
+  cost?: string
   /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
   extra?: string
   /** 置き場の間に書く記号。= は同じ目を置く置き場で、印の記号を使う行動なら、どの置き場にもその記号を書く */
@@ -61,7 +70,7 @@ export interface ActionDef {
   step?: 1 | 2
   /** 置くダイスが全て同じ目である必要がある。ゾロ目 */
   sameValues?: boolean
-  /** 詠唱。置いた目以上のダメージをそのステップに受けると崩れる */
+  /** 詠唱。同じステップに相手が詠唱を崩す行動をすると崩れる。攻撃のダメージでは崩れない */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
   needsCharge?: boolean
@@ -75,6 +84,13 @@ export interface ActionDef {
   piercing?: boolean
   /** 受ける攻撃を減らす量。vals は power と同じ */
   guard?: (vals: number[]) => number
+  /**
+   * 守っているステップに、障壁で減る攻撃を受けたら、攻撃した相手に返すダメージ。
+   * 防ぎきっても、超えられても同じだけ返す。障壁で減らない攻撃には返さない
+   */
+  thorns?: number
+  /** 同じステップに相手が詠唱していたら、その詠唱を崩す */
+  disrupts?: boolean
   /** 使うと自分が受けるダメージ。体力を血として払う。障壁では減らない。vals は power と同じ */
   blood?: (vals: number[]) => number
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
@@ -86,11 +102,11 @@ export interface ActionDef {
 /** カードの表。並びは画面に並べる順 */
 // Stryker disable next-line ObjectLiteral: 表を空にするとテストの読み込みが失敗し、見つけたと数えられない。並びと名前は cards.test.ts で確かめる
 const CARDS = {
-  fireball: { name: '火球' },
-  barrier: { name: '障壁' },
+  bloodBullet: { name: '血弾' },
+  barrier: { name: '炎壁' },
   bullet: { name: '魔弾' },
   spear: { name: '雷槍' },
-  overload: { name: '過負荷' },
+  interrupt: { name: '妨害' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -103,21 +119,37 @@ export const CARD_ORDER = Object.keys(CARDS) as readonly CardId[]
 
 /** 行動の表。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
 const ACTIONS = {
-  fireball: {
-    card: 'fireball',
-    label: '火球',
+  bloodBullet: {
+    card: 'bloodBullet',
+    label: '血弾',
     dice: [2],
-    // X の枠に置いた目が威力になる。もう一つの枠は払うだけのダイス
-    power: (v) => v[0],
-    face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
+    // X の枠に置いた目に2を足した威力になる。もう一つの枠に置いた目の分だけ、自分が血を払う
+    power: (v) => v[0] + 2,
+    blood: (v) => v[1],
+    face: {
+      mark: 'X',
+      cost: 'Y',
+      effect: [
+        { icon: 'damage', value: 'X+2' },
+        { icon: 'blood', value: 'Y' },
+      ],
+    },
   },
   barrier: {
     card: 'barrier',
-    label: '障壁',
+    label: '炎壁',
     dice: [1],
-    guard: (v) => v[0],
-    done: '障壁を張った',
-    face: { mark: 'X', effect: [{ icon: 'guard', value: 'X' }] },
+    // 置いた目の倍を減らす。減らせる攻撃を受けたら、防ぎきっても超えられても、攻撃した相手に3を返す
+    guard: (v) => 2 * v[0],
+    thorns: 3,
+    done: '炎壁を張った',
+    face: {
+      mark: 'X',
+      effect: [
+        { icon: 'guard', value: '2X' },
+        { icon: 'thorns', value: '3' },
+      ],
+    },
   },
   bullet: {
     card: 'bullet',
@@ -137,7 +169,8 @@ const ACTIONS = {
     step: 1,
     chant: true,
     done: '雷槍を詠唱',
-    face: { mark: 'X', effect: [{ icon: 'chant', value: 'X' }] },
+    // 詠唱は置くだけでよく、目は効果に関わらないので、置き場に記号を書かない
+    face: { effect: [{ icon: 'chant' }] },
   },
   spearCast: {
     card: 'spear',
@@ -149,14 +182,14 @@ const ACTIONS = {
     piercing: true,
     face: { join: '+', sum: 'Y', effect: [{ icon: 'pierce', value: 'Y' }] },
   },
-  overload: {
-    card: 'overload',
-    label: '過負荷',
-    dice: [1, 2, 3],
-    // 置いた数の倍の威力で、置いた数だけ自分が血を払う。点線の枠に置くほど強く、痛くなる
-    power: (v) => 2 * v.length,
-    blood: (v) => v.length,
-    face: { extra: '+2', effect: [{ icon: 'damage' }, { icon: 'blood' }] },
+  interrupt: {
+    card: 'interrupt',
+    label: '妨害',
+    dice: [1],
+    // 目に関係なく2の威力。同じステップに相手が詠唱していたら、その詠唱を崩す
+    power: () => 2,
+    disrupts: true,
+    face: { effect: [{ icon: 'damage' }, { icon: 'disrupt' }] },
   },
 } satisfies Record<string, ActionDef>
 
@@ -173,11 +206,11 @@ export function kindsOfCard(card: CardId): ActionKind[] {
 }
 
 /**
- * 効果の値。攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる印の置き場の目。
+ * 効果の値。攻撃なら威力、守りなら減らす量。どちらでもない行動は値を持たないので 0。
  * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの
  */
 export function effectValue(def: ActionDef, vals: number[]): number {
-  return def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
+  return def.power?.(vals) ?? def.guard?.(vals) ?? 0
 }
 
 /** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */
