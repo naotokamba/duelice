@@ -59,7 +59,7 @@ export async function start(props: Parameters<typeof Game>[0], level?: string): 
   const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
   render(<Game {...props} />)
   if (level) await user.click(screen.getByRole('radio', { name: level }))
-  await user.click(button('決闘を始める'))
+  await user.click(button('CPU と対戦'))
   return user
 }
 

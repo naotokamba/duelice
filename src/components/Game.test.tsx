@@ -563,7 +563,7 @@ describe('メニュー', () => {
 
     await fromMenu(user, '降参')
     await user.click(within(dialog).getByRole('button', { name: '降参する' }))
-    expect(button('決闘を始める')).toBeTruthy()
+    expect(button('CPU と対戦')).toBeTruthy()
   })
 })
 
@@ -630,7 +630,7 @@ describe('決着', () => {
 
     await attackUntilEnd(user)
     await user.click(button('強さを選び直す'))
-    expect(button('決闘を始める')).toBeTruthy()
+    expect(button('CPU と対戦')).toBeTruthy()
   })
 
   const both: [number[], number[]] = [

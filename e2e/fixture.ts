@@ -45,7 +45,7 @@ export async function open(page: Page, { turns, opponent = [] }: Setup) {
 export async function start(page: Page, setup: Setup) {
   await open(page, setup)
   await expect(async () => {
-    await page.getByRole('button', { name: '決闘を始める' }).click({ timeout: 1000 })
+    await page.getByRole('button', { name: 'CPU と対戦' }).click({ timeout: 1000 })
     await expect(step(page, 1, 1)).toBeAttached({ timeout: 1000 })
   }).toPass({ timeout: 60_000 })
 }

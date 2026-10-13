@@ -1,4 +1,5 @@
-// タイトル。相手の強さを選んで対局を始める。ロゴはこの画面にだけ出す。
+// タイトル。相手の強さを選んで CPU と対局を始めるか、オンライン対戦のロビーへ進む。ロゴはこの画面にだけ出す。
+// オンライン対戦はまだ試しに出しているので、入口に β の印を付ける。
 
 import { LEVEL_NAMES, type Level } from '../game/cpu'
 import { RulesButton } from './RulesButton'
@@ -7,9 +8,15 @@ interface Props {
   level: Level
   setLevel: (l: Level) => void
   onStart: () => void
+  onOnline: () => void
 }
 
-export function Title({ level, setLevel, onStart }: Props) {
+/** 試しに出している機能の印 */
+export function Beta() {
+  return <span className="beta">β</span>
+}
+
+export function Title({ level, setLevel, onStart, onOnline }: Props) {
   return (
     <main className="title">
       <div className="title-help">
@@ -26,9 +33,14 @@ export function Title({ level, setLevel, onStart }: Props) {
           </label>
         ))}
       </fieldset>
-      <button type="button" className="btn btn-primary btn-large" onClick={onStart}>
-        決闘を始める
-      </button>
+      <div className="title-actions">
+        <button type="button" className="btn btn-primary btn-large" onClick={onStart}>
+          CPU と対戦
+        </button>
+        <button type="button" className="btn btn-large" onClick={onOnline}>
+          オンライン対戦 <Beta />
+        </button>
+      </div>
     </main>
   )
 }
