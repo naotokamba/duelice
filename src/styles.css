@@ -13,17 +13,17 @@
   /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
   --die-kept: #c9ccd8;
   --pip: #1d2233;
-  /* カードの色は属性でそろえる。炎は赤、風は緑、魔は紫、氷は水色。魔弾と魔槍は紫の中で青寄りと赤寄りに分ける */
+  /* カードの色は属性でそろえる。炎は赤、風は緑、魔は紫、氷は水色。魔弾と魔槍は同じ紫 */
   --flameStrike: #c8371e;
   --barrier: #2a9a5c;
   --bullet: #6a4bc4;
-  --spear: #9440b5;
+  --spear: var(--bullet);
   --interrupt: #3aa0d0;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
   --flameStrike-ink: #a22d18;
   --barrier-ink: #1f6b3c;
   --bullet-ink: #603fc0;
-  --spear-ink: #7f2d9a;
+  --spear-ink: var(--bullet-ink);
   --interrupt-ink: #1b6788;
   /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
   --burn: #c2410c;
@@ -66,12 +66,12 @@
     --flameStrike: #f06a4f;
     --barrier: #4cc38a;
     --bullet: #a690f0;
-    --spear: #c98ae6;
+    --spear: var(--bullet);
     --interrupt: #6cc4ea;
     --flameStrike-ink: #f28069;
     --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
-    --spear-ink: #d29bee;
+    --spear-ink: var(--bullet-ink);
     --interrupt-ink: #7ccdf0;
     --burn: #e8692a;
     --gust: #2f9e63;
@@ -1596,6 +1596,25 @@ button.tab {
   font-size: 0.85rem;
   font-variant-numeric: tabular-nums;
 }
+/* 履歴のモーダルの内訳。その行で起きたことを、カードの色の印で並べる */
+.history-detail {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+.history-fx {
+  display: grid;
+  color: var(--card-ink, var(--ink));
+}
+.history-fx > svg {
+  width: 26px;
+  height: 26px;
+}
+/* 内訳が長い行は、内訳を次の行へ送る */
+.modal-history .history-side {
+  flex-wrap: wrap;
+  row-gap: 0.25rem;
+}
 .modal-history {
   width: min(94vw, 600px);
   max-height: 85vh;
@@ -1676,23 +1695,6 @@ button.tab {
 .modal-rules {
   width: min(94vw, 1040px);
   max-height: 90vh;
-}
-/* 印の見方 */
-.rules-marks {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  gap: 0.4rem;
-}
-.rules-marks li {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  font-size: 0.95rem;
-}
-.rules-marks .fx {
-  flex: none;
 }
 .rules-cards-title {
   margin: 1.25rem 0 0.6rem;

@@ -17,17 +17,25 @@ export interface SeatView {
   usable: Set<CardId>
   /** カードごとの、今使える行。使えないカードは空 */
   active: Map<CardId, ActionKind[]>
+  /**
+   * カードごとの、このステップに置ける行。出目のせいで使えなくても入れ、ステップや詠唱の都合で使えない行と使い終わったカードは入れない。
+   * カードの色は、この行があるかで決める。出目で使えないだけなら色を変えない
+   */
+  rows: Map<CardId, ActionKind[]>
   /** 1ステップ目に使い、ターンが変わるまでカードの置き場に残るダイス */
   kept: PlacedRow | null
 }
 
 export function seatView(board: GameState, who: PlayerIndex): SeatView {
   const usable = usableCards(board, who)
+  const player = board.players[who]
+  const spent = (c: CardId) => player.usedCards.includes(c) && !usable.has(c)
   return {
     who,
-    player: board.players[who],
+    player,
     usable,
     active: new Map(CARD_ORDER.map((c) => [c, usable.has(c) ? kindsNow(board, who, c) : []])),
+    rows: new Map(CARD_ORDER.map((c) => [c, spent(c) ? [] : kindsNow(board, who, c)])),
     kept: keptRow(board, who),
   }
 }

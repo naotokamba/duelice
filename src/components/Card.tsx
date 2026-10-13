@@ -35,8 +35,13 @@ export interface CardPlay {
 interface Props {
   card: CardId
   roll: number[]
-  /** 今使える行動。使えない行は薄く描く */
+  /** 今使える行動。この行の置き場だけを押せる */
   active: ActionKind[]
+  /**
+   * カードの色で描く行。このステップに置ける行で、出目のせいで使えなくても入れる。
+   * ほかの行は灰色にする。省くと active と同じ
+   */
+  lit?: ActionKind[]
   used: boolean
   shown: Shown | null
   /** 公開で使ったカード。光らせて、中央の技と結びつける */
@@ -46,7 +51,7 @@ interface Props {
   play?: CardPlay
 }
 
-export function Card({ card, roll, active, used, shown, casting, kept, play }: Props) {
+export function Card({ card, roll, active, lit = active, used, shown, casting, kept, play }: Props) {
   const name = CARD_DEFS[card].name
   const issueId = useId()
   // 公開で使っている間は使ったカードとして光らせるので、使用済みの見た目にはしない
@@ -76,6 +81,7 @@ export function Card({ card, roll, active, used, shown, casting, kept, play }: P
           name={name}
           roll={roll}
           on={active.includes(kind) || shown?.kind === kind}
+          colored={lit.includes(kind) || shown?.kind === kind}
           shown={shown?.kind === kind ? shown : null}
           kept={kept?.kind === kind ? kept : null}
           play={play}
@@ -106,14 +112,17 @@ interface RowProps {
   kind: ActionKind
   name: string
   roll: number[]
+  /** 押せる行 */
   on: boolean
+  /** カードの色で描く行。押せなくても、出目のせいなら色は変えない */
+  colored: boolean
   shown: Shown | null
   /** この行に残っている、前のステップのダイス。今置いているダイスや公開中のダイスがあれば、そちらを描く */
   kept: PlacedRow | null
   play?: CardPlay
 }
 
-function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
+function Row({ card, kind, name, roll, on, colored, shown, kept, play }: RowProps) {
   const def = ACTION_DEFS[kind]
   const { face } = def
   const needed = requiredSlots(def)
@@ -193,7 +202,7 @@ function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
   }
 
   return (
-    <div className={on ? 'face-row is-on' : 'face-row'}>
+    <div className={colored ? 'face-row is-on' : 'face-row'}>
       <div className="slots">
         {/* 「Y =」は置き場の並びの外に出し、置き場の並びをカードの真ん中に置く */}
         {face.sum && <span className="sym slots-sum">{face.sum} =</span>}

@@ -24,6 +24,7 @@ export function SeatCard({ seat, card, shown, revealing, play }: CardProps) {
       card={card}
       roll={seat.player.roll}
       active={seat.active.get(card) ?? []}
+      lit={seat.rows.get(card) ?? []}
       used={usedUp(seat, card)}
       shown={here ? shown : null}
       casting={revealing && here}
@@ -58,7 +59,8 @@ export function SeatCards({ seat, shown, revealing, narrow, current, onPick, hin
     <CardTabs
       tabs={CARD_ORDER.map((c) => ({
         card: c,
-        off: !seat.usable.has(c) && shown?.card !== c,
+        // 灰色にするのは、このステップに置ける行が無いときだけ。出目のせいで使えないだけなら色は変えない
+        off: (seat.rows.get(c) ?? []).length === 0 && shown?.card !== c,
         current: c === (current ?? shown?.card),
         hint: !!hint && seat.usable.has(c),
         placed: shown?.card === c || seat.kept?.card === c,

@@ -16,6 +16,19 @@ describe('席の様子', () => {
     expect(view.kept).toBeNull()
   })
 
+  it('色で描く行には、出目のせいで使えないカードの行も入れる。ステップの都合で使えない行と、使い終わったカードは入れない', () => {
+    const view = seatView(makeState({ roll: [6, 2, 1], usedCards: ['barrier'] }, { roll: [1, 2, 3] }), 0)
+    // ゾロ目が無いので魔弾は使えないが、色はそのまま
+    expect(view.usable.has('bullet')).toBe(false)
+    expect(view.rows.get('bullet')).toEqual(['bullet'])
+    // 1ステップ目の魔槍は詠唱の段だけ。使い終わった風壁は無し
+    expect(view.rows.get('spear')).toEqual(['spearChant'])
+    expect(view.rows.get('barrier')).toEqual([])
+    // 2ステップ目に詠唱していなければ、魔槍はどの段も置けない
+    const second = seatView(makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] }, 2), 0)
+    expect(second.rows.get('spear')).toEqual([])
+  })
+
   it('二ステップ目には、一ステップ目に置いたダイスが置き場どおりに残る', () => {
     const state = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const match = { state, pending: [null, null] as [null, null] }

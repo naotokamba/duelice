@@ -4,29 +4,9 @@
 
 import { CircleHelp } from 'lucide-react'
 import { type RefObject, useRef } from 'react'
-import { CARD_ORDER, type EffectIcon, type EffectPart, GUARD_LABEL, kindsOfCard } from '../game/cards'
+import { CARD_ORDER, kindsOfCard } from '../game/cards'
 import { Card } from './Card'
 import { Modal } from './Dialog'
-import { EffectGlyph } from './glyphs'
-
-/** カードに出てくる印と、その意味。印の種類を足すと、ここに書くまで型が通らない */
-const MARK_TEXT: Record<EffectIcon, { value?: string; text: string }> = {
-  damage: { value: 'X', text: 'X ダメージを与える' },
-  pierce: { value: 'X', text: `${GUARD_LABEL}で減らない X ダメージを与える` },
-  guard: { value: 'X', text: 'このステップに受けるダメージを X 減らす' },
-  thorns: {
-    value: 'X',
-    text: `このステップに${GUARD_LABEL}で減る攻撃を受けたら、防ぎきっても超えられても、攻撃した相手に X ダメージを返す`,
-  },
-  burn: { value: 'X', text: `使うと自分も X ダメージを受ける。${GUARD_LABEL}では減らない` },
-  chant: { text: '詠唱。崩されなければ、次のステップで下の段を使える' },
-  disrupt: { text: '相手がこのステップに詠唱していたら、その詠唱を崩す' },
-}
-
-const MARKS = Object.entries(MARK_TEXT).map(([icon, { value, text }]): [EffectPart, string] => [
-  { icon: icon as EffectIcon, value },
-  text,
-])
 
 /** タイトルの右上の「?」。押すとルールを開く */
 export function RulesButton() {
@@ -60,17 +40,9 @@ export function RulesDialog({ ref: dialog }: { ref: RefObject<HTMLDialogElement 
         </li>
         <li>ダイスは置き場を選んで置く。X や Y と書いた置き場に置いた目が、その記号の値になる</li>
         <li>= でつないだ置き場には、同じ目を置く。3個振ると、同じ目は案外よく出る</li>
+        <li>カードの印は、押すとその効果が読める</li>
         <li>詠唱は、攻撃を受けても崩れない。崩れるのは、同じステップに相手が詠唱を崩すカードを使ったときだけ</li>
         <li>体力が先に0になった方の負け。同時に0以下になったら、体力の残りが多い方の勝ち。同じなら引き分け</li>
-      </ul>
-      <h3 className="rules-cards-title">印</h3>
-      <ul className="rules-marks">
-        {MARKS.map(([part, text]) => (
-          <li key={part.icon}>
-            <EffectGlyph part={part} tip={false} />
-            <span>{text}</span>
-          </li>
-        ))}
       </ul>
       <h3 className="rules-cards-title">カード</h3>
       <ul className="cards rules-cards">

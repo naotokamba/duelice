@@ -251,27 +251,15 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
   }
 }
 
-/**
- * カード面の効果の部品を一つ描く。印は押すと一行の説明が出る。
- * 説明を横に書いて並べるときは tip を false にして、ただの絵として描く
- */
-export function EffectGlyph({ part, tip = true }: { part: EffectPart; tip?: boolean }) {
+/** カード面の効果の部品を一つ描く。印は押すと一行の説明が出る */
+export function EffectGlyph({ part }: { part: EffectPart }) {
   if (!part.icon) return <span className="fx-text">{part.text}</span>
   const icon = effectIcon(part.icon, part.value)
-  const { glyph } = icon
   // 点線の枠にも置くと値が増えるなら、その値も説明に添える
   const label = part.full ? `${icon.label}。点線の枠にも置くと${part.full}` : icon.label
-  const cls = `fx fx-${part.icon}`
-  if (tip) {
-    return (
-      <Tip text={label} className={cls}>
-        {glyph}
-      </Tip>
-    )
-  }
   return (
-    <span className={cls} role="img" aria-label={label}>
-      {glyph}
-    </span>
+    <Tip text={label} className={`fx fx-${part.icon}`}>
+      {icon.glyph}
+    </Tip>
   )
 }

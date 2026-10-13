@@ -156,6 +156,23 @@ describe('カード面', () => {
   })
 })
 
+describe('行の色', () => {
+  const rows = () => [...screen.getByRole('listitem').querySelectorAll('.face-row')]
+
+  it('出目のせいで使えないだけの行は、押せなくてもカードの色のまま描く', () => {
+    // ゾロ目が無いので魔弾は使えないが、このステップに置ける行なので灰色にしない
+    const card = draw({ card: 'bullet', active: [], lit: ['bullet'], play: play() })
+    expect(rows().map((r) => r.classList.contains('is-on'))).toEqual([true])
+    expect(card.queryAllByRole('button', { name: /に置く$/ })).toEqual([])
+  })
+
+  it('ステップの都合で使えない行は灰色にする', () => {
+    // 1ステップ目の魔槍は、詠唱の段だけがこのステップの行
+    draw({ card: 'spear', active: [], lit: ['spearChant'] })
+    expect(rows().map((r) => r.classList.contains('is-on'))).toEqual([true, false])
+  })
+})
+
 describe('使用済みのカード', () => {
   it('このターンに使い終わったカードは、使用済みと書き、カードの説明でも伝える', () => {
     const card = draw({ card: 'flameStrike', active: [], used: true })
