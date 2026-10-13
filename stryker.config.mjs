@@ -16,6 +16,7 @@ export default {
     'src/game/hand.ts',
     'src/game/match.ts',
     'src/game/face.ts',
+    'src/game/perspective.ts',
   ],
   reporters: ['clear-text', 'progress', 'html'],
   htmlReporter: { fileName: 'reports/mutation/index.html' },

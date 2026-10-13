@@ -4,7 +4,7 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS, ACTION_KINDS } from './cards'
-import { type Match, newMatch, resign, type Submitted, submit, viewFor } from './match'
+import { forfeit, type Match, newMatch, resign, type Submitted, submit, viewFor } from './match'
 import { isLegal, keptRow, legalActions, turnOver } from './rules'
 import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
@@ -103,6 +103,31 @@ describe('ステップとターンの進行', () => {
     expect(resign(start, 0).state.winner).toBe(1)
     // 決着した後の降参は何も変えない
     expect(resign(r, 0)).toBe(r)
+  })
+})
+
+describe('持ち時間の切れた側を負けにする', () => {
+  const start = matchOf(makeState({ roll: [6, 4, 1] }, { roll: [3, 2, 1] }))
+  const half = accepted(submit(start, 0, fire, seeded(1))).match
+
+  it('片方だけなら、その側の負け。出していた行動は捨てる', () => {
+    expect(forfeit(half, [1]).state.winner).toBe(0)
+    expect(forfeit(half, [1]).pending).toEqual([null, null])
+    expect(forfeit(start, [0]).state.winner).toBe(1)
+  })
+  it('両方なら引き分け。並べた順や重なりは問わない', () => {
+    expect(forfeit(start, [0, 1]).state.winner).toBe('draw')
+    expect(forfeit(start, [1, 0]).state.winner).toBe('draw')
+    expect(forfeit(start, [1, 1]).state.winner).toBe(0)
+  })
+  it('誰も負けにしないときと、決着した後は何も変えない', () => {
+    expect(forfeit(half, [])).toBe(half)
+    const done = forfeit(start, [0])
+    expect(forfeit(done, [1])).toBe(done)
+  })
+  it('盤の決着のほかは変えない', () => {
+    const r = forfeit(half, [0])
+    expect({ ...r.state, winner: null }).toEqual(half.state)
   })
 })
 

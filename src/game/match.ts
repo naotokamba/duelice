@@ -51,8 +51,18 @@ export function submit(match: Match, who: PlayerIndex, action: Action, rng: Rng)
 
 /** who が降参する。相手の勝ちで決着し、出していた行動は捨てる */
 export function resign(match: Match, who: PlayerIndex): Match {
-  if (match.state.winner !== null) return match
-  return { state: { ...match.state, winner: who === 0 ? 1 : 0 }, pending: [null, null] }
+  return forfeit(match, [who])
+}
+
+/**
+ * losers の側を負けにして決着させる。両方とも負けなら引き分け。出していた行動は捨てる。
+ * 持ち時間の切れた側を負けにするのに使う。決着した後と、誰も負けにしないときは何も変えない
+ */
+export function forfeit(match: Match, losers: readonly PlayerIndex[]): Match {
+  if (match.state.winner !== null || losers.length === 0) return match
+  const both = losers.includes(0) && losers.includes(1)
+  const winner = both ? 'draw' : losers[0] === 0 ? 1 : 0
+  return { state: { ...match.state, winner }, pending: [null, null] }
 }
 
 /** who に見せてよい対局の様子。相手がまだ公開していない行動は、出したかどうかだけを伝える */
