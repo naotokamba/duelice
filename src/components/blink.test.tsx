@@ -93,10 +93,10 @@ describe('光らせるのは今押せるものだけ', () => {
 
   it('ダイスを持っている間は、置ける置き場が光る。ダイスのある置き場も入れ替えられるので光る', async () => {
     const user: User = await start(props())
-    await place(user, 3, '反撃')
+    await place(user, 3, '障壁')
     await user.click(trayDie(6))
     expect(blinkingButNotPressable()).toEqual([])
-    expect(myCard('反撃').getByRole('button', { name: '3の目と入れ替える' })).toBeTruthy()
+    expect(myCard('障壁').getByRole('button', { name: '3の目と入れ替える' })).toBeTruthy()
     expect(blinkCount()).toBeGreaterThan(0)
   })
 

@@ -81,8 +81,10 @@ async function holdDie(page: Page, narrow: boolean) {
       ],
     ],
   })
-  await tapPlace(page, 6, '火球のXの枠')
-  await tapPlace(page, 5, '火球の2つ目の枠')
+  // 狭い画面では使える最初のカードが出ている。ゾロ目が無いので障壁が出ているから、血弾に替える
+  if (narrow) await mySeat(page).getByRole('button', { name: '血弾', exact: true }).click()
+  await tapPlace(page, 6, '血弾のXの枠')
+  await tapPlace(page, 5, '血弾のYの枠')
   await confirm(page).click()
   await expect(step(page, 1, 2)).toBeAttached({ timeout: 15_000 })
   if (narrow) await mySeat(page).getByRole('button', { name: '障壁', exact: true }).click()

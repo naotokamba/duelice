@@ -98,10 +98,10 @@ describe('CPU', () => {
   })
   it('倒し切れるときは倒しに行く', () => {
     const t = new Thinker()
-    // 相手は残り3で、反撃はもう使った。魔弾2個なら障壁も関係なく3点で倒せる
-    const s = makeState({ roll: [1, 2, 3], hp: 3, usedDice: [0], usedCards: ['counter'] }, { roll: [6, 6, 1] }, 2)
+    // 相手は残り3で、障壁はもう使った。双炎でも血弾でも過負荷でも倒せる
+    const s = makeState({ roll: [1, 2, 3], hp: 3, usedDice: [0], usedCards: ['barrier'] }, { roll: [6, 6, 1] }, 2)
     const best = t.analyze(s, 1, 'hard').sort((a, b) => b.prob - a.prob)[0]
-    expect(best.action.kind === 'fireball' || best.action.kind === 'bullet').toBe(true)
+    expect(['twin', 'bloodBullet', 'overload']).toContain(best.action.kind)
   })
   it('同じ乱数なら同じ手を選ぶ', () => {
     const s = makeState({ roll: [6, 5, 2] }, { roll: [3, 3, 6] })
@@ -157,22 +157,22 @@ describe('無意味なパス', () => {
     )
   })
 
-  it('二ステップ目に、相手の反撃を外させるパスは残る', () => {
-    // 互いに火球を使って1個ずつ残り、相手は反撃を残している。魔弾を撃てば返されうるので、つよいもパスを混ぜる
+  it('二ステップ目に、相手が障壁を残していれば、血を払う攻撃を防がれうるのでパスも混ぜる', () => {
+    // 自分は障壁を使い、5 と 2 が残る。相手は 6 と 4 で障壁を張れる。撃って防がれると血だけ払うので、つよいもパスを混ぜる
     const s = makeState(
-      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
-      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
+      { roll: [3, 5, 2], usedDice: [0], usedCards: ['barrier'] },
+      { roll: [6, 1, 4], usedDice: [1], usedCards: ['bloodBullet'] },
       2,
     )
     const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
     expect(pass?.prob).toBeGreaterThan(0)
   })
 
-  it('相手に反撃が残っていなければ、魔弾が通る二ステップ目のパスは選ばない', () => {
-    // 相手は反撃を使い切っている。魔弾はどの手に対してもパスと同じか上なので、パスに意味が無い
+  it('相手が障壁を使い切っていれば、過負荷が通る二ステップ目のパスは選ばない', () => {
+    // 相手は障壁を使い切っている。1個の過負荷は2点当てて1の血を払うので、どの手に対してもパスより上
     const s = makeState(
-      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['fireball'] },
-      { roll: [6, 6, 3], usedDice: [0, 1], usedCards: ['counter'] },
+      { roll: [6, 6, 3], usedDice: [0], usedCards: ['barrier'] },
+      { roll: [6, 6, 3], usedDice: [0], usedCards: ['barrier'] },
       2,
     )
     for (const level of LEVELS) {
@@ -214,11 +214,12 @@ describe('無意味なパス', () => {
     // 局面ごとに二ステップ目まで全部解くので重い。CI の遅い機械でも時間内に終わるように長めに待つ
   }, 30_000)
 
-  it('一ステップ目に目を温めるパスは残る', () => {
-    // 1,1,2 対 1,1,2 では、つよいもパスを混ぜる
-    const s = makeState({ roll: [1, 1, 2] }, { roll: [1, 1, 2] })
-    const pass = new Thinker().analyze(s, 0, 'hard').find((o) => o.action.kind === 'pass')
-    expect(pass?.prob).toBeGreaterThan(0)
+  it('一ステップ目に、どの手にも支配されないパスは候補に残る', () => {
+    // 1,2,3 対 1,1,2 では、パスはほかの手に支配されない。つよいは選ばなくても候補に残し、ふつうは少し混ぜる
+    const s = makeState({ roll: [1, 2, 3] }, { roll: [1, 1, 2] })
+    const t = new Thinker()
+    expect(t.analyze(s, 0, 'hard').some((o) => o.action.kind === 'pass')).toBe(true)
+    expect(t.analyze(s, 0, 'normal').find((o) => o.action.kind === 'pass')?.prob).toBeGreaterThan(0)
   })
 
   it('弱い支配は、どの列でも同じか上で、少なくとも一つの列で上回る行があること', () => {

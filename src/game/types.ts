@@ -33,11 +33,8 @@ export const DEFAULT_CONFIG: Config = {
   diceCount: 3,
 }
 
-/**
- * 攻撃が相手の構えに当たってどうなったか。当たった、障壁に削られた、障壁をすり抜けた、
- * 反撃に打ち消されて返された、反撃が返せる上限を超えてそのまま通った
- */
-export type Outcome = 'hit' | 'guarded' | 'pierced' | 'countered' | 'overpowered'
+/** 攻撃が相手の構えに当たってどうなったか。当たった、障壁に削られた、障壁をすり抜けた */
+export type Outcome = 'hit' | 'guarded' | 'pierced'
 
 /** 一つの攻撃の行方。画面はこれを矢印に描き、ダメージもこれから数える */
 export interface Strike {
@@ -45,9 +42,9 @@ export interface Strike {
   kind: ActionKind
   power: number
   outcome: Outcome
-  /** ダメージを受けた側。反撃に返されたら攻撃した側になる */
+  /** ダメージを受けた側 */
   to: PlayerIndex
-  /** to が受けたダメージ。反撃に返されたら、反撃が返す量 */
+  /** to が受けたダメージ。障壁に削られたら、削られた後の値 */
   dealt: number
 }
 
@@ -66,9 +63,9 @@ export interface StepReport {
   values: [number[], number[]]
   /** 放たれた攻撃と、その行方 */
   strikes: Strike[]
-  /** 反撃が外れて、双方が自分で受けたダメージ。外れなかった側と反撃しなかった側は0 */
-  backfire: [number, number]
-  /** 双方が受けたダメージ。攻撃で受けた分と、反撃が外れて受けた分の合計 */
+  /** 双方が血として払い、自分で受けたダメージ。血を払う行動をしなかった側は0 */
+  blood: [number, number]
+  /** 双方が受けたダメージ。攻撃で受けた分と、血として払った分の合計 */
   damage: [number, number]
   chants: [ChantResult, ChantResult]
 }

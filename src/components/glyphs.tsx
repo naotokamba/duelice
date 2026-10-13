@@ -1,6 +1,6 @@
 // カード面と公開の舞台で共有する印。同じ意味は同じ形で描く。
-// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、障壁は盾、反撃は壁で折り返す矢印、
-// 反撃が外れて自分が受けるダメージは中を抜いた赤い星、詠唱は魔法陣。
+// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、障壁は盾、
+// 血として払って自分が受けるダメージは血のしずく、詠唱は魔法陣。
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
 import { type ReactNode, useId } from 'react'
@@ -102,30 +102,19 @@ export function ShieldGlyph({ value }: { value?: string | number }) {
   )
 }
 
-/**
- * 反撃。壁に向かった矢印が、壁で折り返して戻ってくる。値があれば、打ち消せる威力の上限として折り返しの内側に「≤5」と描く
- */
-export function CounterGlyph({ value }: { value?: string | number }) {
-  return (
-    <svg className="glyph-line" viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M20.5 3.5v17" strokeWidth={2.6} />
-      <path d="M2.5 6h10a6 6 0 0 1 0 12H3.5M7 14.5 3.5 18 7 21.5" />
-      {value !== undefined && (
-        <Value cx={11} cy={11.6} size={7.6}>
-          ≤{value}
-        </Value>
-      )}
-    </svg>
-  )
-}
+/** 血のしずくの形。下の丸い部分の中心は (0, 14) で、半径は 34 */
+const DROP = 'M0 -48C12 -30 34 -8 34 14A34 34 0 0 1 -34 14C-34 -8 -12 -30 0 -48Z'
 
-/** 反撃が外れて自分が受けるダメージ。普通のダメージと同じ形の星の、中を抜いて縁だけ赤く描き、受けるダメージの星と見分ける */
-export function BackfireStar({ value }: { value?: string }) {
+/** しずくに入れる字の大きさ。星より細いので、字数が増えるほど星より小さくする */
+const dropText = (value: string) => (value.length === 1 ? 40 : value.length === 2 ? 30 : 24)
+
+/** 血として払って自分が受けるダメージ。血のしずくの、丸い部分に数を描く */
+export function BloodGlyph({ value }: { value?: string }) {
   return (
-    <svg className="glyph-star glyph-backfire" viewBox="-50 -50 100 100" aria-hidden="true">
-      <polygon points={STAR} />
+    <svg className="glyph-blood" viewBox="-50 -50 100 100" aria-hidden="true">
+      <path d={DROP} />
       {value && (
-        <Value cx={0} cy={0} size={starText(value)}>
+        <Value cx={0} cy={14} size={dropText(value)}>
           {value}
         </Value>
       )}
@@ -214,10 +203,8 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
       return { label: `${GUARD_LABEL}で減らない${v}ダメージを与える`, glyph: <PierceStar value={v} /> }
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
-    case 'bounce':
-      return { label: `威力${v}以下の攻撃を打ち消して返す`, glyph: <CounterGlyph value={v} /> }
-    case 'backfire':
-      return { label: `返せなかったら${v}ダメージを受ける`, glyph: <BackfireStar value={v} /> }
+    case 'blood':
+      return { label: `血を払う。自分が${v}ダメージを受ける`, glyph: <BloodGlyph value={v} /> }
     case 'chant':
       return { label: `詠唱。${v}以上のダメージを受けると崩れる`, glyph: <ChantGlyph value={v} /> }
   }

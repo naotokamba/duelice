@@ -4,7 +4,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, vi } from 'vitest'
-import { HOLD_MS, RETURN_MS } from '../components/Exchange'
+import { HOLD_MS, IMPACT_MS } from '../components/Exchange'
 import { Game, type Opponent } from '../components/Game'
 import { NARROW_QUERY } from '../components/useNarrow'
 import type { Action, Rng } from '../game/types'
@@ -27,8 +27,8 @@ export async function advance(ms: number) {
   })
 }
 
-/** 一番長い公開、反撃で返した矢印が当たって結果を見せ終わるまでの時間 */
-export const LONGEST_REVEAL_MS = RETURN_MS + HOLD_MS
+/** 一番長い公開、矢印が当たって結果を見せ終わるまでの時間 */
+export const LONGEST_REVEAL_MS = IMPACT_MS + HOLD_MS
 
 /** 公開の動きが終わり、次のステップかターンへ進むまで待つ */
 export const settle = () => advance(LONGEST_REVEAL_MS)

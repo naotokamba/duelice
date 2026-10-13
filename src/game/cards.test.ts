@@ -4,7 +4,7 @@
 import { describe, expect, it } from 'vitest'
 import { actionOf } from '../test/helpers'
 import type { ActionKind, CardId } from './cards'
-import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, COUNTER_LABEL, GUARD_LABEL, kindsOfCard } from './cards'
+import { ACTION_DEFS, ACTION_KINDS, CARD_DEFS, CARD_ORDER, GUARD_LABEL, kindsOfCard } from './cards'
 import { stepDamage } from './rules'
 
 type Side = { kind: ActionKind | 'pass'; vals: number[] }
@@ -19,49 +19,40 @@ interface Case {
 const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals })
 
 const SPEC: Case[] = [
-  // 火球
-  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。火球は X の枠、つまり最初の置き場に置いた目が威力で、もう一つは支払うだけ
-  { name: '火球は X の枠に置いた目', a: s('fireball', 6, 2), b: s('pass'), expect: [0, 6] },
-  { name: '火球は X の枠に小さい目を置けば、その目', a: s('fireball', 2, 6), b: s('pass'), expect: [0, 2] },
-  { name: '火球は X の枠の目が障壁で減る', a: s('fireball', 3, 6), b: s('barrier', 1), expect: [0, 1] },
-  { name: '火球は障壁の目の倍だけ減る', a: s('fireball', 5, 1), b: s('barrier', 2), expect: [0, 1] },
-  { name: '火球は障壁でゼロ未満にならない', a: s('fireball', 5, 1), b: s('barrier', 3), expect: [0, 0] },
-  { name: '火球どうしは相打ち', a: s('fireball', 4, 4), b: s('fireball', 6, 1), expect: [6, 4] },
-  { name: '5以下の火球は反撃で打ち消され、4返される', a: s('fireball', 5, 1), b: s('counter', 3), expect: [4, 0] },
-  { name: '火球は X の枠の目で反撃の上限と比べる', a: s('fireball', 2, 6), b: s('counter', 1), expect: [4, 0] },
-  {
-    name: '6の火球は反撃で返せずそのまま当たり、外れた反撃は目の倍を受ける',
-    a: s('fireball', 6, 1),
-    b: s('counter', 2),
-    expect: [0, 10],
-  },
-  { name: '火球は詠唱中の相手に当たる', a: s('fireball', 6, 1), b: s('spearChant', 3), expect: [0, 6] },
+  // 双炎
+  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。双炎は同じ目を2個置き、目に2を足した威力
+  { name: '双炎はゾロ目の目に2を足す', a: s('twin', 4, 4), b: s('pass'), expect: [0, 6] },
+  { name: '1のゾロ目の双炎は3', a: s('twin', 1, 1), b: s('pass'), expect: [0, 3] },
+  { name: '6のゾロ目の双炎は8', a: s('twin', 6, 6), b: s('pass'), expect: [0, 8] },
+  { name: '双炎は障壁の目だけ減る', a: s('twin', 5, 5), b: s('barrier', 3), expect: [0, 4] },
+  { name: '双炎は障壁でゼロ未満にならない', a: s('twin', 1, 1), b: s('barrier', 6), expect: [0, 0] },
+  { name: '双炎どうしは相打ち', a: s('twin', 2, 2), b: s('twin', 6, 6), expect: [8, 4] },
+  { name: '双炎は詠唱中の相手に当たる', a: s('twin', 3, 3), b: s('spearChant', 6), expect: [0, 5] },
   // 障壁
   { name: '障壁だけでは何も起きない', a: s('barrier', 6), b: s('pass'), expect: [0, 0] },
   { name: '障壁どうし', a: s('barrier', 6), b: s('barrier', 1), expect: [0, 0] },
-  // 魔弾
-  { name: '魔弾1個は2点', a: s('bullet', 1), b: s('pass'), expect: [0, 2] },
-  { name: '魔弾2個は3点', a: s('bullet', 1, 1), b: s('pass'), expect: [0, 3] },
-  { name: '魔弾は障壁をすり抜ける', a: s('bullet', 1), b: s('barrier', 6), expect: [0, 2] },
-  { name: '魔弾2個も障壁をすり抜ける', a: s('bullet', 1, 2), b: s('barrier', 6), expect: [0, 3] },
-  { name: '魔弾は反撃で打ち消され、4返される', a: s('bullet', 1), b: s('counter', 3), expect: [4, 0] },
-  { name: '魔弾2個も反撃で打ち消される', a: s('bullet', 1, 1), b: s('counter', 6), expect: [4, 0] },
+  // 血弾
+  // X の枠、つまり最初の置き場の目が威力で、もう一つの置き場の目の分だけ自分が血を払う
+  { name: '血弾は X の枠の目を当て、もう一つの目の血を払う', a: s('bloodBullet', 6, 2), b: s('pass'), expect: [2, 6] },
+  { name: '血弾は X の枠に小さい目を置けば、その目', a: s('bloodBullet', 2, 6), b: s('pass'), expect: [6, 2] },
+  { name: '血弾は障壁の目だけ減る', a: s('bloodBullet', 5, 1), b: s('barrier', 3), expect: [1, 2] },
+  { name: '血弾の血は障壁で減らない', a: s('bloodBullet', 2, 4), b: s('barrier', 6), expect: [4, 0] },
+  {
+    name: '血弾どうしは、互いに当てて互いに血を払う',
+    a: s('bloodBullet', 6, 1),
+    b: s('bloodBullet', 3, 2),
+    expect: [4, 8],
+  },
   // 雷槍
   { name: '雷槍の発動は2個の合計', a: s('spearCast', 6, 5), b: s('pass'), expect: [0, 11] },
   { name: '雷槍の発動は障壁をすり抜ける', a: s('spearCast', 6, 5), b: s('barrier', 3), expect: [0, 11] },
-  {
-    name: '6以上の雷槍の発動は反撃で返せず、外れた反撃は目の倍を受ける',
-    a: s('spearCast', 6, 5),
-    b: s('counter', 1),
-    expect: [0, 13],
-  },
-  { name: '5以下の雷槍の発動は反撃で打ち消される', a: s('spearCast', 2, 3), b: s('counter', 1), expect: [4, 0] },
   { name: '雷槍の詠唱そのものはダメージを出さない', a: s('spearChant', 6), b: s('pass'), expect: [0, 0] },
-  { name: '詠唱に反撃は外れる', a: s('spearChant', 4), b: s('counter', 3), expect: [0, 6] },
-  // 反撃
-  { name: '反撃どうしは双方が外れる', a: s('counter', 1), b: s('counter', 3), expect: [2, 6] },
-  { name: '攻撃が来なければ反撃は外れる', a: s('counter', 2), b: s('barrier', 4), expect: [4, 0] },
-  { name: '何もしない相手にも反撃は外れる', a: s('counter', 3), b: s('pass'), expect: [6, 0] },
+  // 過負荷
+  { name: '過負荷1個は2点で、1の血を払う', a: s('overload', 6), b: s('pass'), expect: [1, 2] },
+  { name: '過負荷2個は4点で、2の血を払う', a: s('overload', 1, 1), b: s('pass'), expect: [2, 4] },
+  { name: '過負荷3個は6点で、3の血を払う', a: s('overload', 1, 2, 3), b: s('pass'), expect: [3, 6] },
+  { name: '過負荷は障壁の目だけ減り、血は減らない', a: s('overload', 1, 1, 1), b: s('barrier', 4), expect: [3, 2] },
+  { name: '過負荷と雷槍の発動は相打ち', a: s('overload', 1, 1), b: s('spearCast', 3, 3), expect: [8, 4] },
 ]
 
 function run(c: Case): [number, number] {
@@ -82,22 +73,18 @@ describe('カードの仕様表', () => {
 
 describe('定義表の整合性', () => {
   it('カードは画面にこの順で並ぶ', () => {
-    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['火球', '障壁', '魔弾', '雷槍', '反撃'])
+    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['双炎', '障壁', '血弾', '雷槍', '過負荷'])
   })
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
     expect(GUARD_LABEL).toBe('障壁')
   })
-  it('反撃が外れたときの説明には、反撃する行動の名前を使う', () => {
-    expect(COUNTER_LABEL).toBe('反撃')
-  })
-  it('攻撃する行動は、何もしない相手、受けるダメージを減らす相手、反撃する相手とぶつかる行が仕様表にある', () => {
+  it('攻撃する行動は、何もしない相手と、受けるダメージを減らす相手とぶつかる行が仕様表にある', () => {
     const missing: string[] = []
     for (const k of ACTION_KINDS.filter((k) => ACTION_DEFS[k].power)) {
       const against = SPEC.flatMap((c) => (c.a.kind === k ? [c.b.kind] : c.b.kind === k ? [c.a.kind] : []))
       const has = (ok: (o: ActionKind) => boolean) => against.some((o) => o !== 'pass' && ok(o))
       if (!against.includes('pass')) missing.push(`${k} と何もしない相手`)
       if (!has((o) => !!ACTION_DEFS[o].guard)) missing.push(`${k} と受けるダメージを減らす相手`)
-      if (!has((o) => !!ACTION_DEFS[o].counter)) missing.push(`${k} と反撃する相手`)
     }
     expect(missing).toEqual([])
   })
@@ -130,6 +117,8 @@ describe('定義表の整合性', () => {
       ).toBe(true)
       // 攻撃でない行動は、公開時の文が必要
       if (!d.power) expect(d.done ?? d.label, k).toBeTruthy()
+      // 血を払う行動は攻撃で、払う血は効果の値と別に決まる
+      if (d.blood) expect(d.power, k).toBeDefined()
       // 詠唱の発動は、同じカードに詠唱が無いと使えない
       if (d.needsCharge)
         expect(

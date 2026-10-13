@@ -13,17 +13,19 @@
   /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
   --die-kept: #c9ccd8;
   --pip: #1d2233;
-  --fireball: #c8371e;
+  --twin: #c8371e;
   --barrier: #2f7f86;
-  --bullet: #6a4bc4;
+  --bloodBullet: #9c1d45;
   --spear: #a87c00;
-  --counter: #5f6b7d;
+  --overload: #6a4bc4;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
-  --fireball-ink: #a22d18;
+  --twin-ink: #a22d18;
   --barrier-ink: #246268;
-  --bullet-ink: #603fc0;
+  --bloodBullet-ink: #8c1a3e;
   --spear-ink: #725400;
-  --counter-ink: #515b6a;
+  --overload-ink: #603fc0;
+  /* 血として払うダメージのしずく。受けるダメージの星の赤より深い赤 */
+  --blood-drop: #a3123a;
   /* 色の付いた札やボタンに乗せる文字 */
   --on-accent: #fff;
   /* 切り替わりの幕。卓より少しだけ暗い */
@@ -58,16 +60,17 @@
     --go: #38a863;
     --hit: #e1301b;
     --on-accent: #141824;
-    --fireball: #f06a4f;
+    --twin: #f06a4f;
     --barrier: #5fb8bf;
-    --bullet: #a690f0;
+    --bloodBullet: #e46a8c;
     --spear: #e0b43a;
-    --counter: #9aa6b8;
-    --fireball-ink: #f28069;
+    --overload: #a690f0;
+    --twin-ink: #f28069;
     --barrier-ink: #5fb8bf;
-    --bullet-ink: #ab97f1;
+    --bloodBullet-ink: #ec8aa5;
     --spear-ink: #e0b43a;
-    --counter-ink: #9aa6b8;
+    --overload-ink: #ab97f1;
+    --blood-drop: #d93a63;
   }
 }
 
@@ -590,30 +593,30 @@ button.die {
     box-shadow 150ms ease,
     opacity 150ms ease;
 }
-.card-fireball {
-  --spell: var(--fireball);
-  --spell-ink: var(--fireball-ink);
-  --card-ink: var(--fireball-ink);
+.card-twin {
+  --spell: var(--twin);
+  --spell-ink: var(--twin-ink);
+  --card-ink: var(--twin-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
   --spell-ink: var(--barrier-ink);
   --card-ink: var(--barrier-ink);
 }
-.card-bullet {
-  --spell: var(--bullet);
-  --spell-ink: var(--bullet-ink);
-  --card-ink: var(--bullet-ink);
+.card-bloodBullet {
+  --spell: var(--bloodBullet);
+  --spell-ink: var(--bloodBullet-ink);
+  --card-ink: var(--bloodBullet-ink);
 }
 .card-spear {
   --spell: var(--spear);
   --spell-ink: var(--spear-ink);
   --card-ink: var(--spear-ink);
 }
-.card-counter {
-  --spell: var(--counter);
-  --spell-ink: var(--counter-ink);
-  --card-ink: var(--counter-ink);
+.card-overload {
+  --spell: var(--overload);
+  --spell-ink: var(--overload-ink);
+  --card-ink: var(--overload-ink);
 }
 .card-head {
   display: flex;
@@ -931,18 +934,12 @@ button.fx[aria-describedby] {
 .glyph-pierce {
   overflow: visible;
 }
-/* 反撃が外れて自分で受けるダメージ。星の中を抜いて縁だけ赤くし、数も赤で書く */
-.glyph-backfire polygon {
-  fill: var(--glyph-bg, var(--surface));
-  stroke: var(--hit);
-  stroke-width: 8;
-  stroke-linejoin: round;
+/* 血として払って自分で受けるダメージ。受けるダメージの星と見分けるため、深い赤のしずくに白い数を書く */
+.glyph-blood path {
+  fill: var(--blood-drop);
 }
-.glyph-backfire {
-  overflow: visible;
-}
-.glyph-star.glyph-backfire .glyph-value {
-  fill: var(--hit);
+.glyph-blood .glyph-value {
+  fill: #fff;
 }
 /* パスは手元のダイスの並びの右端に置く */
 .pass {
@@ -1228,17 +1225,11 @@ button.tab {
 .arrow.is-down .arrow-value {
   top: 18px;
 }
-/* 障壁や反撃に当たった矢印は、そこで止まって薄くなる */
+/* 障壁に当たった矢印は、そこで止まって薄くなる */
 .arrow.is-spent {
   animation: fade 260ms ease var(--gone) both;
 }
-/* 障壁で止まった矢印の札は残し、何を止めたかを読めるようにする。
-   反撃に打ち消された矢印の札は、返す矢印が出たら消す。返す矢印に反撃の札が付くので、札を二つ並べない */
-.arrow.is-returned .arrow-value {
-  animation:
-    appear 200ms ease var(--delay) both,
-    gone 200ms ease var(--gone) both;
-}
+/* 障壁で止まった矢印の札は残し、何を止めたかを読めるようにする */
 @keyframes shoot-up {
   from {
     clip-path: inset(100% 0 0 0);
@@ -1297,7 +1288,7 @@ button.tab {
     opacity: 1;
   }
 }
-/* 構え。障壁、反撃、詠唱は受ける側の端に置く。矢印が縁で止まるので、大きさは Exchange.tsx が --stance-d で渡す */
+/* 構え。障壁と詠唱は受ける側の端に置く。矢印が縁で止まるので、大きさは Exchange.tsx が --stance-d で渡す */
 .stance {
   --glyph-bg: var(--surface);
   width: var(--stance-d);
@@ -1399,7 +1390,7 @@ button.tab {
   width: 24px;
   height: 24px;
 }
-/* 攻撃を止めた障壁や反撃は、当たった時に揺れる */
+/* 攻撃を止めた障壁は、当たった時に揺れる */
 .stance.is-blocking {
   animation:
     stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
@@ -1410,9 +1401,8 @@ button.tab {
     transform: translate(-50%, -50%) scale(1.18);
   }
 }
-/* すり抜けられた障壁と、外れた反撃は、薄くなる */
-.stance.is-pierced,
-.stance.is-missed {
+/* すり抜けられた障壁は、薄くなる */
+.stance.is-pierced {
   animation:
     stance-in 300ms cubic-bezier(0.2, 0.9, 0.3, 1.3) var(--appear, 0ms) both,
     fade-half 240ms ease var(--delay) both;
@@ -1615,8 +1605,7 @@ button.tab {
   .arrow.is-spent {
     opacity: 0.25;
   }
-  .stance.is-pierced,
-  .stance.is-missed {
+  .stance.is-pierced {
     opacity: 0.45;
   }
   .stance.is-broken .chant-on {

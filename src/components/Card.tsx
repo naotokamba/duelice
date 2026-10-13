@@ -119,14 +119,23 @@ function Row({ card, kind, name, roll, on, shown, kept, play }: RowProps) {
   const needed = requiredSlots(def)
   const fixed = !shown && kept !== null
   const slots = shown?.slots ?? kept?.slots ?? []
-  // 効果の値は置き場の順に並べた目から決める。火球なら X の枠の目が威力になる
+  // 効果の値は置き場の順に並べた目から決める。X の枠の目が威力になる
   const vals = shown?.complete || fixed ? filled(slots).map((i) => roll[i]) : undefined
-  /** 置き場の中に書く記号。最初の置き場には印、省いてもよい置き場には置くと増える量 */
-  const markOf = (k: number) => (k >= needed ? face.extra : k === MARK_SLOT ? face.mark : undefined)
-  /** 置き場の呼び名。記号を書いた置き場はその記号で、ほかは何番目かで呼ぶ */
+  /**
+   * 置き場の中に書く記号。最初の置き場には印、その次には血を払う記号、省いてもよい置き場には置くと増える量。
+   * 同じ目を置く置き場には、どれにも印の記号を書く
+   */
+  const markOf = (k: number) => {
+    if (k >= needed) return face.extra
+    if (k === MARK_SLOT || face.join === '=') return face.mark
+    return k === MARK_SLOT + 1 ? face.cost : undefined
+  }
+  const marks = Array.from({ length: slotsOf(def) }, (_, k) => markOf(k))
+  /** 置き場の呼び名。記号がその行で一つだけならその記号で、ほかは何番目かで呼ぶ */
   const slotName = (k: number) => {
-    const mark = markOf(k)
-    return mark ? `${name}の${mark}の枠` : `${name}の${k + 1}つ目の枠`
+    const mark = marks[k]
+    const unique = mark !== undefined && marks.filter((m) => m === mark).length === 1
+    return unique ? `${name}の${mark}の枠` : `${name}の${k + 1}つ目の枠`
   }
 
   const slot = (k: number) => {

@@ -10,7 +10,7 @@ import { rowOf, slotsOf } from './slots'
 import type { Action, GameState, PlayerIndex } from './types'
 
 const pass: Action = { kind: 'pass' }
-const fire: Action = { kind: 'fireball', dice: [0, 1] }
+const fire: Action = { kind: 'bloodBullet', dice: [0, 1] }
 
 /** 受け付けられた結果。受け付けられなければテストを落とす */
 function accepted(r: Submitted): Extract<Submitted, { ok: true }> {
@@ -45,7 +45,8 @@ describe('行動を出す', () => {
   it('両方そろうと解決し、出した行動はそのまま記録に残る', () => {
     const r = both(start, fire, pass)
     expect(r.resolved?.report.actions).toEqual([fire, pass])
-    expect(r.resolved?.report.damage).toEqual([0, 6])
+    // 6 を X の枠に置いた血弾は 6 を当て、もう一つの 4 の血を払う
+    expect(r.resolved?.report.damage).toEqual([4, 6])
     expect(r.match.pending).toEqual([null, null])
   })
   it('出す順を入れ替えても、結果は同じ', () => {
@@ -111,10 +112,10 @@ const maxOver = (f: (k: (typeof ACTION_KINDS)[number], sixes: number[]) => numbe
 
 /**
  * 一つのステップで一人が受けうる、一番大きなダメージ。
- * 全ての目を6にした攻撃が反撃の上限を超えて通り、さらにその反撃が外れて、6の目の分を自分で受けたときの量
+ * 全ての目を6にした攻撃をそのまま受け、さらに自分も全ての目を6にして一番多く血を払ったときの量
  */
 const MAX_TAKEN =
-  maxOver((k, sixes) => ACTION_DEFS[k].power?.(sixes)) + maxOver((k, sixes) => ACTION_DEFS[k].counter?.miss(sixes))
+  maxOver((k, sixes) => ACTION_DEFS[k].power?.(sixes)) + maxOver((k, sixes) => ACTION_DEFS[k].blood?.(sixes))
 
 describe('対局全体の性質', () => {
   const seedArb = fc.integer({ min: 1, max: 2 ** 31 - 1 })

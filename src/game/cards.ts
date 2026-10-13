@@ -11,11 +11,11 @@ export interface CardDef {
 /**
  * 効果を描く印。数を添える印は、印の中に数を描く。
  * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
- * bounce は反撃で、数は打ち消して返せる攻撃の威力の上限。backfire は反撃が外れたときに自分が受けるダメージ。
+ * blood は使うと自分が受けるダメージ。ダイスはマナで、体力は血。血を払う効果に使う。
  * chant は詠唱で、数はそのステップに受けても崩れないダメージの境目。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'bounce' | 'backfire' | 'chant'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'blood' | 'chant'
 
 /**
  * カード面の効果の部品。印に値を添えるか、短い文を並べる。値と文の中の mark や sum の記号は、ダイスを置くと値に置き換わる。
@@ -37,14 +37,19 @@ export interface EffectPart {
 export interface Face {
   /**
    * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
-   * ほかの置き場に置いたダイスは、払うだけのダイスになる。
+   * ほかの置き場に置いたダイスは、cost の記号を書いた置き場なら血を払うダイスに、そうでなければ払うだけのダイスになる。
    * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。障壁の 2X など
    */
   mark?: string
+  /**
+   * 印の置き場の次の置き場に書く記号。この置き場に置いた目の分だけ、使うと自分が血を払う。
+   * 効果の値にこの記号を書くと、ダイスを置いたときに払う血の値に置き換わる
+   */
+  cost?: string
   /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
   extra?: string
-  /** 置き場の間に書く記号 */
-  join?: '+'
+  /** 置き場の間に書く記号。= は同じ目を置く置き場で、どの置き場にも印の記号を書く */
+  join?: '+' | '='
   /** 置き場の前に「Y =」の形で書く記号。置いた目から計算した値が効果の値になる */
   sum?: string
   /** 効果。文はなるべく使わず、印で描く */
@@ -59,12 +64,14 @@ export interface ActionDef {
   dice: readonly number[]
   /** 使えるステップを限定する */
   step?: 1 | 2
+  /** 置くダイスが全て同じ目である必要がある。ゾロ目 */
+  sameValues?: boolean
   /** 詠唱。置いた目以上のダメージをそのステップに受けると崩れる */
   chant?: boolean
   /** 詠唱が保たれているときだけ使える。カードの使用回数は詠唱で消費済み */
   needsCharge?: boolean
   /**
-   * 攻撃の威力。障壁や反撃の前の値。
+   * 攻撃の威力。障壁の前の値。
    * vals はダイスを置いた置き場の目を、置き場の順に並べたもの。空けた置き場は飛ばす。
    * face.mark のある行動では印の置き場が必ず埋まっているので、vals[0] が印の置き場の目になる
    */
@@ -73,11 +80,8 @@ export interface ActionDef {
   piercing?: boolean
   /** 受ける攻撃を減らす量。vals は power と同じ */
   guard?: (vals: number[]) => number
-  /**
-   * 反撃。このステップに受けた攻撃の威力が upTo 以下なら、その攻撃を打ち消して、攻撃した側に back のダメージを与える。
-   * 返せなかったら、攻撃が来なかったときも、上限を超えてそのまま通されたときも、miss の値だけ自分が受ける。vals は power と同じ
-   */
-  counter?: { upTo: number; back: number; miss: (vals: number[]) => number }
+  /** 使うと自分が受けるダメージ。体力を血として払う。障壁では減らない。vals は power と同じ */
+  blood?: (vals: number[]) => number
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
   done?: string
   /** カード面の描き方 */
@@ -87,11 +91,11 @@ export interface ActionDef {
 /** カードの表。並びは画面に並べる順 */
 // Stryker disable next-line ObjectLiteral: 表を空にするとテストの読み込みが失敗し、見つけたと数えられない。並びと名前は cards.test.ts で確かめる
 const CARDS = {
-  fireball: { name: '火球' },
+  twin: { name: '双炎' },
   barrier: { name: '障壁' },
-  bullet: { name: '魔弾' },
+  bloodBullet: { name: '血弾' },
   spear: { name: '雷槍' },
-  counter: { name: '反撃' },
+  overload: { name: '過負荷' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -104,30 +108,38 @@ export const CARD_ORDER = Object.keys(CARDS) as readonly CardId[]
 
 /** 行動の表。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
 const ACTIONS = {
-  fireball: {
-    card: 'fireball',
-    label: '火球',
+  twin: {
+    card: 'twin',
+    label: '双炎',
     dice: [2],
-    // X の枠に置いた目が威力になる。もう一つの枠は払うだけのダイス
-    power: (v) => v[0],
-    face: { mark: 'X', effect: [{ icon: 'damage', value: 'X' }] },
+    sameValues: true,
+    // 同じ目を2個置く。目に2を足した威力になる
+    power: (v) => v[0] + 2,
+    face: { mark: 'X', join: '=', effect: [{ icon: 'damage', value: 'X+2' }] },
   },
   barrier: {
     card: 'barrier',
     label: '障壁',
     dice: [1],
-    guard: (v) => 2 * v[0],
+    guard: (v) => v[0],
     done: '障壁を張った',
-    face: { mark: 'X', effect: [{ icon: 'guard', value: '2X' }] },
+    face: { mark: 'X', effect: [{ icon: 'guard', value: 'X' }] },
   },
-  bullet: {
-    card: 'bullet',
-    label: '魔弾',
-    dice: [1, 2],
-    // 左の枠に置けば2、点線の枠にも置くと1増えて3
-    power: (v) => (v.length === 1 ? 2 : 3),
-    piercing: true,
-    face: { extra: '+1', effect: [{ icon: 'pierce' }] },
+  bloodBullet: {
+    card: 'bloodBullet',
+    label: '血弾',
+    dice: [2],
+    // X の枠に置いた目が威力になる。もう一つの枠に置いた目の分だけ、自分が血を払う
+    power: (v) => v[0],
+    blood: (v) => v[1],
+    face: {
+      mark: 'X',
+      cost: 'Y',
+      effect: [
+        { icon: 'damage', value: 'X' },
+        { icon: 'blood', value: 'Y' },
+      ],
+    },
   },
   spearChant: {
     card: 'spear',
@@ -148,21 +160,14 @@ const ACTIONS = {
     piercing: true,
     face: { join: '+', sum: 'Y', effect: [{ icon: 'pierce', value: 'Y' }] },
   },
-  counter: {
-    card: 'counter',
-    label: '反撃',
-    dice: [1],
-    // 5以下の攻撃を打ち消して4を返す。返せなかったら、X の枠に置いた目の倍を自分が受ける
-    counter: { upTo: 5, back: 4, miss: (v) => 2 * v[0] },
-    done: '反撃を構えた',
-    face: {
-      mark: 'X',
-      effect: [
-        { icon: 'bounce', value: '5' },
-        { icon: 'damage', value: '4' },
-        { icon: 'backfire', value: '2X' },
-      ],
-    },
+  overload: {
+    card: 'overload',
+    label: '過負荷',
+    dice: [1, 2, 3],
+    // 置いた数の倍の威力で、置いた数だけ自分が血を払う。点線の枠に置くほど強く、痛くなる
+    power: (v) => 2 * v.length,
+    blood: (v) => v.length,
+    face: { extra: '+2', effect: [{ icon: 'damage' }, { icon: 'blood' }] },
   },
 } satisfies Record<string, ActionDef>
 
@@ -179,19 +184,14 @@ export function kindsOfCard(card: CardId): ActionKind[] {
 }
 
 /**
- * 効果の値。攻撃なら威力、障壁なら減らす量、反撃なら外れたときに自分が受けるダメージ、詠唱なら崩れる境目になる印の置き場の目。
+ * 効果の値。攻撃なら威力、障壁なら減らす量、詠唱なら崩れる境目になる印の置き場の目。
  * vals は power と同じく、ダイスを置いた置き場の目を置き場の順に並べたもの
  */
 export function effectValue(def: ActionDef, vals: number[]): number {
-  return def.power?.(vals) ?? def.guard?.(vals) ?? def.counter?.miss(vals) ?? vals[0]
+  return def.power?.(vals) ?? def.guard?.(vals) ?? vals[0]
 }
 
 /** 受けるダメージを減らす行動の名前。障壁で減らない攻撃の説明に使う */
 // Stryker disable next-line OptionalChaining,StringLiteral: 減らす行動が表に無いときの備え。今の表では通らない
 // Stryker disable next-line ArrowFunction: 表を読めなくするとこのファイルの読み込みが失敗し、見つけたと数えられない。名前は cards.test.ts で確かめる
 export const GUARD_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.guard)?.label ?? ''
-
-/** 反撃する行動の名前。反撃が外れたときの説明に使う */
-// Stryker disable next-line OptionalChaining,StringLiteral: 反撃する行動が表に無いときの備え。今の表では通らない
-// Stryker disable next-line ArrowFunction: 表を読めなくするとこのファイルの読み込みが失敗し、見つけたと数えられない。名前は cards.test.ts で確かめる
-export const COUNTER_LABEL = ACTION_KINDS.map((k) => ACTION_DEFS[k]).find((d) => d.counter)?.label ?? ''

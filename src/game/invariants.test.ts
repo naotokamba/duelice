@@ -8,7 +8,7 @@ import { ACTION_DEFS, ACTION_KINDS, type ActionKind } from './cards'
 import {
   actionDice,
   actionKey,
-  backfires,
+  bloodOf,
   diceValues,
   isLegal,
   legalActions,
@@ -50,10 +50,11 @@ const placedArb = stateArb.chain((s) =>
   }),
 )
 
-/** 威力と、障壁が減らす量 */
+/** 威力と、障壁が減らす量と、払う血 */
 const effectOf = (kind: ActionKind, vals: number[]) => [
   ACTION_DEFS[kind].power?.(vals),
   ACTION_DEFS[kind].guard?.(vals),
+  ACTION_DEFS[kind].blood?.(vals),
 ]
 
 /** 局面と、その局面の双方の合法手から一つずつ */
@@ -220,31 +221,31 @@ describe('ダメージ', () => {
       }),
     )
   })
-  it('攻撃も反撃もしない側は、相手にダメージを与えない。相手が反撃を外して自分で受ける分は除く', () => {
+  it('攻撃しない側は、相手にダメージを与えない。相手が自分で払う血は除く', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
         const dmg = stepDamage(vals, acts)
-        const backfire = backfires(vals, acts, strikes(vals, acts))
+        const blood = bloodOf(vals, acts)
         for (const i of [0, 1] as const) {
           const a = acts[i]
           const def = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind]
-          if (!def?.power && !def?.counter) expect(dmg[1 - i] - backfire[1 - i]).toBe(0)
+          if (!def?.power) expect(dmg[1 - i] - blood[1 - i]).toBe(0)
         }
       }),
     )
   })
-  it('反撃が外れるのは、反撃して相手の攻撃を打ち消せなかったときだけで、受ける量は X の枠の目から決まる', () => {
+  it('血を払うのは血を払う行動だけで、払う量は置いた目から決まる。払った血は受けたダメージに入る', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
-        const list = strikes(vals, acts)
-        const backfire = backfires(vals, acts, list)
+        const blood = bloodOf(vals, acts)
+        const dmg = stepDamage(vals, acts)
         for (const i of [0, 1] as const) {
           const a = acts[i]
-          const counter = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].counter
-          const caught = list.some((x) => x.from !== i && x.outcome === 'countered')
-          expect(backfire[i]).toBe(counter && !caught ? counter.miss(vals[i]) : 0)
+          const pay = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].blood
+          expect(blood[i]).toBe(pay ? pay(vals[i]) : 0)
+          expect(dmg[i]).toBeGreaterThanOrEqual(blood[i])
         }
       }),
     )
@@ -266,22 +267,12 @@ describe('ダメージ', () => {
           const bdef = b.kind === 'pass' ? undefined : ACTION_DEFS[b.kind]
           expect(x.power).toBe(def.power?.(vals[x.from]))
           expect(x.dealt).toBeGreaterThanOrEqual(0)
-          const counter = bdef?.counter
-          const expected = counter
-            ? x.power <= counter.upTo
-              ? 'countered'
-              : 'overpowered'
-            : bdef?.guard
-              ? def.piercing
-                ? 'pierced'
-                : 'guarded'
-              : 'hit'
+          const expected = bdef?.guard ? (def.piercing ? 'pierced' : 'guarded') : 'hit'
           expect(x.outcome).toBe(expected)
-          expect(x.to).toBe(x.outcome === 'countered' ? x.from : other)
-          // 打ち消された攻撃は、反撃が返す量だけ攻撃した側に入る。ほかは、障壁に削られなければ威力のまま
-          if (x.outcome === 'countered') expect(x.dealt).toBe(counter?.back)
-          else expect(x.dealt).toBeLessThanOrEqual(x.power)
-          if (x.outcome !== 'guarded' && x.outcome !== 'countered') expect(x.dealt).toBe(x.power)
+          expect(x.to).toBe(other)
+          // 障壁に削られなければ威力のまま
+          expect(x.dealt).toBeLessThanOrEqual(x.power)
+          if (x.outcome !== 'guarded') expect(x.dealt).toBe(x.power)
         }
       }),
     )
