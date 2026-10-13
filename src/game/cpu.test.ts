@@ -2,8 +2,17 @@ import fc from 'fast-check'
 import { describe, expect, it } from 'vitest'
 import { expectEquilibrium } from '../test/equilibrium'
 import { makeState, rollArb, seeded } from '../test/helpers'
-import { STARTER } from './cards'
-import { KILL_BONUS, LEVEL_NAMES, type Level, Thinker, weaklyDominated } from './cpu'
+import { type CardId, STARTER } from './cards'
+import {
+  CPU_VERSION,
+  ESTIMATES,
+  KILL_BONUS,
+  LEVEL_NAMES,
+  type Level,
+  rollOutcomes,
+  Thinker,
+  weaklyDominated,
+} from './cpu'
 import { solveMatrixGame } from './matrixGame'
 import { isLegal, legalActions, newGame, nextTurn, resolveStep, turnOver } from './rules'
 import type { GameState } from './types'
@@ -281,5 +290,67 @@ describe('無意味なパス', () => {
         0,
       ),
     ).toBe(true)
+  })
+})
+
+describe('拡張のカードの見積もり', () => {
+  it('振り足すダイスの出方は、目の組ごとに確率をまとめ、合計は1', () => {
+    expect(rollOutcomes(0)).toEqual([{ dice: [], p: 1 }])
+    const one = rollOutcomes(1)
+    expect(one.map((o) => o.dice)).toEqual([[1], [2], [3], [4], [5], [6]])
+    for (const o of one) expect(o.p).toBeCloseTo(1 / 6, 12)
+    const two = rollOutcomes(2)
+    expect(two).toHaveLength(21)
+    expect(two.reduce((a, o) => a + o.p, 0)).toBeCloseTo(1, 12)
+    expect(two.find((o) => o.dice.join() === '3,3')?.p).toBeCloseTo(1 / 36, 12)
+    expect(two.find((o) => o.dice.join() === '2,5')?.p).toBeCloseTo(2 / 36, 12)
+    expect(rollOutcomes(3).reduce((a, o) => a + o.p, 0)).toBeCloseTo(1, 12)
+    // 二度目は数え直さずに同じものを返す
+    expect(rollOutcomes(2)).toBe(two)
+  })
+
+  /** 二ステップ目に、自分は deck の1個のダイスだけを持ち、相手はダイスを持たない盤 */
+  const lastDie = (deck: CardId[]) => makeState({ roll: [5], deck }, { roll: [] }, 2)
+  const evOf = (t: Thinker, s: GameState, kind: string) =>
+    t.analyze(s, 0, 'hard').find((o) => o.action.kind === kind)?.ev
+
+  it('持ち越したダイスは見積もりの分だけ得点に入る。決着したら数えない', () => {
+    const deck: CardId[] = ['meditate', 'freeze', 'barrier', 'bullet', 'interrupt']
+    expect(evOf(new Thinker(), lastDie(deck), 'meditate')).toBeCloseTo(ESTIMATES.carry, 9)
+    expect(evOf(new Thinker({ carry: 4, freeze: 0 }), lastDie(deck), 'meditate')).toBeCloseTo(4, 9)
+    // 一ステップ目に持ち越しを決めていても、相手を倒したなら次のターンは無いので足さない
+    const kill = makeState({ roll: [5, 2], deck, usedDice: [1], carry: 2 }, { roll: [], hp: 1 }, 2)
+    expect(evOf(new Thinker(), kill, 'interrupt')).toBe(2 + KILL_BONUS)
+    const idle = makeState({ roll: [], deck, carry: 2 }, { roll: [] }, 2)
+    expect(evOf(new Thinker(), idle, 'pass')).toBeCloseTo(ESTIMATES.carry, 9)
+  })
+  it('相手に残した凍結は見積もりの分だけ得点に入り、相手から見れば失点になる', () => {
+    const deck: CardId[] = ['meditate', 'freeze', 'barrier', 'bullet', 'interrupt']
+    expect(evOf(new Thinker(), lastDie(deck), 'freeze')).toBeCloseTo(ESTIMATES.freeze, 9)
+    const t = new Thinker({ carry: 0, freeze: 2 })
+    expect(evOf(t, lastDie(deck), 'freeze')).toBeCloseTo(2, 9)
+    // 席を入れ替えても、凍らせた側の得になる
+    const flipped = makeState({ roll: [] }, { roll: [5], deck }, 2)
+    const seen = t.analyze(flipped, 1, 'hard').find((o) => o.action.kind === 'freeze')
+    expect(seen?.ev).toBeCloseTo(2, 9)
+  })
+  it('ダイスを振り足す行動の得点は、振り足すダイスの出方ごとの二ステップ目の価値の、確率で重みを付けた平均', () => {
+    const deck: CardId[] = ['overload', 'twinDragon', 'barrier', 'bullet', 'interrupt']
+    const s = makeState({ roll: [4, 4, 1], deck }, { roll: [] })
+    const t = new Thinker()
+    const g = t.game(s, 0)
+    const row = g.mine.findIndex((a) => a.kind === 'overload' && a.dice[0] === 2)
+    expect(row).toBeGreaterThanOrEqual(0)
+    const want = rollOutcomes(2).reduce((acc, o) => {
+      const next = resolveStep(s, [g.mine[row], { kind: 'pass' }], [o.dice, []])
+      return acc + o.p * solveMatrixGame(new Thinker().game(next, 0).payoff).value
+    }, 0)
+    expect(g.payoff[row][0]).toBeCloseTo(want, 9)
+    // 振り足した2個が4のゾロ目なら双竜で20、ターンの終わりに2焼けるので、少なくともその分は見込む
+    expect(want).toBeGreaterThan((1 / 36) * (20 - 2))
+  })
+  it('見積もりは CPU の版と一緒に記録に残せる', () => {
+    expect(CPU_VERSION).toBeGreaterThanOrEqual(2)
+    expect(ESTIMATES).toEqual({ carry: 1.5, freeze: 0.5 })
   })
 })
