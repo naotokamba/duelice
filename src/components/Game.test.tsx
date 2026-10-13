@@ -218,7 +218,7 @@ describe('置く', () => {
     expect(blockedReason()).toBeNull()
     await user.click(button('決定'))
     expect(screen.getByText('あなたの炎撃 4点')).toBeTruthy()
-    expect(screen.getByText('あなたは炎撃で自分も 6点焼けた')).toBeTruthy()
+    expect(screen.getByText('あなたは炎撃で自分も 6点受けた')).toBeTruthy()
     await settle()
     expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()
     expect(mySeat().getByLabelText('体力 14 / 20')).toBeTruthy()
@@ -258,7 +258,7 @@ describe('置く', () => {
     await pass(user)
     // X の枠の 5 に2を足して7、Y の枠の 4 だけ自分も焼ける
     expect(screen.getByText('相手の炎撃 7点')).toBeTruthy()
-    expect(screen.getByText('相手は炎撃で自分も 4点焼けた')).toBeTruthy()
+    expect(screen.getByText('相手は炎撃で自分も 4点受けた')).toBeTruthy()
     await settle()
     expect(mySeat().getByLabelText('体力 13 / 20')).toBeTruthy()
     expect(cpuSeat().getByLabelText('体力 16 / 20')).toBeTruthy()

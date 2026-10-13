@@ -241,9 +241,9 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
     case 'thorns':
-      return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを吹き返す`, glyph: <ThornsGlyph value={v} /> }
+      return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを返す`, glyph: <ThornsGlyph value={v} /> }
     case 'burn':
-      return { label: `自分も焼けて${v}ダメージを受ける`, glyph: <BurnGlyph value={v} /> }
+      return { label: `自分も${v}ダメージを受ける`, glyph: <BurnGlyph value={v} /> }
     case 'chant':
       return { label: '詠唱。崩されなければ、次のステップで下の段を使える', glyph: <ChantGlyph /> }
     case 'disrupt':

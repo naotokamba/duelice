@@ -44,7 +44,7 @@ describe('カード面', () => {
     })
     expect(diceOn(card)).toEqual(['1の目', '6の目'])
     expect(card.getByRole('button', { name: '3ダメージを与える' })).toBeTruthy()
-    expect(card.getByRole('button', { name: '自分も焼けて6ダメージを受ける' })).toBeTruthy()
+    expect(card.getByRole('button', { name: '自分も6ダメージを受ける' })).toBeTruthy()
   })
 
   it('空いた置き場には印を書き、印か何番目かで呼ぶ。持っているダイスを置ける置き場だけを押せる', () => {
