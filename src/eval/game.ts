@@ -5,6 +5,7 @@ import type { CardId } from '../game/cards'
 import { ACTION_DEFS } from '../game/cards'
 import { ESTIMATES, type Estimates, Thinker } from '../game/cpu'
 import { newMatch, submit } from '../game/match'
+import { partsOf } from '../game/rules'
 import { DEFAULT_CONFIG, type GameState, type PlayerIndex, type Rng } from '../game/types'
 
 /** 再現できる乱数 */
@@ -24,11 +25,17 @@ export interface SeatStats {
   steps: [number, number]
   /** 最適戦略がほぼ一択で、読み合いが無かった回数 */
   forced: [number, number]
-  /** カードごとの、使ったステップの数 */
+  /** カードごとの、使ったステップの数。一緒に使ったカードも数える */
   cards: Partial<Record<CardId, number>>
   /** 一ステップ目に使ったカードごとのステップの数 */
   first: Partial<Record<CardId, number>>
   passes: number
+  /** 行動の回数を増やすカードを使ったステップの、使ったカードの枚数ごとの数 */
+  multi?: Record<string, number>
+  /** 好きな目のダイスに選んだ目ごとの数。添字が目 */
+  wild?: number[]
+  /** もう一度出す行動が繰り返した効果の、カードごとの数 */
+  echoed?: Partial<Record<CardId, number>>
 }
 
 /** 一局の結果 */
@@ -48,7 +55,20 @@ export const TURN_LIMIT = 40
 /** 最適戦略の確率がこれを超えたら、一択とみなす */
 const PURE = 0.99
 
-const emptySeat = (): SeatStats => ({ steps: [0, 0], forced: [0, 0], cards: {}, first: {}, passes: 0 })
+const emptySeat = (): SeatStats => ({
+  steps: [0, 0],
+  forced: [0, 0],
+  cards: {},
+  first: {},
+  passes: 0,
+  multi: {},
+  wild: [0, 0, 0, 0, 0, 0, 0],
+  echoed: {},
+})
+
+const bump = <K extends string>(rec: Partial<Record<K, number>>, k: K) => {
+  rec[k] = (rec[k] ?? 0) + 1
+}
 
 /** 確率に従って一つ選ぶ */
 function sample(probs: number[], rng: Rng): number {
@@ -117,11 +137,15 @@ export function playGame(
       seat.steps[step]++
       if (Math.max(...probs) > PURE) seat.forced[step]++
       if (action.kind === 'pass') seat.passes++
-      else {
-        const card = ACTION_DEFS[action.kind].card
-        seat.cards[card] = (seat.cards[card] ?? 0) + 1
-        if (step === 0) seat.first[card] = (seat.first[card] ?? 0) + 1
+      const parts = partsOf(action)
+      for (const x of parts) {
+        const def = ACTION_DEFS[x.kind]
+        bump(seat.cards, def.card)
+        if (step === 0) bump(seat.first, def.card)
+        for (const v of x.set ?? []) if (v !== null) (seat.wild as number[])[v]++
+        if (def.echo) for (const m of state.players[who].last) bump(seat.echoed ?? {}, ACTION_DEFS[m.kind].card)
       }
+      if (parts.length > 0 && ACTION_DEFS[parts[0].kind].multi) bump(seat.multi ?? {}, String(parts.length))
     })
     const first = submit(m, 0, picks[0].action, dice)
     if (!first.ok) throw new Error(`席0の行動を受け付けなかった: ${first.reason}`)

@@ -35,6 +35,7 @@ export interface Report {
   starterMirror?: Fun
   rows?: RowTally
   estimateCheck?: { deck: CardId[]; variants: Record<string, Rate> }
+  mechanics?: { multi: Record<string, number>; wild: number[]; echoed: Partial<Record<CardId, number>> }
   elo: { deck: string; elo: number; games: number }[]
 }
 
@@ -168,10 +169,46 @@ export function renderMarkdown(r: Report, { deckName, name }: Names): string {
     )
   }
 
+  if (r.mechanics) {
+    const { multi, wild, echoed } = r.mechanics
+    const share = (n: number, all: number) => `${pct(n / all)} (${n})`
+    out.push('## 新しい仕組みの使われ方')
+    out.push(
+      '全ての対戦で、行動の回数を増やすカードを使ったステップに使ったカードの枚数、好きな目のダイスに選んだ目、' +
+        'もう一度出す行動が繰り返した効果のカード。',
+    )
+    const uses = Object.values(multi).reduce((a, b) => a + b, 0)
+    const chosen = wild.reduce((a, b) => a + b, 0)
+    const repeated = Object.values(echoed).reduce((a, b) => a + (b ?? 0), 0)
+    const echoRows = (Object.entries(echoed) as [CardId, number][])
+      .sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => [name(c), share(n, repeated)])
+    out.push(
+      uses === 0
+        ? '一ステップに複数のカードを使ったステップは無い。'
+        : table(
+            ['使ったカード', '割合'],
+            Object.entries(multi)
+              .sort()
+              .map(([k, n]) => [`${k}枚`, share(n, uses)]),
+          ),
+    )
+    out.push(
+      chosen === 0
+        ? '好きな目のダイスに目を選んだことは無い。'
+        : table(
+            ['選んだ目', '割合'],
+            [1, 2, 3, 4, 5, 6].map((v) => [String(v), share(wild[v], chosen)]),
+          ),
+    )
+    out.push(repeated === 0 ? 'もう一度出した効果は無い。' : table(['繰り返した効果', '割合'], echoRows))
+  }
+
   if (r.rows) {
     out.push('## 互換の疑い: 局面')
     out.push(
       '対局の途中の局面で、その局面だけ全てのカードを持っているとして行列ゲームを作り、' +
+        '行動の回数を増やすカードは、一緒に使う手がほかのカードの効果を含んでしまうので、全てのカードに入れない。' +
         'A の行動の行が全て B の行動の行のどれかに弱く支配された局面の割合。A を使えた局面だけを数える。80% 以上を並べる。',
     )
     const rows: string[][] = []

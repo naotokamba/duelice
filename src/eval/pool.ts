@@ -273,6 +273,8 @@ async function main() {
   const games = new Map<string, number>()
   for (const r of results(all)) for (const k of [r.a, r.b]) games.set(k, (games.get(k) ?? 0) + r.n)
 
+  report.mechanics = mechanicsOf(all)
+
   if (phases.has('sample')) {
     report.cards = cardStats(sample, elo, all)
     // 明らかに弱いデッキは、理由を添えて次から見送る
@@ -419,6 +421,25 @@ function cardStats(sample: string[], elo: Map<string, number>, pairs: [string, s
       firstUsage: firstSteps > 0 ? first / firstSteps : 0,
     }
   })
+}
+
+/** 一ステップに複数のカードを使う、好きな目のダイス、もう一度出す行動の使われ方。全ての対戦の席から数える */
+function mechanicsOf(pairs: [string, string][]) {
+  const multi: Record<string, number> = {}
+  const wild = [0, 0, 0, 0, 0, 0, 0]
+  const echoed: Partial<Record<CardId, number>> = {}
+  for (const [a, b] of pairs) {
+    for (const g of Object.values(store.pair(a, b).games)) {
+      for (const seat of g.seats) {
+        for (const [k, n] of Object.entries(seat.multi ?? {})) multi[k] = (multi[k] ?? 0) + n
+        seat.wild?.forEach((n, v) => {
+          wild[v] += n
+        })
+        for (const [c, n] of Object.entries(seat.echoed ?? {}) as [CardId, number][]) echoed[c] = (echoed[c] ?? 0) + n
+      }
+    }
+  }
+  return { multi, wild, echoed }
 }
 
 /** デッキの、上位どうしの対戦での面白さの目安 */

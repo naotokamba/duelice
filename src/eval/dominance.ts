@@ -2,10 +2,15 @@
 // 局面で見るときは、その局面で全てのカードを持っていることにして行列ゲームを作り、
 // カード A の行動の行が、どれもカード B の行動の行のどれかに弱く支配されるかを数える。
 // 相手の列は、相手が本当に持ち込んだ5枚の行動のまま。
+// 行動の回数を増やすカードは、全てのカードに入れない。一緒に使う手は、ほかのカードの行の効果を含んで弱く支配しやすく、
+// カードどうしの比べにならないうえ、組の数が増えて重い。このカードの強さは、差し替えと無作為なデッキで測る。
 
-import { ACTION_DEFS, type CardId, POOL } from '../game/cards'
+import { ACTION_DEFS, type CardId, kindsOfCard, POOL } from '../game/cards'
 import { Thinker } from '../game/cpu'
 import type { GameState, PlayerIndex } from '../game/types'
+
+/** 局面で比べるときに持たせるカード。行動の回数を増やすカードを除いた全て */
+export const COMPARED = POOL.filter((c) => !kindsOfCard(c).some((k) => ACTION_DEFS[k].multi))
 
 /** 比べるときに同じとみなす幅 */
 const EPS = 1e-9
@@ -34,12 +39,12 @@ export function mergeTally(into: RowTally, add: RowTally): RowTally {
 }
 
 /**
- * who が全てのカードを持っているとした局面で、カードごとの行動の行を比べる。
+ * who が行動の回数を増やすカードを除いた全てのカードを持っているとした局面で、カードごとの行動の行を比べる。
  * このステップに使える行動の無いカードは数えない。二ステップ目の価値も、全てのカードを持っているとして求める
  */
 export function tallyRows(state: GameState, who: PlayerIndex, thinker = new Thinker()): RowTally {
   const players = [...state.players] as GameState['players']
-  players[who] = { ...players[who], deck: [...POOL] }
+  players[who] = { ...players[who], deck: [...COMPARED] }
   const g = thinker.game({ ...state, players }, who)
   const rows = new Map<CardId, number[][]>()
   g.mine.forEach((a, i) => {
