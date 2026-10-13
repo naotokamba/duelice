@@ -13,18 +13,18 @@ const anyVals = (n: number) => Array<number>(n).fill(1)
 /**
  * カード面の効果。目が分かっていれば、記号をその目から決まる値に置き換える。
  * 記号を含む値の欄は、記号ごと効果の値になる。X+2 なら、X が 3 なら 5 になる。記号を含まない値の欄はそのまま描く。
- * 血を払う置き場の記号を含む値の欄は、払う血の値になる。
+ * 焼ける置き場の記号を含む値の欄は、自分が焼ける値になる。
  * vals はダイスを置いた置き場の目を置き場の順に並べたもので、空けた置き場は飛ばす。
  * 記号を使わない行動は、値を書かない印に、置いた個数で決まる値を入れる。置く前は空けられない置き場だけを埋めた値にし、
- * 省いてもよい置き場まで埋めると値が増えるなら、その値も添える。血の印には払う血の値を、ほかの印には効果の値を入れる
+ * 省いてもよい置き場まで埋めると値が増えるなら、その値も添える。焼ける印には自分が焼ける値を、ほかの印には効果の値を入れる
  */
 export function effectParts(kind: ActionKind, vals?: number[]): EffectPart[] {
   return faceParts(ACTION_DEFS[kind], vals)
 }
 
-/** 印の値。血の印なら払う血、ほかの印なら効果の値 */
+/** 印の値。焼ける印なら自分が焼ける量、ほかの印なら効果の値 */
 function partValue(def: ActionDef, part: EffectPart, vals: number[]): string {
-  return String(part.icon === 'blood' && def.blood ? def.blood(vals) : effectValue(def, vals))
+  return String(part.icon === 'burn' && def.burn ? def.burn(vals) : effectValue(def, vals))
 }
 
 /** effectParts を定義そのものから作る。定義表に無い仮のカードでも確かめられるように分けてある */

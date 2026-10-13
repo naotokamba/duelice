@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react'
 import type { Resolution } from '../game/match'
 import type { PlayerIndex, StepReport } from '../game/types'
-import { BLOOD_MS, IMPACT_MS, landings, revealMs } from './Exchange'
+import { BURN_MS, IMPACT_MS, landings, revealMs } from './Exchange'
 
 /** ステップやターンの切り替わりを知らせる帯を出す時間 */
 export const BANNER_MS = 1100
@@ -18,11 +18,11 @@ export interface Banner {
 
 /**
  * 公開してから landed ミリ秒目まででは、まだ入っていない who へのダメージ。その分だけ体力を多く見せる。
- * 攻撃が当たる分と、血として払う分を数える
+ * 攻撃が当たる分と、自分が焼ける分を数える
  */
 export function unlanded(report: StepReport, who: PlayerIndex, landed: number): number {
   const hits = IMPACT_MS > landed ? report.strikes.filter((s) => s.to === who).reduce((sum, s) => sum + s.dealt, 0) : 0
-  return hits + (BLOOD_MS > landed ? report.blood[who] : 0)
+  return hits + (BURN_MS > landed ? report.burn[who] : 0)
 }
 
 export function useRevealClock() {

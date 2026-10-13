@@ -60,7 +60,7 @@ export const trayDie = (page: Page, value: number) =>
     .getByRole('button', { name: `${value}の目`, exact: true })
     .first()
 
-/** 自分のカードの置き場。name は「血弾のXの枠」のような呼び名 */
+/** 自分のカードの置き場。name は「炎撃のXの枠」のような呼び名 */
 export const slot = (page: Page, name: string) => mySeat(page).getByRole('button', { name: `${name}に置く` })
 
 /** 自分の席に大きく出ているカード */

@@ -19,55 +19,55 @@ interface Case {
 const s = (kind: ActionKind | 'pass', ...vals: number[]): Side => ({ kind, vals })
 
 const SPEC: Case[] = [
-  // 血弾
-  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。血弾は X の枠、つまり最初の置き場の目に2を足した威力で、
-  // もう一つの置き場の目の分だけ、自分が血を払う
+  // 炎撃
+  // 目はダイスを置いた置き場の順に並べ、空けた置き場は飛ばす。炎撃は X の枠、つまり最初の置き場の目に2を足した威力で、
+  // もう一つの置き場の目の分だけ、自分も焼ける
   {
-    name: '血弾は X の枠の目に2を足して当て、もう1個の目の血を払う',
-    a: s('bloodBullet', 6, 2),
+    name: '炎撃は X の枠の目に2を足して当て、もう1個の目だけ自分も焼ける',
+    a: s('flameStrike', 6, 2),
     b: s('pass'),
     expect: [2, 8],
   },
   {
-    name: '血弾は X の枠に小さい目を置けば、威力も小さく血は重い',
-    a: s('bloodBullet', 2, 6),
+    name: '炎撃は X の枠に小さい目を置けば、威力も小さく自分は大きく焼ける',
+    a: s('flameStrike', 2, 6),
     b: s('pass'),
     expect: [6, 4],
   },
   {
-    name: '血弾は炎壁の目の倍だけ減り、3を返される',
-    a: s('bloodBullet', 5, 1),
+    name: '炎撃は風壁の目の倍だけ減り、3を返される',
+    a: s('flameStrike', 5, 1),
     b: s('barrier', 2),
     expect: [4, 3],
   },
   {
-    name: '血弾は炎壁に防ぎきられても、3を返される',
-    a: s('bloodBullet', 1, 6),
+    name: '炎撃は風壁に防ぎきられても、3を返される',
+    a: s('flameStrike', 1, 6),
     b: s('barrier', 6),
     expect: [9, 0],
   },
-  { name: '血弾どうしは相打ち', a: s('bloodBullet', 6, 1), b: s('bloodBullet', 3, 2), expect: [6, 10] },
-  { name: '血弾は詠唱中の相手に当たる', a: s('bloodBullet', 5, 3), b: s('spearChant', 6), expect: [3, 7] },
-  // 炎壁
-  { name: '炎壁だけでは何も起きない', a: s('barrier', 6), b: s('pass'), expect: [0, 0] },
-  { name: '炎壁どうしでは何も起きない', a: s('barrier', 6), b: s('barrier', 1), expect: [0, 0] },
-  { name: '炎壁は詠唱には何も返さない', a: s('barrier', 3), b: s('spearChant', 2), expect: [0, 0] },
+  { name: '炎撃どうしは相打ち', a: s('flameStrike', 6, 1), b: s('flameStrike', 3, 2), expect: [6, 10] },
+  { name: '炎撃は詠唱中の相手に当たる', a: s('flameStrike', 5, 3), b: s('spearChant', 6), expect: [3, 7] },
+  // 風壁
+  { name: '風壁だけでは何も起きない', a: s('barrier', 6), b: s('pass'), expect: [0, 0] },
+  { name: '風壁どうしでは何も起きない', a: s('barrier', 6), b: s('barrier', 1), expect: [0, 0] },
+  { name: '風壁は詠唱には何も返さない', a: s('barrier', 3), b: s('spearChant', 2), expect: [0, 0] },
   // 魔弾
   // 同じ目を2個置き、目に関係なく、障壁で減らない4の威力
   { name: '魔弾はゾロ目で4', a: s('bullet', 6, 6), b: s('pass'), expect: [0, 4] },
   { name: '1のゾロ目の魔弾も4', a: s('bullet', 1, 1), b: s('pass'), expect: [0, 4] },
-  { name: '魔弾は炎壁をすり抜け、返されない', a: s('bullet', 2, 2), b: s('barrier', 6), expect: [0, 4] },
-  { name: '魔弾と血弾は相打ち', a: s('bullet', 3, 3), b: s('bloodBullet', 6, 1), expect: [8, 5] },
-  // 雷槍
-  { name: '雷槍の発動は2個の合計', a: s('spearCast', 6, 5), b: s('pass'), expect: [0, 11] },
-  { name: '雷槍の発動は炎壁をすり抜け、返されない', a: s('spearCast', 6, 5), b: s('barrier', 3), expect: [0, 11] },
-  { name: '雷槍の詠唱そのものはダメージを出さない', a: s('spearChant', 6), b: s('pass'), expect: [0, 0] },
-  // 妨害
-  { name: '妨害は目に関係なく2', a: s('interrupt', 6), b: s('pass'), expect: [0, 2] },
-  { name: '1の妨害も2', a: s('interrupt', 1), b: s('pass'), expect: [0, 2] },
-  { name: '妨害は1の炎壁でも防がれ、3を返される', a: s('interrupt', 4), b: s('barrier', 1), expect: [3, 0] },
-  { name: '妨害は詠唱中の相手に2点', a: s('interrupt', 3), b: s('spearChant', 5), expect: [0, 2] },
-  { name: '妨害と魔弾は相打ち', a: s('interrupt', 2), b: s('bullet', 4, 4), expect: [4, 2] },
+  { name: '魔弾は風壁をすり抜け、返されない', a: s('bullet', 2, 2), b: s('barrier', 6), expect: [0, 4] },
+  { name: '魔弾と炎撃は相打ち', a: s('bullet', 3, 3), b: s('flameStrike', 6, 1), expect: [8, 5] },
+  // 魔槍
+  { name: '魔槍の発動は2個の合計', a: s('spearCast', 6, 5), b: s('pass'), expect: [0, 11] },
+  { name: '魔槍の発動は風壁をすり抜け、返されない', a: s('spearCast', 6, 5), b: s('barrier', 3), expect: [0, 11] },
+  { name: '魔槍の詠唱そのものはダメージを出さない', a: s('spearChant', 6), b: s('pass'), expect: [0, 0] },
+  // 氷礫
+  { name: '氷礫は目に関係なく2', a: s('interrupt', 6), b: s('pass'), expect: [0, 2] },
+  { name: '1の氷礫も2', a: s('interrupt', 1), b: s('pass'), expect: [0, 2] },
+  { name: '氷礫は1の風壁でも防がれ、3を返される', a: s('interrupt', 4), b: s('barrier', 1), expect: [3, 0] },
+  { name: '氷礫は詠唱中の相手に2点', a: s('interrupt', 3), b: s('spearChant', 5), expect: [0, 2] },
+  { name: '氷礫と魔弾は相打ち', a: s('interrupt', 2), b: s('bullet', 4, 4), expect: [4, 2] },
 ]
 
 function run(c: Case): [number, number] {
@@ -88,13 +88,13 @@ describe('カードの仕様表', () => {
 
 describe('定義表の整合性', () => {
   it('カードは画面にこの順で並ぶ', () => {
-    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['血弾', '炎壁', '魔弾', '雷槍', '妨害'])
+    expect(CARD_ORDER.map((c) => CARD_DEFS[c].name)).toEqual(['炎撃', '風壁', '魔弾', '魔槍', '氷礫'])
   })
   it('障壁で減らない攻撃の説明には、受けるダメージを減らす行動の名前を使う', () => {
-    expect(GUARD_LABEL).toBe('炎壁')
+    expect(GUARD_LABEL).toBe('風壁')
   })
   it('効果の値は、攻撃なら威力、守りなら減らす量で、どちらでもない詠唱は 0', () => {
-    expect(effectValue(ACTION_DEFS.bloodBullet, [4, 1])).toBe(6)
+    expect(effectValue(ACTION_DEFS.flameStrike, [4, 1])).toBe(6)
     expect(effectValue(ACTION_DEFS.barrier, [3])).toBe(6)
     expect(effectValue(ACTION_DEFS.spearChant, [5])).toBe(0)
   })
@@ -137,9 +137,9 @@ describe('定義表の整合性', () => {
       ).toBe(true)
       // 攻撃でない行動は、公開時の文が必要
       if (!d.power) expect(d.done ?? d.label, k).toBeTruthy()
-      // 血を払う行動は攻撃で、払う血は効果の値と別に決まる
-      if (d.blood) expect(d.power, k).toBeDefined()
-      // 攻撃を返すのは守る行動で、カード面の炎の数は返すダメージと揃える
+      // 自分も焼ける行動は攻撃で、自分が焼ける量は効果の値と別に決まる
+      if (d.burn) expect(d.power, k).toBeDefined()
+      // 攻撃を返すのは守る行動で、カード面の風の渦の数は返すダメージと揃える
       if (d.thorns) {
         expect(d.guard, k).toBeDefined()
         expect(d.face.effect.find((p) => p.icon === 'thorns')?.value, k).toBe(String(d.thorns))

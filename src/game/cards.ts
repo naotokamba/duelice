@@ -12,11 +12,11 @@ export interface CardDef {
  * 効果を描く印。数を添える印は、印の中に数を描く。
  * damage はダメージ、pierce は障壁で減らない貫通ダメージ、guard は受けるダメージを減らす、
  * thorns は守っているときに攻撃を受けると、攻撃した相手に返すダメージ、
- * blood は使うと自分が受けるダメージ。ダイスはマナで、体力は血。血を払う効果に使う。
+ * burn は使うと自分が受けるダメージ。炎の魔法で自分も焼ける効果に使う。
  * chant は詠唱、disrupt は相手の詠唱を崩す。この二つは数を持たない。
  * 詠唱が崩れる決まりはルールの画面で説明し、カードには書かない
  */
-export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'thorns' | 'blood' | 'chant' | 'disrupt'
+export type EffectIcon = 'damage' | 'pierce' | 'guard' | 'thorns' | 'burn' | 'chant' | 'disrupt'
 
 /** 数を持たない印。置いた目や個数から値を入れない */
 export const BARE_ICONS: readonly EffectIcon[] = ['chant', 'disrupt']
@@ -41,13 +41,13 @@ export interface EffectPart {
 export interface Face {
   /**
    * 最初の置き場の中に書く記号。この置き場に置いた目が効果の値になり、この置き場は空けられない。
-   * ほかの置き場に置いたダイスは、cost の記号を書いた置き場なら血を払うダイスに、そうでなければ払うだけのダイスになる。
+   * ほかの置き場に置いたダイスは、cost の記号を書いた置き場なら、その目の分だけ自分も焼けるダイスに、そうでなければ払うだけのダイスになる。
    * 効果の値に記号を含む式を書くと、ダイスを置いたときに式ごと値に置き換わる。X+2 や 2X など
    */
   mark?: string
   /**
-   * 印の置き場の次の置き場に書く記号。この置き場に置いた目の分だけ、使うと自分が血を払う。
-   * 効果の値にこの記号を書くと、ダイスを置いたときに払う血の値に置き換わる
+   * 印の置き場の次の置き場に書く記号。この置き場に置いた目の分だけ、使うと自分も焼ける。
+   * 効果の値にこの記号を書くと、ダイスを置いたときに自分が焼ける値に置き換わる
    */
   cost?: string
   /** 省いてもよい置き場の中に書く記号。置くと効果がこれだけ増えることを示す。増える量は power と揃える決まりで、テストが検査する */
@@ -91,8 +91,8 @@ export interface ActionDef {
   thorns?: number
   /** 同じステップに相手が詠唱していたら、その詠唱を崩す */
   disrupts?: boolean
-  /** 使うと自分が受けるダメージ。体力を血として払う。障壁では減らない。vals は power と同じ */
-  blood?: (vals: number[]) => number
+  /** 使うと炎で自分も焼けて受けるダメージ。障壁では減らない。vals は power と同じ */
+  burn?: (vals: number[]) => number
   /** 攻撃以外の行動を公開したときの文。「あなたは 3 で」に続く */
   done?: string
   /** カード面の描き方 */
@@ -102,11 +102,11 @@ export interface ActionDef {
 /** カードの表。並びは画面に並べる順 */
 // Stryker disable next-line ObjectLiteral: 表を空にするとテストの読み込みが失敗し、見つけたと数えられない。並びと名前は cards.test.ts で確かめる
 const CARDS = {
-  bloodBullet: { name: '血弾' },
-  barrier: { name: '炎壁' },
+  flameStrike: { name: '炎撃' },
+  barrier: { name: '風壁' },
   bullet: { name: '魔弾' },
-  spear: { name: '雷槍' },
-  interrupt: { name: '妨害' },
+  spear: { name: '魔槍' },
+  interrupt: { name: '氷礫' },
 } satisfies Record<string, CardDef>
 
 /** カードの種類。表に足すと増える */
@@ -117,32 +117,32 @@ export const CARD_DEFS: Record<CardId, CardDef> = CARDS
 /** 画面に並べる順 */
 export const CARD_ORDER = Object.keys(CARDS) as readonly CardId[]
 
-/** 行動の表。1枚のカードが複数の行動を持つことがある。雷槍の詠唱と発動など */
+/** 行動の表。1枚のカードが複数の行動を持つことがある。魔槍の詠唱と発動など */
 const ACTIONS = {
-  bloodBullet: {
-    card: 'bloodBullet',
-    label: '血弾',
+  flameStrike: {
+    card: 'flameStrike',
+    label: '炎撃',
     dice: [2],
-    // X の枠に置いた目に2を足した威力になる。もう一つの枠に置いた目の分だけ、自分が血を払う
+    // X の枠に置いた目に2を足した威力になる。もう一つの枠に置いた目の分だけ、自分も焼ける
     power: (v) => v[0] + 2,
-    blood: (v) => v[1],
+    burn: (v) => v[1],
     face: {
       mark: 'X',
       cost: 'Y',
       effect: [
         { icon: 'damage', value: 'X+2' },
-        { icon: 'blood', value: 'Y' },
+        { icon: 'burn', value: 'Y' },
       ],
     },
   },
   barrier: {
     card: 'barrier',
-    label: '炎壁',
+    label: '風壁',
     dice: [1],
     // 置いた目の倍を減らす。減らせる攻撃を受けたら、防ぎきっても超えられても、攻撃した相手に3を返す
     guard: (v) => 2 * v[0],
     thorns: 3,
-    done: '炎壁を張った',
+    done: '風壁を張った',
     face: {
       mark: 'X',
       effect: [
@@ -164,17 +164,17 @@ const ACTIONS = {
   },
   spearChant: {
     card: 'spear',
-    label: '雷槍の詠唱',
+    label: '魔槍の詠唱',
     dice: [1],
     step: 1,
     chant: true,
-    done: '雷槍を詠唱',
+    done: '魔槍を詠唱',
     // 詠唱は置くだけでよく、目は効果に関わらないので、置き場に記号を書かない
     face: { effect: [{ icon: 'chant' }] },
   },
   spearCast: {
     card: 'spear',
-    label: '雷槍の発動',
+    label: '魔槍の発動',
     dice: [2],
     step: 2,
     needsCharge: true,
@@ -184,7 +184,7 @@ const ACTIONS = {
   },
   interrupt: {
     card: 'interrupt',
-    label: '妨害',
+    label: '氷礫',
     dice: [1],
     // 目に関係なく2の威力。同じステップに相手が詠唱していたら、その詠唱を崩す
     power: () => 2,

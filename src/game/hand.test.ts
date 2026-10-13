@@ -30,7 +30,7 @@ import { diceValues, freeDice, isLegal, legalActions } from './rules'
 import { slotsOf } from './slots'
 import type { GameState } from './types'
 
-/** 1個から3個まで置ける仮の妨害に替えて確かめる。今の表には、点線の枠を持つ行動が無い */
+/** 1個から3個まで置ける仮の氷礫に替えて確かめる。今の表には、点線の枠を持つ行動が無い */
 function withDotted(check: () => void) {
   const saved = ACTION_DEFS.interrupt
   ACTION_DEFS.interrupt = { ...saved, dice: [1, 2, 3], power: (v) => 2 * v.length }
@@ -110,7 +110,7 @@ describe('行動の組み立て', () => {
 })
 
 describe('ステップごとの行動', () => {
-  it('雷槍は一ステップ目に詠唱、二ステップ目は詠唱が保たれたときだけ発動', () => {
+  it('魔槍は一ステップ目に詠唱、二ステップ目は詠唱が保たれたときだけ発動', () => {
     const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
     expect(kindsNow(s1, 0, 'spear')).toEqual(['spearChant'])
     const charged = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
@@ -176,12 +176,12 @@ describe('ダイスを置く', () => {
   })
   it('使用済みのダイスは置けない', () => {
     const s = makeState({ roll: [6, 6, 2], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(canPut(s, 0, 'bloodBullet', 2)).toBe(false)
-    expect(canPut(s, 0, 'bloodBullet', 0)).toBe(true)
-    expect(placeDie(s, 0, null, 'bloodBullet', 2, 0)).toBeNull()
+    expect(canPut(s, 0, 'flameStrike', 2)).toBe(false)
+    expect(canPut(s, 0, 'flameStrike', 0)).toBe(true)
+    expect(placeDie(s, 0, null, 'flameStrike', 2, 0)).toBeNull()
     // 同じダイスを二つの置き場には置けない。置き直すと元の置き場は空く
-    expect(placeDie(s, 0, { card: 'bloodBullet', slots: [0, null] }, 'bloodBullet', 0, 1)).toEqual({
-      card: 'bloodBullet',
+    expect(placeDie(s, 0, { card: 'flameStrike', slots: [0, null] }, 'flameStrike', 0, 1)).toEqual({
+      card: 'flameStrike',
       slots: [null, 0],
     })
   })
@@ -191,24 +191,24 @@ describe('ダイスを置く', () => {
     expect(placeAll(s, 'barrier', [0])).toEqual({ card: 'barrier', slots: [0] })
     expect(placeDie(s, 0, null, 'barrier', 0, 1)).toBeNull()
     expect(placeDie(s, 0, null, 'barrier', 0, -1)).toBeNull()
-    expect(placeAll(s, 'bloodBullet', [0, 1, 2])).toBeNull()
+    expect(placeAll(s, 'flameStrike', [0, 1, 2])).toBeNull()
   })
   it('置き場の無いカードには置けない', () => {
     const s = makeState({ roll: [6, 5, 4], chant: 'broken' }, { roll: [1, 2, 3] }, 2)
     expect(slotsNow(s, 'spear')).toBe(0)
     expect(placeDie(s, 0, null, 'spear', 0, 0)).toBeNull()
   })
-  it('行動は置いた置き場をそのまま記録する。血弾は X の枠に置いた目が威力になる', () => {
+  it('行動は置いた置き場をそのまま記録する。炎撃は X の枠に置いた目が威力になる', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
-    const pl = placeDie(s, 0, placeDie(s, 0, null, 'bloodBullet', 0, 1), 'bloodBullet', 1, 0)
-    expect(pl).toEqual({ card: 'bloodBullet', slots: [1, 0] })
-    const a = composeAction(s, 0, 'bloodBullet', pl?.slots ?? [])
-    expect(a).toEqual({ kind: 'bloodBullet', dice: [1, 0] })
+    const pl = placeDie(s, 0, placeDie(s, 0, null, 'flameStrike', 0, 1), 'flameStrike', 1, 0)
+    expect(pl).toEqual({ card: 'flameStrike', slots: [1, 0] })
+    const a = composeAction(s, 0, 'flameStrike', pl?.slots ?? [])
+    expect(a).toEqual({ kind: 'flameStrike', dice: [1, 0] })
     expect(diceValues(s.players[0], a ?? { kind: 'pass' })).toEqual([2, 6])
-    // X の枠の 2 に2を足して4、もう1個の 6 の血を払う
-    expect(effectParts('bloodBullet', [2, 6])).toEqual([
+    // X の枠の 2 に2を足して4、もう1個の 6 だけ自分も焼ける
+    expect(effectParts('flameStrike', [2, 6])).toEqual([
       { icon: 'damage', value: '4', text: undefined },
-      { icon: 'blood', value: '6', text: undefined },
+      { icon: 'burn', value: '6', text: undefined },
     ])
   })
   it('省いてもよい置き場だけに置いても行動にならない。空けられない置き場を埋めれば行動になり、空けた置き場は空けたまま記録する', () => {
@@ -222,10 +222,10 @@ describe('ダイスを置く', () => {
       expect(composeAction(s, 0, 'interrupt', [2, null, null])).toEqual({ kind: 'interrupt', dice: [2, null, null] })
     })
   })
-  it('X の枠を空けた血弾は行動にならない', () => {
+  it('X の枠を空けた炎撃は行動にならない', () => {
     const s = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
-    expect(composeAction(s, 0, 'bloodBullet', [null, 0])).toBeNull()
-    expect(composeAction(s, 0, 'bloodBullet', [0, null])).toBeNull()
+    expect(composeAction(s, 0, 'flameStrike', [null, 0])).toBeNull()
+    expect(composeAction(s, 0, 'flameStrike', [0, null])).toBeNull()
   })
   it('魔弾は同じ目を2個置けば行動になり、目が違えば置けても行動にならない', () => {
     const s = makeState({ roll: [3, 5, 3] }, { roll: [1, 2, 3] })
@@ -235,8 +235,8 @@ describe('ダイスを置く', () => {
     expect(composeAction(s, 0, 'bullet', [0, 1])).toBeNull()
   })
   it('使えないカードには置けない', () => {
-    const s = makeState({ roll: [6, 6, 2], usedCards: ['bloodBullet'] }, { roll: [1, 2, 3] }, 2)
-    expect(canPut(s, 0, 'bloodBullet', 0)).toBe(false)
+    const s = makeState({ roll: [6, 6, 2], usedCards: ['flameStrike'] }, { roll: [1, 2, 3] }, 2)
+    expect(canPut(s, 0, 'flameStrike', 0)).toBe(false)
     expect(canPut(s, 0, 'spear', 0)).toBe(false)
     expect(canPut(s, 0, 'interrupt', 0)).toBe(true)
     // 使用済みのカードには置けない
@@ -246,38 +246,38 @@ describe('ダイスを置く', () => {
   })
   it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
     const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
-    const fire: Placement = { card: 'bloodBullet', slots: [0, 1] }
+    const fire: Placement = { card: 'flameStrike', slots: [0, 1] }
     expect(placeDie(s, 0, fire, 'barrier', 1, 0)).toEqual({ card: 'barrier', slots: [1] })
   })
   it('埋まった置き場に手元のダイスを置くと、あったダイスは手元に戻る', () => {
     const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
-    const fire: Placement = { card: 'bloodBullet', slots: [0, 1] }
-    expect(placeDie(s, 0, fire, 'bloodBullet', 2, 0)).toEqual({ card: 'bloodBullet', slots: [2, 1] })
+    const fire: Placement = { card: 'flameStrike', slots: [0, 1] }
+    expect(placeDie(s, 0, fire, 'flameStrike', 2, 0)).toEqual({ card: 'flameStrike', slots: [2, 1] })
   })
   it('同じカードの別の置き場へ移すと、移した先のダイスと入れ替わる。空いた置き場へは、そのまま移る', () => {
     const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
-    expect(placeDie(s, 0, { card: 'bloodBullet', slots: [0, 1] }, 'bloodBullet', 0, 1)).toEqual({
-      card: 'bloodBullet',
+    expect(placeDie(s, 0, { card: 'flameStrike', slots: [0, 1] }, 'flameStrike', 0, 1)).toEqual({
+      card: 'flameStrike',
       slots: [1, 0],
     })
-    expect(placeDie(s, 0, { card: 'bloodBullet', slots: [null, 1] }, 'bloodBullet', 1, 0)).toEqual({
-      card: 'bloodBullet',
+    expect(placeDie(s, 0, { card: 'flameStrike', slots: [null, 1] }, 'flameStrike', 1, 0)).toEqual({
+      card: 'flameStrike',
       slots: [1, null],
     })
     // 同じ置き場に置き直しても変わらない
-    expect(placeDie(s, 0, { card: 'bloodBullet', slots: [0, 1] }, 'bloodBullet', 0, 0)).toEqual({
-      card: 'bloodBullet',
+    expect(placeDie(s, 0, { card: 'flameStrike', slots: [0, 1] }, 'flameStrike', 0, 0)).toEqual({
+      card: 'flameStrike',
       slots: [0, 1],
     })
   })
   it('ダイスを手元に戻すと、その置き場だけが空く', () => {
-    const fire: Placement = { card: 'bloodBullet', slots: [0, 1] }
-    expect(removeDie(fire, 0)).toEqual({ card: 'bloodBullet', slots: [null, 1] })
+    const fire: Placement = { card: 'flameStrike', slots: [0, 1] }
+    expect(removeDie(fire, 0)).toEqual({ card: 'flameStrike', slots: [null, 1] })
     expect(removeDie(fire, 2)).toEqual(fire)
     expect(removeDie({ card: 'barrier', slots: [2] }, 2)).toBeNull()
     expect(removeDie(null, 0)).toBeNull()
   })
-  it('雷槍は一ステップ目は詠唱、二ステップ目は発動の行に置く', () => {
+  it('魔槍は一ステップ目は詠唱、二ステップ目は発動の行に置く', () => {
     const s1 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 1)
     expect(rowNow(s1, 0, 'spear')).toBe('spearChant')
     expect(slotsNow(s1, 'spear')).toBe(1)
@@ -292,7 +292,7 @@ describe('決定を押せない理由', () => {
   const more = (count: number, same = false): Issue => ({ type: 'more', count, same })
   const UNUSABLE: Issue = { type: 'unusable' }
   it('行動になる置き方なら理由は無い', () => {
-    expect(placementIssue(s, 0, { card: 'bloodBullet', slots: [1, 0] })).toBeNull()
+    expect(placementIssue(s, 0, { card: 'flameStrike', slots: [1, 0] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'barrier', slots: [2] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'bullet', slots: [0, 2] })).toBeNull()
     expect(placementIssue(s, 0, { card: 'interrupt', slots: [1] })).toBeNull()
@@ -319,12 +319,12 @@ describe('決定を押せない理由', () => {
     expect(placementIssue(s, 0, { card: 'bullet', slots: [0, 1] })).toEqual({ type: 'same', count: 2 })
   })
   it('個数が足りなければ、あと何個置くかを出す', () => {
-    expect(placementIssue(s, 0, { card: 'bloodBullet', slots: [1, null] })).toEqual(more(1))
+    expect(placementIssue(s, 0, { card: 'flameStrike', slots: [1, null] })).toEqual(more(1))
     const charged = makeState({ roll: [3, 5, 3], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
     expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 1] })).toEqual(more(1))
   })
   it('印の置き場が空いていれば、ほかの置き場が足りていても、まず印の置き場に置くよう伝える', () => {
-    expect(placementIssue(s, 0, { card: 'bloodBullet', slots: [null, 0] })).toEqual({ type: 'mark', mark: 'X' })
+    expect(placementIssue(s, 0, { card: 'flameStrike', slots: [null, 0] })).toEqual({ type: 'mark', mark: 'X' })
     // 印の無い行動は、どの置き場が空いていても印のことは言わない
     const charged = makeState({ roll: [3, 5, 3], chant: 'charged' }, { roll: [1, 2, 3] }, 2)
     expect(placementIssue(charged, 0, { card: 'spear', slots: [null, 0] })).toEqual(more(1))
@@ -342,7 +342,7 @@ describe('決定を押せない理由', () => {
   })
   it('個数と置き場が揃っていても、使用済みのダイスを含むなら、使えないとだけ伝える', () => {
     const mixed = makeState({ roll: [3, 5, 6], usedDice: [2] }, { roll: [1, 2, 3] }, 2)
-    expect(placementIssue(mixed, 0, { card: 'bloodBullet', slots: [0, 2] })).toEqual(UNUSABLE)
+    expect(placementIssue(mixed, 0, { card: 'flameStrike', slots: [0, 2] })).toEqual(UNUSABLE)
   })
   it('決まった理由に当たらなければ、使えないとだけ伝える', () => {
     // 使用済みのダイスが置き場に残っている
@@ -356,7 +356,7 @@ describe('決定を押せない理由', () => {
 
 describe('手元への操作', () => {
   const s = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] })
-  /** 二ステップ目で、雷槍は詠唱していないので使えない */
+  /** 二ステップ目で、魔槍は詠唱していないので使えない */
   const late = makeState({ roll: [6, 4, 2] }, { roll: [1, 2, 3] }, 2)
   /** 操作を順に受けた後の手元 */
   const run = (state: GameState, ...events: HandEvent[]): Hand =>
@@ -378,62 +378,62 @@ describe('手元への操作', () => {
     expect(run(used, { type: 'grab', die: 0 }).held).toBeNull()
   })
   it('持っているダイスを置き場に置く。何も持っていなければ置き場を押しても何も起きない', () => {
-    const h = run(s, { type: 'tapTray', die: 1 }, { type: 'put', card: 'bloodBullet', slot: 1 })
-    expect(h).toEqual({ draft: { card: 'bloodBullet', slots: [null, 1] }, held: null })
-    expect(run(s, { type: 'put', card: 'bloodBullet', slot: 0 })).toEqual(EMPTY_HAND)
+    const h = run(s, { type: 'tapTray', die: 1 }, { type: 'put', card: 'flameStrike', slot: 1 })
+    expect(h).toEqual({ draft: { card: 'flameStrike', slots: [null, 1] }, held: null })
+    expect(run(s, { type: 'put', card: 'flameStrike', slot: 0 })).toEqual(EMPTY_HAND)
   })
   it('引きずって落とした置き場には、引きずったダイスが入る', () => {
     const h = run(s, { type: 'grab', die: 2 }, { type: 'put', card: 'barrier', slot: 0, die: 2 })
     expect(h).toEqual({ draft: { card: 'barrier', slots: [2] }, held: null })
   })
   it('置けない置き場に置こうとしても配置は変わらず、持っていたダイスは下ろす', () => {
-    const before = run(late, { type: 'put', card: 'bloodBullet', slot: 0, die: 0 })
-    // 詠唱していないので雷槍の発動は使えない
+    const before = run(late, { type: 'put', card: 'flameStrike', slot: 0, die: 0 })
+    // 詠唱していないので魔槍の発動は使えない
     const after = reduceHand(late, 0, { ...before, held: 1 }, { type: 'put', card: 'spear', slot: 0 })
     expect(after).toEqual({ draft: before.draft, held: null })
   })
   it('置き場のダイスを押すと、ダイスを持っていれば入れ替え、持っていなければ手元に戻す', () => {
     const placed = run(
       s,
-      { type: 'put', card: 'bloodBullet', slot: 0, die: 0 },
-      { type: 'put', card: 'bloodBullet', slot: 1, die: 1 },
+      { type: 'put', card: 'flameStrike', slot: 0, die: 0 },
+      { type: 'put', card: 'flameStrike', slot: 1, die: 1 },
     )
-    expect(placed.draft).toEqual({ card: 'bloodBullet', slots: [0, 1] })
+    expect(placed.draft).toEqual({ card: 'flameStrike', slots: [0, 1] })
     const swapped = run(
       s,
-      { type: 'put', card: 'bloodBullet', slot: 0, die: 0 },
+      { type: 'put', card: 'flameStrike', slot: 0, die: 0 },
       { type: 'tapTray', die: 2 },
       {
         type: 'tapPlaced',
-        card: 'bloodBullet',
+        card: 'flameStrike',
         slot: 0,
         die: 0,
       },
     )
     // 埋まった置き場に手元のダイスを置くと、あったダイスは手元に戻る
-    expect(swapped).toEqual({ draft: { card: 'bloodBullet', slots: [2, null] }, held: null })
-    const back = reduceHand(s, 0, placed, { type: 'tapPlaced', card: 'bloodBullet', slot: 0, die: 0 })
-    expect(back).toEqual({ draft: { card: 'bloodBullet', slots: [null, 1] }, held: null })
+    expect(swapped).toEqual({ draft: { card: 'flameStrike', slots: [2, null] }, held: null })
+    const back = reduceHand(s, 0, placed, { type: 'tapPlaced', card: 'flameStrike', slot: 0, die: 0 })
+    expect(back).toEqual({ draft: { card: 'flameStrike', slots: [null, 1] }, held: null })
   })
   it('置いたダイスを同じカードの別の置き場へ引きずると、移した先のダイスと入れ替わる', () => {
-    const placed: Hand = { draft: { card: 'bloodBullet', slots: [0, 1] }, held: null }
+    const placed: Hand = { draft: { card: 'flameStrike', slots: [0, 1] }, held: null }
     const moved = run(
       s,
-      { type: 'put', card: 'bloodBullet', slot: 0, die: 0 },
-      { type: 'put', card: 'bloodBullet', slot: 1, die: 1 },
+      { type: 'put', card: 'flameStrike', slot: 0, die: 0 },
+      { type: 'put', card: 'flameStrike', slot: 1, die: 1 },
       { type: 'grab', die: 0 },
-      { type: 'put', card: 'bloodBullet', slot: 1, die: 0 },
+      { type: 'put', card: 'flameStrike', slot: 1, die: 0 },
     )
-    expect(moved).toEqual({ draft: { card: 'bloodBullet', slots: [1, 0] }, held: null })
+    expect(moved).toEqual({ draft: { card: 'flameStrike', slots: [1, 0] }, held: null })
     expect(reduceHand(s, 0, placed, { type: 'takeBack', die: 1 })).toEqual({
-      draft: { card: 'bloodBullet', slots: [0, null] },
+      draft: { card: 'flameStrike', slots: [0, null] },
       held: null,
     })
   })
   it('別のカードに置くと、前のカードのダイスは手元に戻る', () => {
     const h = run(
       s,
-      { type: 'put', card: 'bloodBullet', slot: 0, die: 0 },
+      { type: 'put', card: 'flameStrike', slot: 0, die: 0 },
       { type: 'put', card: 'barrier', slot: 0, die: 1 },
     )
     expect(h.draft).toEqual({ card: 'barrier', slots: [1] })
@@ -444,7 +444,7 @@ describe('手元への操作', () => {
       draft: { card: 'barrier', slots: [0] },
       held: null,
     })
-    expect(reduceHand(s, 0, placed, { type: 'consider', card: 'bloodBullet' })).toEqual(EMPTY_HAND)
+    expect(reduceHand(s, 0, placed, { type: 'consider', card: 'flameStrike' })).toEqual(EMPTY_HAND)
   })
   it('どこにも落とさなければダイスを下ろすだけで、決定すると手元は空になる', () => {
     const placed = run(s, { type: 'put', card: 'barrier', slot: 0, die: 0 }, { type: 'grab', die: 1 })
@@ -453,19 +453,19 @@ describe('手元への操作', () => {
   })
   it('持っているダイスを置ける置き場は、使えるカードの今の行の全ての置き場。持っていなければ無い', () => {
     const held: Hand = { draft: null, held: 0 }
-    expect(targets(s, 0, held, 'bloodBullet')).toEqual([0, 1])
+    expect(targets(s, 0, held, 'flameStrike')).toEqual([0, 1])
     expect(targets(s, 0, held, 'barrier')).toEqual([0])
     expect(targets(s, 0, held, 'barrier')).toEqual([0])
     expect(targets(late, 0, held, 'spear')).toEqual([])
-    expect(targets(s, 0, EMPTY_HAND, 'bloodBullet')).toEqual([])
+    expect(targets(s, 0, EMPTY_HAND, 'flameStrike')).toEqual([])
   })
   it('置いたダイスから、カードの行と、行動か決定できない理由を読む', () => {
-    const half: Hand = { draft: { card: 'bloodBullet', slots: [null, 1] }, held: null }
-    expect(draftRow(s, 0, half)).toEqual({ card: 'bloodBullet', kind: 'bloodBullet', slots: [null, 1] })
+    const half: Hand = { draft: { card: 'flameStrike', slots: [null, 1] }, held: null }
+    expect(draftRow(s, 0, half)).toEqual({ card: 'flameStrike', kind: 'flameStrike', slots: [null, 1] })
     expect(draftAction(s, 0, half)).toBeNull()
     expect(draftIssue(s, 0, half)).toEqual({ type: 'mark', mark: 'X' })
-    const full: Hand = { draft: { card: 'bloodBullet', slots: [0, 1] }, held: null }
-    expect(draftAction(s, 0, full)).toEqual({ kind: 'bloodBullet', dice: [0, 1] })
+    const full: Hand = { draft: { card: 'flameStrike', slots: [0, 1] }, held: null }
+    expect(draftAction(s, 0, full)).toEqual({ kind: 'flameStrike', dice: [0, 1] })
     expect(draftIssue(s, 0, full)).toBeNull()
     expect(draftRow(s, 0, EMPTY_HAND)).toBeNull()
     // 今のステップに置ける行の無いカードは、行として読まない
@@ -516,7 +516,7 @@ describe('手元への操作の性質', () => {
     expect(usableCards(state, 0).has(draft.card)).toBe(true)
     const kind = rowNow(state, 0, draft.card)
     expect(kind).toBeDefined()
-    expect(draft.slots).toHaveLength(slotsOf(ACTION_DEFS[kind ?? 'bloodBullet']))
+    expect(draft.slots).toHaveLength(slotsOf(ACTION_DEFS[kind ?? 'flameStrike']))
     // 理由が出ないのは行動になるときだけで、行動は置いた置き場をそのまま持つ合法手
     const a = draftAction(state, 0, hand)
     expect(draftIssue(state, 0, hand) === null).toBe(a !== null)

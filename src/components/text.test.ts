@@ -9,7 +9,7 @@ import { actionLabel, CANNOT_USE, issueText, reportLines, resultText } from './t
 
 const pass: Action = { kind: 'pass' }
 const bullet: Action = { kind: 'bullet', dice: [0, 1] }
-const fire: Action = { kind: 'bloodBullet', dice: [0, 1] }
+const fire: Action = { kind: 'flameStrike', dice: [0, 1] }
 const interrupt: Action = { kind: 'interrupt', dice: [0] }
 
 /** 双方が r0 と r1 を振って a0 と a1 を出したステップの記録 */
@@ -23,55 +23,55 @@ describe('公開の文', () => {
   it('攻撃と何もしない', () => {
     expect(lines([6, 6, 1], [1, 2, 3], bullet, pass)).toEqual(['あなたの魔弾 4点', '相手は何もしなかった'])
   })
-  it('血弾は X の枠に置いた目に2を足して書き、払った血を添える', () => {
+  it('炎撃は X の枠に置いた目に2を足して書き、焼けた分を添える', () => {
     expect(lines([2, 6, 1], [1, 2, 3], fire, pass)).toEqual([
-      'あなたの血弾 4点',
+      'あなたの炎撃 4点',
       '相手は何もしなかった',
-      'あなたは血弾で 6点の血を払った',
+      'あなたは炎撃で自分も 6点焼けた',
     ])
   })
-  it('炎壁に削られた攻撃は、削った目と通った点を示し、炎壁は返した点を示す', () => {
+  it('風壁に削られた攻撃は、削った目と通った点を示し、風壁は返した点を示す', () => {
     expect(lines([5, 1, 1], [1, 2, 1], fire, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの血弾 7点、炎壁 1 に削られて 5点',
-      '相手は 1 で炎壁を張った。3点を返した',
-      'あなたは血弾で 1点の血を払った',
+      'あなたの炎撃 7点、風壁 1 に削られて 5点',
+      '相手は 1 で風壁を張った。3点を返した',
+      'あなたは炎撃で自分も 1点焼けた',
     ])
   })
-  it('魔弾は炎壁をすり抜け、炎壁は返さない', () => {
+  it('魔弾は風壁をすり抜け、風壁は返さない', () => {
     expect(lines([3, 3, 1], [6, 2, 1], bullet, { kind: 'barrier', dice: [0] })).toEqual([
-      'あなたの魔弾 4点、炎壁をすり抜けた',
-      '相手は 6 で炎壁を張った',
+      'あなたの魔弾 4点、風壁をすり抜けた',
+      '相手は 6 で風壁を張った',
     ])
   })
-  it('炎壁をすり抜けた攻撃', () => {
+  it('風壁をすり抜けた攻撃', () => {
     const charged = makeState({ roll: [1, 2, 3], chant: 'charged' }, { roll: [6, 2, 1] }, 2)
     const r = resolveStep(charged, [
       { kind: 'spearCast', dice: [0, 1] },
       { kind: 'barrier', dice: [0] },
     ]).history[0]
-    expect(reportLines(r, 0)).toEqual(['あなたの雷槍の発動 3点、炎壁をすり抜けた', '相手は 6 で炎壁を張った'])
+    expect(reportLines(r, 0)).toEqual(['あなたの魔槍の発動 3点、風壁をすり抜けた', '相手は 6 で風壁を張った'])
   })
-  it('相手が払った血も、相手の行として添える', () => {
+  it('相手が焼けた分も、相手の行として添える', () => {
     expect(lines([1, 2, 3], [6, 3, 1], pass, fire)).toEqual([
       'あなたは何もしなかった',
-      '相手の血弾 8点',
-      '相手は血弾で 3点の血を払った',
+      '相手の炎撃 8点',
+      '相手は炎撃で自分も 3点焼けた',
     ])
   })
-  it('詠唱は攻撃では崩れず、妨害で崩れる', () => {
+  it('詠唱は攻撃では崩れず、氷礫で崩れる', () => {
     expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, interrupt)).toEqual([
-      'あなたは 2 で雷槍を詠唱',
-      '相手の妨害 2点',
-      'あなたの詠唱は妨害で崩れた',
+      'あなたは 2 で魔槍を詠唱',
+      '相手の氷礫 2点',
+      'あなたの詠唱は氷礫で崩れた',
     ])
     expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, fire)).toContain('あなたの詠唱は保たれた')
     expect(lines([2, 1, 1], [1, 1, 1], { kind: 'spearChant', dice: [0] }, pass)).toContain('あなたの詠唱は保たれた')
   })
   it('相手の席から見ると、相手の行動をあなたとして先に書く', () => {
     expect(lines([2, 1, 1], [6, 1, 1], { kind: 'spearChant', dice: [0] }, interrupt, 1)).toEqual([
-      'あなたの妨害 2点',
-      '相手は 2 で雷槍を詠唱',
-      '相手の詠唱は妨害で崩れた',
+      'あなたの氷礫 2点',
+      '相手は 2 で魔槍を詠唱',
+      '相手の詠唱は氷礫で崩れた',
     ])
   })
   it('どの局面でも、双方について一行ずつ、あなたと相手の順に並ぶ', () => {
@@ -86,8 +86,8 @@ describe('公開の文', () => {
           const out = reportLines(r, viewer)
           expect(out[0]).toMatch(/^あなた/)
           expect(out[1]).toMatch(/^相手/)
-          // 詠唱した側には詠唱の結果を、血を払った側には払った点を、一行ずつ添える
-          expect(out).toHaveLength(2 + r.chants.filter((c) => c !== null).length + r.blood.filter((n) => n > 0).length)
+          // 詠唱した側には詠唱の結果を、自分も焼けた側には焼けた点を、一行ずつ添える
+          expect(out).toHaveLength(2 + r.chants.filter((c) => c !== null).length + r.burn.filter((n) => n > 0).length)
           for (const l of out) expect(l).toMatch(/\S/)
         },
       ),
@@ -95,7 +95,7 @@ describe('公開の文', () => {
   })
   it('公開時の行動名', () => {
     expect(actionLabel(pass)).toBe('何もしない')
-    expect(actionLabel({ kind: 'spearChant', dice: [0] })).toBe('雷槍の詠唱')
+    expect(actionLabel({ kind: 'spearChant', dice: [0] })).toBe('魔槍の詠唱')
   })
 })
 

@@ -8,10 +8,10 @@ import { currentCard, revealed, seatView, usedUp } from './seatView'
 describe('席の様子', () => {
   it('使えるカードと、カードごとに今使える行を求める', () => {
     const view = seatView(makeState({ roll: [6, 2, 1], usedCards: ['barrier'] }, { roll: [1, 2, 3] }), 0)
-    // 使い終わった炎壁は使えない
+    // 使い終わった風壁は使えない
     expect(view.usable.has('barrier')).toBe(false)
     expect(view.active.get('barrier')).toEqual([])
-    // 1ステップ目の雷槍は詠唱の行だけ
+    // 1ステップ目の魔槍は詠唱の行だけ
     expect(view.active.get('spear')).toEqual(['spearChant'])
     expect(view.kept).toBeNull()
   })
@@ -20,20 +20,20 @@ describe('席の様子', () => {
     const state = makeState({ roll: [6, 2, 1] }, { roll: [1, 2, 3] })
     const match = { state, pending: [null, null] as [null, null] }
     // X の枠に2、もう一つの枠に6を置く
-    const first = submit(match, 0, { kind: 'bloodBullet', dice: [1, 0] }, seeded(1))
+    const first = submit(match, 0, { kind: 'flameStrike', dice: [1, 0] }, seeded(1))
     if (!first.ok) throw new Error('受け付けなかった')
     const done = submit(first.match, 1, { kind: 'pass' }, seeded(1))
     if (!done.ok) throw new Error('受け付けなかった')
     const view = seatView(done.match.state, 0)
-    expect(view.kept).toEqual({ card: 'bloodBullet', kind: 'bloodBullet', slots: [1, 0] })
-    expect(usedUp(view, 'bloodBullet')).toBe(true)
+    expect(view.kept).toEqual({ card: 'flameStrike', kind: 'flameStrike', slots: [1, 0] })
+    expect(usedUp(view, 'flameStrike')).toBe(true)
     expect(usedUp(view, 'interrupt')).toBe(false)
   })
 
   it('公開した行動は、組み上がったダイスとしてカードに置く。パスは置かない', () => {
-    expect(revealed({ kind: 'bloodBullet', dice: [1, 0] })).toEqual({
-      card: 'bloodBullet',
-      kind: 'bloodBullet',
+    expect(revealed({ kind: 'flameStrike', dice: [1, 0] })).toEqual({
+      card: 'flameStrike',
+      kind: 'flameStrike',
       slots: [1, 0],
       complete: true,
     })
@@ -54,6 +54,6 @@ describe('狭い画面で大きく出すカード', () => {
     expect(currentCard({ revealing: false, shown: null, focus: null, usable })).toBe('barrier')
   })
   it('使えるカードが無ければ左端のカード', () => {
-    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set() })).toBe('bloodBullet')
+    expect(currentCard({ revealing: false, shown: null, focus: null, usable: new Set() })).toBe('flameStrike')
   })
 })

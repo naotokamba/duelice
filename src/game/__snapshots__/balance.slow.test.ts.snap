@@ -3,7 +3,7 @@
 exports[`バランス > HP満タンの一ステップ目で、つよいCPUが各行動を選ぶ頻度と、読み合いが起きない局面の割合 1`] = `
 "{
   "firstStepFrequency": {
-    "bloodBullet": 0.181,
+    "flameStrike": 0.181,
     "barrier": 0.173,
     "bullet": 0.077,
     "spearChant": 0.261,

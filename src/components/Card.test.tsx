@@ -36,21 +36,21 @@ function draw(props: Partial<Parameters<typeof Card>[0]> & Pick<Parameters<typeo
 
 describe('カード面', () => {
   it('ダイスは置いた置き場に描き、置いた順や目の大きさで並べ替えない', () => {
-    // X の枠に1、血を払う Y の枠に6
+    // X の枠に1、自分も焼ける Y の枠に6
     const card = draw({
-      card: 'bloodBullet',
-      shown: { card: 'bloodBullet', kind: 'bloodBullet', slots: [2, 0], complete: true },
+      card: 'flameStrike',
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [2, 0], complete: true },
       play: play(),
     })
     expect(diceOn(card)).toEqual(['1の目', '6の目'])
     expect(card.getByRole('button', { name: '3ダメージを与える' })).toBeTruthy()
-    expect(card.getByRole('button', { name: '血を払う。自分が6ダメージを受ける' })).toBeTruthy()
+    expect(card.getByRole('button', { name: '自分も焼けて6ダメージを受ける' })).toBeTruthy()
   })
 
   it('空いた置き場には印を書き、印か何番目かで呼ぶ。持っているダイスを置ける置き場だけを押せる', () => {
-    const card = draw({ card: 'bloodBullet', play: play({ targets: [1] }) })
-    const mark = card.getByRole('button', { name: '血弾のXの枠に置く' }) as HTMLButtonElement
-    const pay = card.getByRole('button', { name: '血弾のYの枠に置く' }) as HTMLButtonElement
+    const card = draw({ card: 'flameStrike', play: play({ targets: [1] }) })
+    const mark = card.getByRole('button', { name: '炎撃のXの枠に置く' }) as HTMLButtonElement
+    const pay = card.getByRole('button', { name: '炎撃のYの枠に置く' }) as HTMLButtonElement
     expect(mark.textContent).toBe('X')
     expect(pay.textContent).toBe('Y')
     expect(mark.disabled).toBe(true)
@@ -58,16 +58,16 @@ describe('カード面', () => {
   })
 
   it('同じ記号の置き場が並ぶときは、何番目かで呼ぶ', () => {
-    // 点線の枠を二つ持つ、仮の妨害。今の表には点線の枠を持つ行動が無い
+    // 点線の枠を二つ持つ、仮の氷礫。今の表には点線の枠を持つ行動が無い
     const saved = ACTION_DEFS.interrupt
     ACTION_DEFS.interrupt = { ...saved, dice: [1, 2, 3], face: { ...saved.face, extra: '+2' } }
     try {
       const over = draw({ card: 'interrupt', play: play({ targets: [0, 1, 2] }) })
-      const names = over.getAllByRole('button', { name: /^妨害の.+枠に置く$/ })
+      const names = over.getAllByRole('button', { name: /^氷礫の.+枠に置く$/ })
       expect(names.map((b) => b.getAttribute('aria-label'))).toEqual([
-        '妨害の1つ目の枠に置く',
-        '妨害の2つ目の枠に置く',
-        '妨害の3つ目の枠に置く',
+        '氷礫の1つ目の枠に置く',
+        '氷礫の2つ目の枠に置く',
+        '氷礫の3つ目の枠に置く',
       ])
       expect(names.map((b) => b.textContent)).toEqual(['', '+2', '+2'])
     } finally {
@@ -84,16 +84,16 @@ describe('カード面', () => {
 
   it('置き場を押すと、何番目の置き場かを渡す', () => {
     const onSlot = vi.fn()
-    const card = draw({ card: 'bloodBullet', play: play({ targets: [0, 1], onSlot }) })
-    fireEvent.click(card.getByRole('button', { name: '血弾のYの枠に置く' }))
+    const card = draw({ card: 'flameStrike', play: play({ targets: [0, 1], onSlot }) })
+    fireEvent.click(card.getByRole('button', { name: '炎撃のYの枠に置く' }))
     expect(onSlot).toHaveBeenCalledWith(1)
   })
 
   it('置いたダイスを押すと、置き場とダイスを渡す。持っているダイスを置けるなら入れ替えと読む', () => {
     const onPlaced = vi.fn()
     const card = draw({
-      card: 'bloodBullet',
-      shown: { card: 'bloodBullet', kind: 'bloodBullet', slots: [null, 0], complete: false },
+      card: 'flameStrike',
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [null, 0], complete: false },
       play: play({ targets: [0, 1], onPlaced }),
     })
     fireEvent.click(card.getByRole('button', { name: '6の目と入れ替える' }))
@@ -121,15 +121,15 @@ describe('カード面', () => {
     })
     expect(diceOn(card)).toEqual(['6の目'])
     expect(
-      card.getAllByRole('button', { name: /^雷槍の.+枠に置く$/ }).map((b) => b.getAttribute('aria-label')),
-    ).toEqual(['雷槍の1つ目の枠に置く', '雷槍の2つ目の枠に置く'])
+      card.getAllByRole('button', { name: /^魔槍の.+枠に置く$/ }).map((b) => b.getAttribute('aria-label')),
+    ).toEqual(['魔槍の1つ目の枠に置く', '魔槍の2つ目の枠に置く'])
   })
 
   it('行動が組み上がれば決定を押せる', () => {
     const onConfirm = vi.fn()
     const card = draw({
-      card: 'bloodBullet',
-      shown: { card: 'bloodBullet', kind: 'bloodBullet', slots: [0, 1], complete: true },
+      card: 'flameStrike',
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [0, 1], complete: true },
       play: play({ onConfirm }),
     })
     const confirm = card.getByRole('button', { name: '決定' }) as HTMLButtonElement
@@ -141,8 +141,8 @@ describe('カード面', () => {
 
   it('行動にならない間は、押せない決定に理由を添える', () => {
     const card = draw({
-      card: 'bloodBullet',
-      shown: { card: 'bloodBullet', kind: 'bloodBullet', slots: [0, null], complete: false },
+      card: 'flameStrike',
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [0, null], complete: false },
       play: play({ issue: 'あと1個置く' }),
     })
     const confirm = card.getByRole('button', { name: '決定' }) as HTMLButtonElement
@@ -151,24 +151,24 @@ describe('カード面', () => {
   })
 
   it('置いていなければ決定は出さない', () => {
-    const card = draw({ card: 'bloodBullet', play: play() })
+    const card = draw({ card: 'flameStrike', play: play() })
     expect(card.queryByRole('button', { name: '決定' })).toBeNull()
   })
 })
 
 describe('使用済みのカード', () => {
   it('このターンに使い終わったカードは、使用済みと書き、カードの説明でも伝える', () => {
-    const card = draw({ card: 'bloodBullet', active: [], used: true })
+    const card = draw({ card: 'flameStrike', active: [], used: true })
     expect(card.getByText('使用済み')).toBeTruthy()
     expect(screen.getByRole('listitem').getAttribute('aria-description')).toBe('使用済み')
   })
 
   it('使えるカードと、今は使えないだけのカードは、使用済みにしない', () => {
-    const usable = draw({ card: 'bloodBullet' })
+    const usable = draw({ card: 'flameStrike' })
     expect(usable.queryByText('使用済み')).toBeNull()
     expect(screen.getByRole('listitem').getAttribute('aria-description')).toBeNull()
     cleanup()
-    // 雷槍の発動は、詠唱していなければ今は使えないが、使い終わってはいない
+    // 魔槍の発動は、詠唱していなければ今は使えないが、使い終わってはいない
     const off = draw({ card: 'spear', active: [] })
     expect(off.queryByText('使用済み')).toBeNull()
     expect(screen.getByRole('listitem').getAttribute('aria-description')).toBeNull()
@@ -176,10 +176,10 @@ describe('使用済みのカード', () => {
 
   it('公開で使っている間は、使ったカードとして描き、使用済みにしない', () => {
     const card = draw({
-      card: 'bloodBullet',
+      card: 'flameStrike',
       active: [],
       used: true,
-      shown: { card: 'bloodBullet', kind: 'bloodBullet', slots: [0, 1], complete: true },
+      shown: { card: 'flameStrike', kind: 'flameStrike', slots: [0, 1], complete: true },
     })
     expect(card.queryByText('使用済み')).toBeNull()
   })
@@ -209,14 +209,14 @@ describe('カードの名前', () => {
     const used = screen.getByRole('button', { name: '魔弾' })
     expect(used.getAttribute('aria-description')).toBe('使用済み')
     expect(used.textContent).toBe('魔弾済')
-    expect(screen.getByRole('button', { name: '炎壁' }).getAttribute('aria-description')).toBe('ダイスが置いてある')
-    const over = screen.getByRole('button', { name: '妨害' })
+    expect(screen.getByRole('button', { name: '風壁' }).getAttribute('aria-description')).toBe('ダイスが置いてある')
+    const over = screen.getByRole('button', { name: '氷礫' })
     expect(over.getAttribute('aria-description')).toBeNull()
-    expect(over.textContent).toBe('妨害')
+    expect(over.textContent).toBe('氷礫')
   })
 
   it('押せない名前でも、使い終わったことを伝える', () => {
-    render(<CardTabs tabs={[tab({ card: 'bloodBullet', used: true })]} />)
-    expect(screen.getByText('血弾').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
+    render(<CardTabs tabs={[tab({ card: 'flameStrike', used: true })]} />)
+    expect(screen.getByText('炎撃').closest('[aria-description]')?.getAttribute('aria-description')).toBe('使用済み')
   })
 })

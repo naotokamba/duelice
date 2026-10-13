@@ -1,7 +1,7 @@
 // 公開した一ステップで起きたことを、卓の上に重ねた幕の中で、上下の間を飛ぶ矢印と印で見せる。
 // 上が相手、下が自分。攻撃は矢印、守りや詠唱は受ける側の端に置く印、受けたダメージは星で描く。
-// 守りが攻撃した相手に返すダメージは、守った側から飛ぶ炎の矢印で描く。
-// 血として払って自分で受けたダメージは、しずくで描く。
+// 守りが攻撃した相手に吹き返すダメージは、守った側から飛ぶ風の渦の矢印で描く。
+// 炎で自分が焼けて受けたダメージは、炎で描く。
 // 幕の上下の端には双方の体力の帯を出し、当たった時に減らす。
 // どの印を出すかは定義表の性質で決めるので、カードを足しても追従する。
 
@@ -9,7 +9,7 @@ import { SkipForward } from 'lucide-react'
 import type { CSSProperties, ReactNode } from 'react'
 import { ACTION_DEFS, type CardId, effectValue } from '../game/cards'
 import type { Action, PlayerIndex, StepReport, Strike } from '../game/types'
-import { BloodGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
+import { BurnGlyph, ChantGlyph, PierceStar, ShieldGlyph, Star, ThornsGlyph } from './glyphs'
 import { HpBar } from './HpBar'
 import { actionLabel } from './text'
 
@@ -30,7 +30,7 @@ const STANCE_R = 28
 // 公開は三つの拍に分けて、拍ごとに間を取る。
 // 一つ目は名乗り。使ったカードが光り、技の名前と値の札が中央に出る。
 // 二つ目は構え。札が消え、守りや詠唱の印が技の名前と一緒に出る。
-// 三つ目は攻撃と結果。技の名前を付けた矢印が飛び、当たって体力が減る。血を払う攻撃は、放つ時に自分の体力が減る。
+// 三つ目は攻撃と結果。技の名前を付けた矢印が飛び、当たって体力が減る。自分も焼ける攻撃は、放つ時に自分の体力が減る。
 // 時間はここで決め、CSS の変数で動きに渡す
 
 /** 名乗りの札を出しておく時間 */
@@ -45,8 +45,8 @@ export const START_MS = 1300
 const FLY_MS = 550
 /** 矢印が当たる時刻 */
 export const IMPACT_MS = START_MS + FLY_MS
-/** 血を払う時刻。攻撃を放つ時に払う */
-export const BLOOD_MS = START_MS
+/** 自分も焼ける時刻。攻撃を放つ時に払う */
+export const BURN_MS = START_MS
 /** 最後の矢印が当たってから次へ進むまでの間。結果を見せる */
 export const HOLD_MS = 1500
 /** 攻撃が無いときに構えを見せておく時間 */
@@ -55,12 +55,12 @@ const CALM_MS = 900
 const OUT_MS = 350
 
 /** 公開の長さを決める、ステップの記録の部分 */
-type Landing = Pick<StepReport, 'strikes' | 'blood'>
+type Landing = Pick<StepReport, 'strikes' | 'burn'>
 
-/** ダメージが入る時刻を全て。攻撃が当たる時刻と、血を払う時刻 */
+/** ダメージが入る時刻を全て。攻撃が当たる時刻と、自分も焼ける時刻 */
 export function landings(report: Landing): number[] {
   const times = report.strikes.map(() => IMPACT_MS)
-  if (report.blood.some((v) => v > 0)) times.push(BLOOD_MS)
+  if (report.burn.some((v) => v > 0)) times.push(BURN_MS)
   return times
 }
 
@@ -91,7 +91,7 @@ function laneX(list: Strike[], from: PlayerIndex): number {
 
 /** 矢印と重ならないように、横にずらす量 */
 const ASIDE = 64
-/** 自分の放った矢印の札と重ならないように、血のしずくを横にずらす量。札の幅の半分と、膨らんだしずくの半分を足した分 */
+/** 自分の放った矢印の札と重ならないように、自分を焼く炎を横にずらす量。札の幅の半分と、膨らんだ炎の半分を足した分 */
 const PILL_ASIDE = 96
 
 /** CSS の変数を含む style。dx は横にずらす画素数 */
@@ -108,7 +108,7 @@ function actionMark(a: Action, vals: number[]): ReactNode {
   return <ChantGlyph />
 }
 
-/** 矢印に付ける印。守りが返したダメージは炎で、ほかは放った行動の印で描く */
+/** 矢印に付ける印。守りが吹き返したダメージは風の渦で、ほかは放った行動の印で描く */
 function strikeMark(s: Strike, report: StepReport): ReactNode {
   if (s.outcome === 'returned') return <ThornsGlyph value={String(s.power)} />
   return actionMark(report.actions[s.from], report.values[s.from])
@@ -178,15 +178,15 @@ export function Exchange({ report, top, bottom }: ExchangeProps) {
             ]
           })}
           {([0, 1] as const).map((who) => {
-            if (report.blood[who] === 0) return null
-            // 血として払ったダメージ。飛んでくる攻撃があればその星の横に、無ければ自分の放った矢印の札の横に出す
+            if (report.burn[who] === 0) return null
+            // 自分が焼けたダメージ。飛んでくる攻撃があればその星の横に、無ければ自分の放った矢印の札の横に出す
             const incoming = list.find((s) => s.to === who)
             const style = incoming
-              ? at(laneX(list, incoming.from), hit(who), BLOOD_MS, -ASIDE)
-              : at(laneX(list, who), hit(who), BLOOD_MS, -PILL_ASIDE)
+              ? at(laneX(list, incoming.from), hit(who), BURN_MS, -ASIDE)
+              : at(laneX(list, who), hit(who), BURN_MS, -PILL_ASIDE)
             return (
-              <div key={`m${who}`} className="burst burst-blood" style={style}>
-                <BloodGlyph value={`−${report.blood[who]}`} />
+              <div key={`m${who}`} className="burst burst-burn" style={style}>
+                <BurnGlyph value={`−${report.burn[who]}`} />
               </div>
             )
           })}

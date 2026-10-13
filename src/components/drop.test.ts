@@ -7,7 +7,7 @@ describe('落とす先', () => {
   it('書いた行き先は、そのまま読み戻せる', () => {
     const targets: DropTarget[] = [
       { type: 'tray' },
-      { type: 'slot', card: 'bloodBullet', slot: 1 },
+      { type: 'slot', card: 'flameStrike', slot: 1 },
       { type: 'tab', card: 'spear' },
     ]
     for (const t of targets) expect(readDrop(dropAttr(t))).toEqual(t)
@@ -17,10 +17,10 @@ describe('落とす先', () => {
     for (const attr of [
       null,
       '',
-      'tray:blood',
-      'slot:blood',
+      'tray:burn',
+      'slot:burn',
       'slot:nothing:0',
-      'slot:blood:x',
+      'slot:burn:x',
       'tab:nothing',
       'tab:spear:1',
       'card',

@@ -8,7 +8,7 @@ import { ACTION_DEFS, ACTION_KINDS, type ActionKind } from './cards'
 import {
   actionDice,
   actionKey,
-  bloodOf,
+  burnOf,
   diceValues,
   isLegal,
   legalActions,
@@ -50,11 +50,11 @@ const placedArb = stateArb.chain((s) =>
   }),
 )
 
-/** 威力と、障壁が減らす量と、払う血 */
+/** 威力と、障壁が減らす量と、自分が焼ける量 */
 const effectOf = (kind: ActionKind, vals: number[]) => [
   ACTION_DEFS[kind].power?.(vals),
   ACTION_DEFS[kind].guard?.(vals),
-  ACTION_DEFS[kind].blood?.(vals),
+  ACTION_DEFS[kind].burn?.(vals),
 ]
 
 /** 局面と、その局面の双方の合法手から一つずつ */
@@ -221,36 +221,36 @@ describe('ダメージ', () => {
       }),
     )
   })
-  it('攻撃しない側が相手に与えるダメージは、守りが返した分だけ。相手が自分で払う血は除く', () => {
+  it('攻撃しない側が相手に与えるダメージは、守りが返した分だけ。相手が自分で自分が焼けた分は除く', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
         const dmg = stepDamage(vals, acts)
-        const blood = bloodOf(vals, acts)
+        const burn = burnOf(vals, acts)
         const list = strikes(vals, acts)
         for (const i of [0, 1] as const) {
           const a = acts[i]
           const def = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind]
           if (def?.power) continue
           const returned = list.filter((x) => x.from === i).reduce((sum, x) => sum + x.dealt, 0)
-          expect(dmg[1 - i] - blood[1 - i]).toBe(returned)
+          expect(dmg[1 - i] - burn[1 - i]).toBe(returned)
           // 返すのは返す性質を持つ守りだけ
           if (!def?.thorns) expect(returned).toBe(0)
         }
       }),
     )
   })
-  it('血を払うのは血を払う行動だけで、払う量は置いた目から決まる。払った血は受けたダメージに入る', () => {
+  it('自分も焼けるのは自分も焼ける行動だけで、払う量は置いた目から決まる。焼けた分は受けたダメージに入る', () => {
     fc.assert(
       fc.property(stateWithActsArb, ({ s, acts }) => {
         const vals: [number[], number[]] = [diceValues(s.players[0], acts[0]), diceValues(s.players[1], acts[1])]
-        const blood = bloodOf(vals, acts)
+        const burn = burnOf(vals, acts)
         const dmg = stepDamage(vals, acts)
         for (const i of [0, 1] as const) {
           const a = acts[i]
-          const pay = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].blood
-          expect(blood[i]).toBe(pay ? pay(vals[i]) : 0)
-          expect(dmg[i]).toBeGreaterThanOrEqual(blood[i])
+          const pay = a.kind === 'pass' ? undefined : ACTION_DEFS[a.kind].burn
+          expect(burn[i]).toBe(pay ? pay(vals[i]) : 0)
+          expect(dmg[i]).toBeGreaterThanOrEqual(burn[i])
         }
       }),
     )

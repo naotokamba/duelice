@@ -3,7 +3,7 @@
 import { describe, expect, it } from 'vitest'
 import { resolveStep } from '../game/rules'
 import { makeState } from '../test/helpers'
-import { BLOOD_MS, IMPACT_MS } from './Exchange'
+import { BURN_MS, IMPACT_MS } from './Exchange'
 import { unlanded } from './useRevealClock'
 
 describe('まだ当たっていないダメージ', () => {
@@ -18,7 +18,7 @@ describe('まだ当たっていないダメージ', () => {
   })
 
   it('守りが返すダメージも、矢印が当たる時刻まで数える', () => {
-    // 妨害の2は1の炎壁に防がれ、炎壁が3を返す
+    // 氷礫の2は1の風壁に防がれ、風壁が3を返す
     const report = resolveStep(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), [
       { kind: 'interrupt', dice: [0] },
       { kind: 'barrier', dice: [0] },
@@ -28,16 +28,16 @@ describe('まだ当たっていないダメージ', () => {
     expect(unlanded(report, 1, 0)).toBe(0)
   })
 
-  it('血として払うダメージは、攻撃を放つ時刻まで数える', () => {
-    // X の枠に4を置いた血弾は6を当て、もう1個の6の血を払う
+  it('自分が焼けるダメージは、攻撃を放つ時刻まで数える', () => {
+    // X の枠に4を置いた炎撃は6を当て、もう1個の6だけ自分も焼ける
     const report = resolveStep(makeState({ roll: [6, 4, 1] }, { roll: [1, 2, 3] }), [
-      { kind: 'bloodBullet', dice: [1, 0] },
+      { kind: 'flameStrike', dice: [1, 0] },
       { kind: 'pass' },
     ]).history[0]
     expect(unlanded(report, 0, 0)).toBe(6)
-    expect(unlanded(report, 0, BLOOD_MS)).toBe(0)
+    expect(unlanded(report, 0, BURN_MS)).toBe(0)
     // 相手に当たる分は、払った後もまだ当たっていない
-    expect(unlanded(report, 1, BLOOD_MS)).toBe(6)
+    expect(unlanded(report, 1, BURN_MS)).toBe(6)
     expect(unlanded(report, 1, IMPACT_MS)).toBe(0)
   })
 })

@@ -49,7 +49,7 @@ const signed = (n: number) => (n < 0 ? `−${-n}` : String(n))
 
 /**
  * ステップの記録を、viewer から見た文にする。自分をあなた、相手を相手と呼び、自分、相手の順に一行ずつ並べる。
- * 守りがダメージを返したならそれを、詠唱したならその結果を、血を払ったならその量を、後に添える
+ * 守りがダメージを返したならそれを、詠唱したならその結果を、自分も焼けたならその量を、後に添える
  */
 export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
   const order: [PlayerIndex, string][] = [
@@ -65,8 +65,8 @@ export function reportLines(report: StepReport, viewer: PlayerIndex): string[] {
     if (chant === 'kept') lines.push(`${name}の詠唱は保たれた`)
   }
   for (const [who, name] of order) {
-    const paid = report.blood[who]
-    if (paid > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で ${paid}点の血を払った`)
+    const paid = report.burn[who]
+    if (paid > 0) lines.push(`${name}は${actionLabel(report.actions[who])}で自分も ${paid}点焼けた`)
   }
   return lines
 }

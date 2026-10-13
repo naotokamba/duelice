@@ -67,9 +67,9 @@ export interface StepReport {
   values: [number[], number[]]
   /** 放たれた攻撃と、その行方。守りが返したダメージも含む */
   strikes: Strike[]
-  /** 双方が血として払い、自分で受けたダメージ。血を払う行動をしなかった側は0 */
-  blood: [number, number]
-  /** 双方が受けたダメージ。攻撃で受けた分と、血として払った分の合計 */
+  /** 双方が炎で自分も焼けて受けたダメージ。自分も焼ける行動をしなかった側は0 */
+  burn: [number, number]
+  /** 双方が受けたダメージ。攻撃で受けた分と、自分が焼けた分の合計 */
   damage: [number, number]
   chants: [ChantResult, ChantResult]
 }

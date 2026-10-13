@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest'
 import { makeState, seeded } from '../test/helpers'
 import { ACTION_DEFS } from './cards'
 import {
-  bloodOf,
   breaksChant,
+  burnOf,
   isLegal,
   keptRow,
   legalActions,
@@ -28,25 +28,25 @@ describe('ターンの進行', () => {
     let s = makeState({ roll: [4, 6, 5] }, { roll: [6, 1, 2] })
     s = resolveStep(s, [
       { kind: 'spearChant', dice: [0] },
-      { kind: 'bloodBullet', dice: [0, 1] },
+      { kind: 'flameStrike', dice: [0, 1] },
     ])
     expect(s.players[0].chant).toBe('charged')
     expect(s.history[0].chants).toEqual(['kept', null])
-    // 血弾は X の枠の 6 に2を足して8、もう1個の 1 の血を払う
+    // 炎撃は X の枠の 6 に2を足して8、もう1個の 1 だけ自分も焼ける
     expect(s.players.map((p) => p.hp)).toEqual([12, 19])
     s = resolveStep(s, [{ kind: 'spearCast', dice: [1, 2] }, pass])
     expect(s.players[1].hp).toBe(19 - 11)
     expect(s.players[0].chant).toBe('none')
     expect(turnOver(s)).toBe(true)
   })
-  it('詠唱は、同じステップに相手が妨害を使うと崩れ、発動できない', () => {
+  it('詠唱は、同じステップに相手が氷礫を使うと崩れ、発動できない', () => {
     let s = makeState({ roll: [6, 6, 5] }, { roll: [1, 1, 3] })
     s = resolveStep(s, [{ kind: 'spearChant', dice: [0] }, interrupt])
     expect(s.players[0].chant).toBe('broken')
     expect(s.history[0].chants).toEqual(['broken', null])
     expect(legalActions(s, 0).some((a) => a.kind === 'spearCast')).toBe(false)
   })
-  it('雷槍の発動は一ステップ目には使えず、詠唱は二ステップ目には使えない', () => {
+  it('魔槍の発動は一ステップ目には使えず、詠唱は二ステップ目には使えない', () => {
     const s1 = makeState({ roll: [6, 5, 4], chant: 'charged' }, { roll: [1, 2, 3] })
     expect(isLegal(s1, 0, { kind: 'spearCast', dice: [0, 1] })).toBe(false)
     const s2 = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] }, 2)
@@ -60,29 +60,29 @@ describe('ターンの進行', () => {
   it('使ったダイスは二ステップ目に使えない', () => {
     let s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
     s = resolveStep(s, [interrupt, pass])
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [0, 1] })).toBe(false)
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [1, 2] })).toBe(true)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [0, 1] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [1, 2] })).toBe(true)
   })
   it('同じダイスを二度選ぶ行動や、範囲外のダイスや、置き場の数に合わない行動は不正', () => {
     const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [0, 0] })).toBe(false)
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [0, 3] })).toBe(false)
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [0] })).toBe(false)
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [0, 1, null] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [0, 0] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [0, 3] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [0] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [0, 1, null] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'interrupt', dice: [] })).toBe(false)
     expect(isLegal(s, 0, { kind: 'interrupt', dice: [null] })).toBe(false)
   })
   it('行動はどの置き場に置いたかを記録する', () => {
     const s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
-    const back = resolveStep(s, [{ kind: 'bloodBullet', dice: [2, 0] }, pass])
-    expect(back.history[0].actions[0]).toEqual({ kind: 'bloodBullet', dice: [2, 0] })
+    const back = resolveStep(s, [{ kind: 'flameStrike', dice: [2, 0] }, pass])
+    expect(back.history[0].actions[0]).toEqual({ kind: 'flameStrike', dice: [2, 0] })
     expect(back.history[0].values[0]).toEqual([4, 6])
-    // X の枠の 4 に2を足して6、もう1個の 6 の血を払う
+    // X の枠の 4 に2を足して6、もう1個の 6 だけ自分も焼ける
     expect(back.history[0].damage).toEqual([6, 6])
     expect(back.players[0].usedDice).toEqual([2, 0])
   })
   it('置ける個数が飛び飛びなら、空けられない置き場が埋まっていても、間の個数は合法でない', () => {
-    // 1個か3個だけ置ける、仮の妨害。置き場は三つで、空けられないのは最初の一つ
+    // 1個か3個だけ置ける、仮の氷礫。置き場は三つで、空けられないのは最初の一つ
     const saved = ACTION_DEFS.interrupt
     ACTION_DEFS.interrupt = { ...saved, dice: [1, 3] }
     try {
@@ -97,7 +97,7 @@ describe('ターンの進行', () => {
     }
   })
   it('省いてよい置き場のある行動は、置く個数ごとに列挙し、同じ目の組は一つにまとめる', () => {
-    // 1個から3個まで置ける、仮の妨害。目の 4 は二つある
+    // 1個から3個まで置ける、仮の氷礫。目の 4 は二つある
     const saved = ACTION_DEFS.interrupt
     ACTION_DEFS.interrupt = { ...saved, dice: [1, 2, 3] }
     try {
@@ -116,33 +116,33 @@ describe('ターンの進行', () => {
     }
   })
   it('空けられない置き場は、行の前から dice の最小の数。省いてもよい置き場だけに置いても埋まったことにならない', () => {
-    // 1個から3個まで置ける、仮の妨害
+    // 1個から3個まで置ける、仮の氷礫
     const dotted = { ...ACTION_DEFS.interrupt, dice: [1, 2, 3] }
     expect(fillsRequired(dotted, [0, null, null])).toBe(true)
     expect(fillsRequired(dotted, [null, 0, null])).toBe(false)
     expect(fillsRequired(dotted, [null, null, null])).toBe(false)
-    expect(fillsRequired(ACTION_DEFS.bloodBullet, [0, null])).toBe(false)
-    expect(fillsRequired(ACTION_DEFS.bloodBullet, [0, 1])).toBe(true)
+    expect(fillsRequired(ACTION_DEFS.flameStrike, [0, null])).toBe(false)
+    expect(fillsRequired(ACTION_DEFS.flameStrike, [0, 1])).toBe(true)
     // 印の置き場のほかに省いてよい置き場を持つ、仮のカード。印の置き場は空けられない置き場に入る
-    const optional = { ...ACTION_DEFS.bloodBullet, dice: [1, 2] }
+    const optional = { ...ACTION_DEFS.flameStrike, dice: [1, 2] }
     expect(fillsRequired(optional, [0, null])).toBe(true)
     expect(fillsRequired(optional, [null, 0])).toBe(false)
   })
-  it('X の枠を空けた血弾は不正。X の枠に置いた目に2を足した威力で、もう一つの目の分だけ血を払う', () => {
+  it('X の枠を空けた炎撃は不正。X の枠に置いた目に2を足した威力で、もう一つの目の分だけ自分も焼ける', () => {
     const s = makeState({ roll: [2, 6, 4] }, { roll: [1, 2, 3] })
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [null, 1] })).toBe(false)
-    expect(isLegal(s, 0, { kind: 'bloodBullet', dice: [1, null] })).toBe(false)
-    const low = resolveStep(s, [{ kind: 'bloodBullet', dice: [0, 1] }, pass])
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [null, 1] })).toBe(false)
+    expect(isLegal(s, 0, { kind: 'flameStrike', dice: [1, null] })).toBe(false)
+    const low = resolveStep(s, [{ kind: 'flameStrike', dice: [0, 1] }, pass])
     expect(low.history[0].damage).toEqual([6, 4])
-    const high = resolveStep(s, [{ kind: 'bloodBullet', dice: [1, 0] }, pass])
+    const high = resolveStep(s, [{ kind: 'flameStrike', dice: [1, 0] }, pass])
     expect(high.history[0].damage).toEqual([2, 8])
   })
-  it('血弾はどの目を X の枠に置くかで別の手になり、同じ目の入れ替えは一つにまとめる', () => {
-    const bloods = (roll: number[]) =>
+  it('炎撃はどの目を X の枠に置くかで別の手になり、同じ目の入れ替えは一つにまとめる', () => {
+    const burns = (roll: number[]) =>
       legalActions(makeState({ roll }, { roll: [1, 2, 3] }), 0)
-        .filter((a) => a.kind === 'bloodBullet')
+        .filter((a) => a.kind === 'flameStrike')
         .map((a) => (a.kind === 'pass' ? [] : a.dice.map((i) => (i === null ? 0 : roll[i]))))
-    expect(bloods([6, 4, 1])).toEqual([
+    expect(burns([6, 4, 1])).toEqual([
       [6, 4],
       [4, 6],
       [6, 1],
@@ -150,12 +150,12 @@ describe('ターンの進行', () => {
       [4, 1],
       [1, 4],
     ])
-    expect(bloods([4, 4, 1])).toEqual([
+    expect(burns([4, 4, 1])).toEqual([
       [4, 4],
       [4, 1],
       [1, 4],
     ])
-    // 印の無い行動は、置き場の違いを別の手にせず、前の置き場から詰めて置く。妨害は目ごとに別の手になる
+    // 印の無い行動は、置き場の違いを別の手にせず、前の置き場から詰めて置く。氷礫は目ごとに別の手になる
     const interrupts = legalActions(makeState({ roll: [6, 4, 4] }, { roll: [1, 2, 3] }), 0).filter(
       (a) => a.kind === 'interrupt',
     )
@@ -173,14 +173,14 @@ describe('ターンの進行', () => {
       false,
     )
   })
-  it('血弾の X の枠の目は、置いた置き場のまま記録に残る', () => {
+  it('炎撃の X の枠の目は、置いた置き場のまま記録に残る', () => {
     const s = makeState({ roll: [2, 6, 1] }, { roll: [1, 2, 3] })
-    const next = resolveStep(s, [{ kind: 'bloodBullet', dice: [0, 1] }, pass])
+    const next = resolveStep(s, [{ kind: 'flameStrike', dice: [0, 1] }, pass])
     expect(next.history[0].values[0]).toEqual([2, 6])
     expect(next.history[0].strikes).toEqual([
-      { from: 0, kind: 'bloodBullet', power: 4, outcome: 'hit', to: 1, dealt: 4 },
+      { from: 0, kind: 'flameStrike', power: 4, outcome: 'hit', to: 1, dealt: 4 },
     ])
-    expect(next.history[0].blood).toEqual([6, 0])
+    expect(next.history[0].burn).toEqual([6, 0])
     expect(next.history[0].damage).toEqual([6, 4])
   })
   it('不正な行動を解決しようとすると例外', () => {
@@ -223,7 +223,7 @@ describe('ターンの進行', () => {
   it('次のターンでダイスと使用記録がリセットされる', () => {
     let s = makeState({ roll: [6, 5, 4] }, { roll: [1, 2, 3] })
     s = resolveStep(s, [interrupt, pass])
-    s = resolveStep(s, [{ kind: 'bloodBullet', dice: [1, 2] }, pass])
+    s = resolveStep(s, [{ kind: 'flameStrike', dice: [1, 2] }, pass])
     s = nextTurn(s, () => 0.5)
     expect(s.turn).toBe(2)
     expect(s.step).toBe(1)
@@ -252,25 +252,25 @@ describe('ターンの進行', () => {
 })
 
 describe('攻撃の行方', () => {
-  const fire: Action = { kind: 'bloodBullet', dice: [0, 1] }
+  const fire: Action = { kind: 'flameStrike', dice: [0, 1] }
   const wall: Action = { kind: 'barrier', dice: [0] }
-  /** 炎壁が攻撃を受けて、攻撃した 0 へ返す3 */
+  /** 風壁が攻撃を受けて、攻撃した 0 へ返す3 */
   const back = { from: 1, kind: 'barrier', power: 3, outcome: 'returned', to: 0, dealt: 3 }
   it.each([
     ['何もしない相手には当たる', [6, 2], fire, [], pass, [{ outcome: 'hit', to: 1, dealt: 8 }]],
-    // 炎壁は置いた目の倍だけ減らし、減らした攻撃を放った相手に3を返す
-    ['炎壁に削られ、3を返される', [6, 2], fire, [2], wall, [{ outcome: 'guarded', to: 1, dealt: 4 }, back]],
+    // 風壁は置いた目の倍だけ減らし、減らした攻撃を放った相手に3を返す
+    ['風壁に削られ、3を返される', [6, 2], fire, [2], wall, [{ outcome: 'guarded', to: 1, dealt: 4 }, back]],
     [
-      '炎壁が上回って0になっても、3を返される',
+      '風壁が上回って0になっても、3を返される',
       [3, 2],
       fire,
       [5],
       wall,
       [{ outcome: 'guarded', to: 1, dealt: 0 }, back],
     ],
-    ['妨害も炎壁に削られ、3を返される', [6], interrupt, [1], wall, [{ outcome: 'guarded', to: 1, dealt: 0 }, back]],
+    ['氷礫も風壁に削られ、3を返される', [6], interrupt, [1], wall, [{ outcome: 'guarded', to: 1, dealt: 0 }, back]],
     [
-      '魔弾は炎壁をすり抜け、返されない',
+      '魔弾は風壁をすり抜け、返されない',
       [1, 1],
       { kind: 'bullet', dice: [0, 1] },
       [6],
@@ -278,7 +278,7 @@ describe('攻撃の行方', () => {
       [{ outcome: 'pierced', to: 1, dealt: 4 }],
     ],
     [
-      '雷槍の発動は炎壁をすり抜け、返されない',
+      '魔槍の発動は風壁をすり抜け、返されない',
       [6, 5],
       { kind: 'spearCast', dice: [0, 1] },
       [6],
@@ -333,7 +333,7 @@ describe('返す', () => {
       ACTION_DEFS.barrier = saved
     }
   })
-  it('炎壁どうしや、攻撃の来ない炎壁は何も返さない', () => {
+  it('風壁どうしや、攻撃の来ない風壁は何も返さない', () => {
     const s = resolveStep(makeState({ roll: [6, 2, 1] }, { roll: [1, 4, 5] }), [
       { kind: 'barrier', dice: [0] },
       { kind: 'barrier', dice: [0] },
@@ -343,27 +343,27 @@ describe('返す', () => {
   })
 })
 
-describe('血を払う', () => {
-  const blood: Action = { kind: 'bloodBullet', dice: [0, 1] }
-  it('血弾はもう一つの置き場の目だけ払い、ほかの行動は払わない', () => {
-    expect(bloodOf([[6, 2], []], [blood, pass])).toEqual([2, 0])
-    expect(bloodOf([[1, 5], [4]], [blood, { kind: 'barrier', dice: [0] }])).toEqual([5, 0])
-    expect(bloodOf([[6], [6, 6]], [interrupt, { kind: 'bullet', dice: [0, 1] }])).toEqual([0, 0])
+describe('自分も焼ける', () => {
+  const burn: Action = { kind: 'flameStrike', dice: [0, 1] }
+  it('炎撃はもう一つの置き場の目だけ払い、ほかの行動は払わない', () => {
+    expect(burnOf([[6, 2], []], [burn, pass])).toEqual([2, 0])
+    expect(burnOf([[1, 5], [4]], [burn, { kind: 'barrier', dice: [0] }])).toEqual([5, 0])
+    expect(burnOf([[6], [6, 6]], [interrupt, { kind: 'bullet', dice: [0, 1] }])).toEqual([0, 0])
   })
-  it('払った血は記録に別に残り、受けたダメージにも体力にも入る。炎壁では減らない', () => {
-    // 血弾は 6 に2を足して8、炎壁の 3 の倍の6に削られて2が通る。血は2を払い、炎壁から3を返される
-    const s = resolveStep(makeState({ roll: [6, 2, 1] }, { roll: [3, 4, 5] }), [blood, { kind: 'barrier', dice: [0] }])
-    expect(s.history[0].blood).toEqual([2, 0])
+  it('焼けた分は記録に別に残り、受けたダメージにも体力にも入る。風壁では減らない', () => {
+    // 炎撃は 6 に2を足して8、風壁の 3 の倍の6に削られて2が通る。自分も2焼け、風壁から3を返される
+    const s = resolveStep(makeState({ roll: [6, 2, 1] }, { roll: [3, 4, 5] }), [burn, { kind: 'barrier', dice: [0] }])
+    expect(s.history[0].burn).toEqual([2, 0])
     expect(s.history[0].damage).toEqual([5, 2])
     expect(s.players.map((p) => p.hp)).toEqual([15, 18])
   })
-  it('受けるダメージの計算にも、払った血が入る', () => {
-    expect(stepDamage([[1, 1], []], [blood, pass])).toEqual([1, 3])
+  it('受けるダメージの計算にも、焼けた分が入る', () => {
+    expect(stepDamage([[1, 1], []], [burn, pass])).toEqual([1, 3])
   })
-  it('血を払って自分も0以下になれば、相打ちの決まりで勝敗が決まる', () => {
-    // 自分は 2 から 6 の血を払って −4、相手は 6 から 6 を受けて 0
+  it('自分も焼けて0以下になれば、相打ちの決まりで勝敗が決まる', () => {
+    // 自分は 2 から 6 の自分も焼けて −4、相手は 6 から 6 を受けて 0
     const s = resolveStep(makeState({ roll: [6, 4, 1], hp: 2 }, { roll: [1, 2, 3], hp: 6 }), [
-      { kind: 'bloodBullet', dice: [1, 0] },
+      { kind: 'flameStrike', dice: [1, 0] },
       pass,
     ])
     expect(s.players.map((p) => p.hp)).toEqual([-4, 0])
@@ -392,14 +392,14 @@ describe('1ステップ目のダイス', () => {
   })
   it('2ステップ目には、双方が1ステップ目に使ったダイスが、置いた置き場のままカードに残る', () => {
     const s = resolveStep(start, [
-      { kind: 'bloodBullet', dice: [1, 0] },
+      { kind: 'flameStrike', dice: [1, 0] },
       { kind: 'barrier', dice: [2] },
     ])
-    expect(keptRow(s, 0)).toEqual({ card: 'bloodBullet', kind: 'bloodBullet', slots: [1, 0] })
+    expect(keptRow(s, 0)).toEqual({ card: 'flameStrike', kind: 'flameStrike', slots: [1, 0] })
     expect(keptRow(s, 1)).toEqual({ card: 'barrier', kind: 'barrier', slots: [2] })
     // 2ステップ目を解決しても、ターンが変わるまでは残る
     const after = resolveStep(s, [pass, pass])
-    expect(keptRow(after, 0)).toEqual({ card: 'bloodBullet', kind: 'bloodBullet', slots: [1, 0] })
+    expect(keptRow(after, 0)).toEqual({ card: 'flameStrike', kind: 'flameStrike', slots: [1, 0] })
     // ターンが変わると片付く
     expect(keptRow(nextTurn(after, seeded(1)), 0)).toBeNull()
   })

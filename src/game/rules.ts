@@ -157,22 +157,22 @@ export function strikes(vals: [number[], number[]], acts: [Action, Action]): Str
   return out
 }
 
-/** 双方が血として払い、自分で受けるダメージ [0が受ける, 1が受ける]。障壁では減らない */
-export function bloodOf(vals: [number[], number[]], acts: [Action, Action]): [number, number] {
-  const pay = (who: PlayerIndex) => defOf(acts[who])?.blood?.(vals[who]) ?? 0
+/** 双方が炎で自分も焼けて受けるダメージ [0が受ける, 1が受ける]。障壁では減らない */
+export function burnOf(vals: [number[], number[]], acts: [Action, Action]): [number, number] {
+  const pay = (who: PlayerIndex) => defOf(acts[who])?.burn?.(vals[who]) ?? 0
   return [pay(0), pay(1)]
 }
 
-/** 双方が受けたダメージ [0が受ける, 1が受ける]。攻撃で受けた分と、血として払った分を足す */
-function damageOf(list: Strike[], blood: [number, number]): [number, number] {
-  const dmg: [number, number] = [...blood]
+/** 双方が受けたダメージ [0が受ける, 1が受ける]。攻撃で受けた分と、自分が焼けた分を足す */
+function damageOf(list: Strike[], burn: [number, number]): [number, number] {
+  const dmg: [number, number] = [...burn]
   for (const s of list) dmg[s.to] += s.dealt
   return dmg
 }
 
 /** 一つのステップで双方が受けるダメージ [0が受ける, 1が受ける] */
 export function stepDamage(vals: [number[], number[]], acts: [Action, Action]): [number, number] {
-  return damageOf(strikes(vals, acts), bloodOf(vals, acts))
+  return damageOf(strikes(vals, acts), burnOf(vals, acts))
 }
 
 /** 詠唱は、同じステップに相手が詠唱を崩す行動をしたときだけ崩れる。攻撃のダメージでは崩れない */
@@ -191,8 +191,8 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
   })
   const vals: [number[], number[]] = [diceValues(state.players[0], acts[0]), diceValues(state.players[1], acts[1])]
   const list = strikes(vals, acts)
-  const blood = bloodOf(vals, acts)
-  const dmg = damageOf(list, blood)
+  const burn = burnOf(vals, acts)
+  const dmg = damageOf(list, burn)
   const chants: [ChantResult, ChantResult] = [null, null]
 
   const update = (p: PlayerState, i: PlayerIndex): PlayerState => {
@@ -222,7 +222,7 @@ export function resolveStep(state: GameState, acts: [Action, Action]): GameState
     actions: acts,
     values: vals,
     strikes: list,
-    blood,
+    burn,
     damage: dmg,
     chants,
   }

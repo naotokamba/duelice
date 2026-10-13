@@ -81,12 +81,12 @@ async function holdDie(page: Page, narrow: boolean) {
       ],
     ],
   })
-  // 狭い画面では使える最初のカードの血弾が出ている
-  await tapPlace(page, 6, '血弾のXの枠')
-  await tapPlace(page, 5, '血弾のYの枠')
+  // 狭い画面では使える最初のカードの炎撃が出ている
+  await tapPlace(page, 6, '炎撃のXの枠')
+  await tapPlace(page, 5, '炎撃のYの枠')
   await confirm(page).click()
   await expect(step(page, 1, 2)).toBeAttached({ timeout: 15_000 })
-  if (narrow) await mySeat(page).getByRole('button', { name: '炎壁', exact: true }).click()
+  if (narrow) await mySeat(page).getByRole('button', { name: '風壁', exact: true }).click()
   await trayDie(page, 2).click()
 }
 
@@ -101,7 +101,7 @@ for (const { name, width, height, narrow } of [
     test('ダイスを持って置き場が押せる場面と、決定が押せる場面', async ({ page }) => {
       await holdDie(page, narrow)
       expect(await problems(page)).toEqual([])
-      await mySeat(page).getByRole('button', { name: '炎壁のXの枠に置く' }).click()
+      await mySeat(page).getByRole('button', { name: '風壁のXの枠に置く' }).click()
       await expect(confirm(page)).toBeEnabled()
       expect(await problems(page)).toEqual([])
     })

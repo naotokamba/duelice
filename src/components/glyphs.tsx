@@ -1,6 +1,6 @@
 // カード面と公開の舞台で共有する印。同じ意味は同じ形で描く。
-// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、守りは盾、守りが攻撃した相手に返すダメージは炎、
-// 血として払って自分が受けるダメージは血のしずく、詠唱は魔法陣、詠唱を崩す効果はばつを重ねた魔法陣。
+// ダメージは赤い星、貫通ダメージは矢印が突き抜けた赤い星、守りは盾、守りが攻撃した相手に吹き返すダメージは風の渦、
+// 炎で自分も焼けて受けるダメージは炎、詠唱は魔法陣、詠唱を崩す効果はばつを重ねた魔法陣。
 // 数を持つ印は、印の中に数を描く。数は SVG の字として描き、字の高さから求めた位置に置いて、印の中心に字の中心を合わせる。
 
 import { type ReactNode, useId } from 'react'
@@ -102,17 +102,28 @@ export function ShieldGlyph({ value }: { value?: string | number }) {
   )
 }
 
-/** 炎の形。下の丸い部分の中心は (0, 12) で、左上に小さな火の舌が分かれる */
-const FLAME =
-  'M0 -50C10 -32 34 -22 34 10C34 32 18 46 0 46C-18 46 -34 32 -34 10C-34 -8 -22 -20 -16 -34C-12 -22 -8 -18 -3 -15C-1 -27 -3 -39 0 -50Z'
+/** 炎と渦に入れる字の大きさ。星より細いので、字数が増えるほど星より小さくする */
+const innerText = (value: string) => (value.length === 1 ? 40 : value.length === 2 ? 30 : 24)
 
-/** 守りが攻撃を受けたときに、攻撃した相手に返すダメージ。炎の、丸い部分に数を描く */
+/** 風の渦の腕。中心の丸の縁から、三本が同じ向きに巻きながら外へ吹き出す */
+const GUST_ARMS = [0, 1, 2].map((k) => {
+  const at = (r: number, deg: number) => {
+    const t = ((deg - 90 + 120 * k) * Math.PI) / 180
+    return `${(r * Math.cos(t)).toFixed(1)} ${(r * Math.sin(t)).toFixed(1)}`
+  }
+  return `M${at(24, 0)}Q${at(48, 50)} ${at(42, 110)}`
+})
+
+/** 守りが攻撃を受けたときに、攻撃した相手に吹き返すダメージ。風の渦の、中心の丸に数を描く */
 export function ThornsGlyph({ value }: { value?: string }) {
   return (
     <svg className="glyph-thorns" viewBox="-50 -50 100 100" aria-hidden="true">
-      <path d={FLAME} />
+      {GUST_ARMS.map((d) => (
+        <path key={d} className="gust-arm" d={d} />
+      ))}
+      <circle className="gust-core" r={30} />
       {value && (
-        <Value cx={0} cy={12} size={dropText(value)}>
+        <Value cx={0} cy={0} size={innerText(value)}>
           {value}
         </Value>
       )}
@@ -120,19 +131,17 @@ export function ThornsGlyph({ value }: { value?: string }) {
   )
 }
 
-/** 血のしずくの形。下の丸い部分の中心は (0, 14) で、半径は 34 */
-const DROP = 'M0 -48C12 -30 34 -8 34 14A34 34 0 0 1 -34 14C-34 -8 -12 -30 0 -48Z'
+/** 炎の形。下の丸い部分の中心は (0, 12) で、左上に小さな火の舌が分かれる */
+const FLAME =
+  'M0 -50C10 -32 34 -22 34 10C34 32 18 46 0 46C-18 46 -34 32 -34 10C-34 -8 -22 -20 -16 -34C-12 -22 -8 -18 -3 -15C-1 -27 -3 -39 0 -50Z'
 
-/** しずくに入れる字の大きさ。星より細いので、字数が増えるほど星より小さくする */
-const dropText = (value: string) => (value.length === 1 ? 40 : value.length === 2 ? 30 : 24)
-
-/** 血として払って自分が受けるダメージ。血のしずくの、丸い部分に数を描く */
-export function BloodGlyph({ value }: { value?: string }) {
+/** 炎で自分も焼けて受けるダメージ。炎の、丸い部分に数を描く */
+export function BurnGlyph({ value }: { value?: string }) {
   return (
-    <svg className="glyph-blood" viewBox="-50 -50 100 100" aria-hidden="true">
-      <path d={DROP} />
+    <svg className="glyph-burn" viewBox="-50 -50 100 100" aria-hidden="true">
+      <path d={FLAME} />
       {value && (
-        <Value cx={0} cy={14} size={dropText(value)}>
+        <Value cx={0} cy={12} size={innerText(value)}>
           {value}
         </Value>
       )}
@@ -232,9 +241,9 @@ function effectIcon(icon: EffectIcon, v: string | undefined): { label: string; g
     case 'guard':
       return { label: `受けるダメージを${v}減らす`, glyph: <ShieldGlyph value={v} /> }
     case 'thorns':
-      return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを返す`, glyph: <ThornsGlyph value={v} /> }
-    case 'blood':
-      return { label: `血を払う。自分が${v}ダメージを受ける`, glyph: <BloodGlyph value={v} /> }
+      return { label: `減らせる攻撃を受けたら、相手に${v}ダメージを吹き返す`, glyph: <ThornsGlyph value={v} /> }
+    case 'burn':
+      return { label: `自分も焼けて${v}ダメージを受ける`, glyph: <BurnGlyph value={v} /> }
     case 'chant':
       return { label: '詠唱。崩されなければ、次のステップで下の段を使える', glyph: <ChantGlyph /> }
     case 'disrupt':

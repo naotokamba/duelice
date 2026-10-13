@@ -13,19 +13,22 @@
   /* 前のステップで使い、カードに残ったダイスの面。目との差は 9.9:1 */
   --die-kept: #c9ccd8;
   --pip: #1d2233;
-  --bloodBullet: #9c1d45;
-  --barrier: #c8371e;
+  /* カードの色は属性でそろえる。炎は赤、風は緑、魔は紫、氷は水色。魔弾と魔槍は紫の中で青寄りと赤寄りに分ける */
+  --flameStrike: #c8371e;
+  --barrier: #2a9a5c;
   --bullet: #6a4bc4;
-  --spear: #a87c00;
-  --interrupt: #2f7f86;
+  --spear: #9440b5;
+  --interrupt: #3aa0d0;
   /* カードの色の文字。帯や矢印の鮮やかな色と同じ色相で、背景に対して 4.5:1 以上を取る */
-  --bloodBullet-ink: #8c1a3e;
-  --barrier-ink: #a22d18;
+  --flameStrike-ink: #a22d18;
+  --barrier-ink: #1f6b3c;
   --bullet-ink: #603fc0;
-  --spear-ink: #725400;
-  --interrupt-ink: #246268;
-  /* 血として払うダメージのしずく。受けるダメージの星の赤より深い赤 */
-  --blood-drop: #a3123a;
+  --spear-ink: #7f2d9a;
+  --interrupt-ink: #1b6788;
+  /* 炎で自分が焼けるダメージの炎。受けるダメージの星の赤と見分けるため、橙に寄せる。白い数との差は 5.2:1 */
+  --burn: #c2410c;
+  /* 風の守りが吹き返すダメージの渦。白い数との差は 5.3:1 */
+  --gust: #1f7a4d;
   /* 色の付いた札やボタンに乗せる文字 */
   --on-accent: #fff;
   /* 切り替わりの幕。卓より少しだけ暗い */
@@ -60,17 +63,18 @@
     --go: #38a863;
     --hit: #e1301b;
     --on-accent: #141824;
-    --bloodBullet: #e46a8c;
-    --barrier: #f06a4f;
+    --flameStrike: #f06a4f;
+    --barrier: #4cc38a;
     --bullet: #a690f0;
-    --spear: #e0b43a;
-    --interrupt: #5fb8bf;
-    --bloodBullet-ink: #ec8aa5;
-    --barrier-ink: #f28069;
+    --spear: #c98ae6;
+    --interrupt: #6cc4ea;
+    --flameStrike-ink: #f28069;
+    --barrier-ink: #5fd39a;
     --bullet-ink: #ab97f1;
-    --spear-ink: #e0b43a;
-    --interrupt-ink: #5fb8bf;
-    --blood-drop: #d93a63;
+    --spear-ink: #d29bee;
+    --interrupt-ink: #7ccdf0;
+    --burn: #e8692a;
+    --gust: #2f9e63;
   }
 }
 
@@ -573,7 +577,7 @@ button.die {
   /* 色を決めていない新しいカードでも表示が崩れないように、既定の色を持たせる */
   --spell: var(--ink);
   --spell-ink: var(--ink);
-  /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い雷槍に合わせ、どのカードも同じ大きさにする */
+  /* 一番幅を取る「Y = □ + □」が一行に収まる幅。高さは一番中身の多い魔槍に合わせ、どのカードも同じ大きさにする */
   width: calc(var(--die) * 2 + 7.5rem);
   height: calc(var(--die) * 2 + 12.1rem);
   flex: none;
@@ -593,10 +597,10 @@ button.die {
     box-shadow 150ms ease,
     opacity 150ms ease;
 }
-.card-bloodBullet {
-  --spell: var(--bloodBullet);
-  --spell-ink: var(--bloodBullet-ink);
-  --card-ink: var(--bloodBullet-ink);
+.card-flameStrike {
+  --spell: var(--flameStrike);
+  --spell-ink: var(--flameStrike-ink);
+  --card-ink: var(--flameStrike-ink);
 }
 .card-barrier {
   --spell: var(--barrier);
@@ -934,9 +938,15 @@ button.fx[aria-describedby] {
 .glyph-pierce {
   overflow: visible;
 }
-/* 守りが攻撃した相手に返すダメージ。炎壁の色の炎に白い数を書く */
-.glyph-thorns path {
-  fill: var(--barrier);
+/* 守りが攻撃した相手に吹き返すダメージ。風の渦の中心の丸に白い数を書き、三本の腕が巻き出す */
+.glyph-thorns .gust-core {
+  fill: var(--gust);
+}
+.glyph-thorns .gust-arm {
+  fill: none;
+  stroke: var(--gust);
+  stroke-width: 8;
+  stroke-linecap: round;
 }
 .glyph-thorns .glyph-value {
   fill: #fff;
@@ -948,11 +958,11 @@ button.fx[aria-describedby] {
   stroke-width: 9;
   stroke-linecap: round;
 }
-/* 血として払って自分で受けるダメージ。受けるダメージの星と見分けるため、深い赤のしずくに白い数を書く */
-.glyph-blood path {
-  fill: var(--blood-drop);
+/* 炎で自分が焼けて受けるダメージ。受けるダメージの星と見分けるため、橙の炎に白い数を書く */
+.glyph-burn path {
+  fill: var(--burn);
 }
-.glyph-blood .glyph-value {
+.glyph-burn .glyph-value {
   fill: #fff;
 }
 /* パスは手元のダイスの並びの右端に置く */
